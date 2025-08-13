@@ -23,14 +23,9 @@ import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
 import com.lowdragmc.lowdraglib.syncdata.field.ManagedFieldHolder;
 
 import net.minecraft.MethodsReturnNonnullByDefault;
-import net.minecraft.core.Holder;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
-import net.minecraft.tags.TagKey;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.material.Fluid;
-import net.minecraftforge.registries.ForgeRegistries;
 
 import appeng.api.config.Actionable;
 import appeng.api.networking.IGrid;
@@ -40,18 +35,14 @@ import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import appeng.api.storage.MEStorage;
 import appeng.util.prioritylist.IPartitionList;
-import com.glodblock.github.extendedae.common.me.taglist.TagExpParser;
+import com.glodblock.github.extendedae.common.me.taglist.TagPriorityList;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
-import it.unimi.dsi.fastutil.objects.Reference2BooleanMap;
-import it.unimi.dsi.fastutil.objects.Reference2BooleanOpenHashMap;
 import lombok.Getter;
 import lombok.Setter;
-import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 
 import javax.annotation.ParametersAreNonnullByDefault;
 
@@ -76,6 +67,8 @@ public class TagFilterMEStockBusPartMachine extends MEInputBusPartMachine {
     @Setter
     @Persisted
     private boolean isCountSort = false;
+
+    private IPartitionList filter;
 
     public TagFilterMEStockBusPartMachine(IMachineBlockEntity holder, Object... args) {
         super(holder, args);
@@ -118,9 +111,7 @@ public class TagFilterMEStockBusPartMachine extends MEInputBusPartMachine {
         for (ExportOnlyAEItemSlot slot : this.aeItemHandler.getInventory()) {
             var config = slot.getConfig();
             if (config != null) {
-                // Try to fill the slot
                 var key = config.what();
-                // try max fill Integer.MAX_VALUE
                 long extracted = networkInv.extract(key, Integer.MAX_VALUE, Actionable.SIMULATE, actionSource);
                 if (extracted > 0) {
                     slot.setStock(new GenericStack(key, extracted));
@@ -139,8 +130,9 @@ public class TagFilterMEStockBusPartMachine extends MEInputBusPartMachine {
         }
         IStorageService storageService = grid.getStorageService();
         MEStorage networkStorage = storageService.getInventory();
-        IPartitionList filter = new ItemTagPriority(TagExpParser.getMatchingOre(this.tagWhite),
-                TagExpParser.getMatchingOre(this.tagBlack), this.tagWhite + this.tagBlack);
+
+        filter = new TagPriorityList(this.tagWhite, this.tagBlack);
+
         List<GenericStack> order = new ArrayList<>();
         var counter = networkStorage.getAvailableStacks();
         int index = 0;
@@ -158,7 +150,6 @@ public class TagFilterMEStockBusPartMachine extends MEInputBusPartMachine {
             } else {
                 long request = networkStorage.extract(what, amount, Actionable.SIMULATE, actionSource);
                 if (request == 0) continue;
-                // Ensure that it is valid to configure with this stack
                 var slot = this.aeItemHandler.getInventory()[index];
                 slot.setConfig(new GenericStack(what, 1));
                 slot.setStock(new GenericStack(what, request));
@@ -172,7 +163,6 @@ public class TagFilterMEStockBusPartMachine extends MEInputBusPartMachine {
                 GenericStack stack = order.get(i);
                 long request = networkStorage.extract(stack.what(), stack.amount(), Actionable.SIMULATE, actionSource);
                 if (request == 0) continue;
-                // Ensure that it is valid to configure with this stack
                 var slot = this.aeItemHandler.getInventory()[index];
                 slot.setConfig(new GenericStack(stack.what(), 1));
                 slot.setStock(new GenericStack(stack.what(), request));
@@ -197,14 +187,22 @@ public class TagFilterMEStockBusPartMachine extends MEInputBusPartMachine {
         if (tag.contains("GhostCircuit")) {
             circuitInventory.setStackInSlot(0, IntCircuitBehaviour.stack(tag.getByte("GhostCircuit")));
         }
-
         if (tag.contains("TagWhite")) {
-            tagWhite = tag.getString("TagWhite");
+            setTagWhite(tag.getString("TagWhite"));
         }
-
         if (tag.contains("TagBlack")) {
-            tagBlack = tag.getString("TagBlack");
+            setTagBlack(tag.getString("TagBlack"));
         }
+    }
+
+    public void setTagWhite(final String tagWhite) {
+        this.tagWhite = tagWhite;
+        refreshList();
+    }
+
+    public void setTagBlack(final String tagBlack) {
+        this.tagBlack = tagBlack;
+        refreshList();
     }
 
     @Override
@@ -231,12 +229,12 @@ public class TagFilterMEStockBusPartMachine extends MEInputBusPartMachine {
                             () -> "标签白名单"))
                     .addWidget(new TextFieldWidget(9, 16, 114, 16,
                             () -> tagWhite,
-                            v -> tagWhite = v))
+                            v -> setTagWhite(v)))
                     .addWidget(new LabelWidget(9, 36,
                             () -> "标签黑名单"))
                     .addWidget(new TextFieldWidget(9, 48, 114, 16,
                             () -> tagBlack,
-                            v -> tagBlack = v))
+                            v -> setTagBlack(v)))
                     .addWidget(new LabelWidget(0, 68,
                             () -> "* 表示通配符 ()表示优先"))
                     .addWidget(new LabelWidget(0, 84,
@@ -257,7 +255,6 @@ public class TagFilterMEStockBusPartMachine extends MEInputBusPartMachine {
 
         @Override
         public boolean isAutoPull() {
-            // only read from the network, cant config this slot
             return true;
         }
     }
@@ -276,8 +273,6 @@ public class TagFilterMEStockBusPartMachine extends MEInputBusPartMachine {
         public ItemStack extractItem(int slot, int amount, boolean simulate, boolean notifyChanges) {
             if (slot == 0 && this.stock != null) {
                 if (this.config != null) {
-                    // Extract the items from the real net to either validate (simulate)
-                    // or extract (modulate) when this is called
                     if (!isOnline()) return ItemStack.EMPTY;
                     IGrid grid = getMainNode().getGrid();
                     if (grid == null) return ItemStack.EMPTY;
@@ -288,14 +283,9 @@ public class TagFilterMEStockBusPartMachine extends MEInputBusPartMachine {
                     if (extracted > 0) {
                         ItemStack resultStack = key instanceof AEItemKey itemKey ? itemKey.toStack((int) extracted) : ItemStack.EMPTY;
                         if (!simulate) {
-                            // may as well update the display here
                             this.stock = ExportOnlyAESlot.copy(stock, stock.amount() - extracted);
-                            if (this.stock.amount() == 0) {
-                                this.stock = null;
-                            }
-                            if (notifyChanges && this.onContentsChanged != null) {
-                                this.onContentsChanged.run();
-                            }
+                            if (this.stock.amount() == 0) this.stock = null;
+                            if (notifyChanges && this.onContentsChanged != null) this.onContentsChanged.run();
                         }
                         return resultStack;
                     }
@@ -306,61 +296,9 @@ public class TagFilterMEStockBusPartMachine extends MEInputBusPartMachine {
 
         @Override
         public ExportOnlyAEStockingItemSlot copy() {
-            return new ExportOnlyAEStockingItemSlot(this.config == null ? null : copy(this.config), this.stock == null ? null : copy(this.stock));
-        }
-    }
-
-    private static class ItemTagPriority implements IPartitionList {
-
-        private final Set<TagKey<?>> whiteSet;
-        private final Set<TagKey<?>> blackSet;
-        private final String tagExp;
-        private final Reference2BooleanMap<Object> memory = new Reference2BooleanOpenHashMap<>();
-
-        public ItemTagPriority(Set<TagKey<?>> whiteSet, Set<TagKey<?>> blackSet, String tagExp) {
-            this.whiteSet = whiteSet;
-            this.blackSet = blackSet;
-            this.tagExp = tagExp;
-        }
-
-        @Override
-        public boolean isListed(AEKey aeKey) {
-            Object key = aeKey.getPrimaryKey();
-            return this.memory.computeIfAbsent(key, this::eval);
-        }
-
-        @Override
-        public boolean isEmpty() {
-            return tagExp.isEmpty();
-        }
-
-        @Override
-        public Iterable<AEKey> getItems() {
-            return List.of();
-        }
-
-        private boolean eval(@NotNull Object obj) {
-            Holder<?> refer = null;
-            if (obj instanceof Item item) {
-                refer = ForgeRegistries.ITEMS.getHolder(item).orElse(null);
-            } else if (obj instanceof Fluid) {
-                return false;
-            }
-
-            if (refer != null) {
-                if (this.whiteSet.isEmpty()) {
-                    return false;
-                }
-
-                boolean pass = refer.tags().anyMatch(whiteSet::contains);
-                if (pass) {
-                    if (!this.blackSet.isEmpty()) {
-                        return refer.tags().noneMatch(blackSet::contains);
-                    }
-                    return true;
-                }
-            }
-            return false;
+            return new ExportOnlyAEStockingItemSlot(
+                    this.config == null ? null : copy(this.config),
+                    this.stock == null ? null : copy(this.stock));
         }
     }
 }
