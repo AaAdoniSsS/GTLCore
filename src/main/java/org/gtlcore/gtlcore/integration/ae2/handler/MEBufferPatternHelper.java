@@ -117,6 +117,9 @@ public class MEBufferPatternHelper {
             }
             filteredInputs.add(input);
         }
+        if (filteredInputs.isEmpty()) {
+            filteredInputs.addAll(Arrays.stream(originalInputs).filter(Objects::nonNull).toList());
+        }
 
         if (!keepByProduct) {
             var primary = Arrays.stream(originalOutputs).filter(Objects::nonNull).findFirst();
