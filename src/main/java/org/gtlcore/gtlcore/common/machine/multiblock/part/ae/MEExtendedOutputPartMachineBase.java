@@ -46,9 +46,7 @@ import lombok.Getter;
 import lombok.Setter;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.Collections;
 import java.util.List;
-import java.util.Set;
 
 import static org.gtlcore.gtlcore.integration.ae2.AEUtils.loadInventory;
 
@@ -218,8 +216,8 @@ public abstract class MEExtendedOutputPartMachineBase extends MEIOPartMachine im
 
         // region Unused
         @Override
-        public Set<Integer> getActiveSlots() {
-            return Collections.emptySet();
+        public int[] getActiveSlots() {
+            return new int[0];
         }
 
         @Override
@@ -274,8 +272,8 @@ public abstract class MEExtendedOutputPartMachineBase extends MEIOPartMachine im
 
         // region Unused
         @Override
-        public Set<Integer> getActiveSlots() {
-            return Collections.emptySet();
+        public int[] getActiveSlots() {
+            return new int[0];
         }
 
         @Override

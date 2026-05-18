@@ -2,7 +2,6 @@ package org.gtlcore.gtlcore.integration.ae2;
 
 import org.gtlcore.gtlcore.api.recipe.ingredient.CacheHashStrategies;
 import org.gtlcore.gtlcore.api.recipe.ingredient.LongIngredient;
-import org.gtlcore.gtlcore.common.machine.multiblock.part.ae.MEPatternBufferPartMachine;
 import org.gtlcore.gtlcore.config.AE2CalculationMode;
 import org.gtlcore.gtlcore.config.ConfigHolder;
 
@@ -17,7 +16,6 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.material.Fluid;
 
 import appeng.api.config.Actionable;
 import appeng.api.crafting.IPatternDetails;
@@ -152,35 +150,22 @@ public class AEUtils {
         }
     }
 
-    public static CompoundTag writeTag(@Nullable GenericStack stack) {
-        if (stack == null) {
-            return new CompoundTag();
-        } else {
-            CompoundTag tag = stack.what().toTagGeneric().copy();
-            tag.putLong("#", stack.amount());
-            return tag;
+    public static <K> void appendPersistedInventory(ListTag tag, Function<CompoundTag, K> keyExtractor,
+                                                    Object2LongOpenHashMap<K> targetMap) {
+        for (Tag t : tag) {
+            if (!(t instanceof CompoundTag ct)) continue;
+
+            K key = keyExtractor.apply(ct);
+            long amount = ct.getLong("real");
+            if (key != null && amount > 0) {
+                targetMap.addTo(key, amount);
+            }
         }
     }
 
     // ========================================
     // ME IO Machine Utils
     // ========================================
-
-    public static Pair<Object2LongOpenHashMap<Item>, Object2LongOpenHashMap<Fluid>> mergeInternalSlot(MEPatternBufferPartMachine.InternalSlot[] internalSlots) {
-        Object2LongOpenHashMap<Item> items = new Object2LongOpenHashMap<>();
-        Object2LongOpenHashMap<Fluid> fluids = new Object2LongOpenHashMap<>();
-        for (var internalSlot : Arrays.stream(internalSlots).filter(MEPatternBufferPartMachine.InternalSlot::isActive).toList()) {
-            for (var it = Object2LongMaps.fastIterator(internalSlot.getItemInventory()); it.hasNext();) {
-                var entry = it.next();
-                items.addTo(entry.getKey().getItem(), entry.getLongValue());
-            }
-            for (var it = Object2LongMaps.fastIterator(internalSlot.getFluidInventory()); it.hasNext();) {
-                var entry = it.next();
-                fluids.addTo(entry.getKey().getFluid(), entry.getLongValue());
-            }
-        }
-        return new ImmutablePair<>(items, fluids);
-    }
 
     public static Object2LongMap<Ingredient> ingredientsMapWithOutCircuit(List<Ingredient> ingredients, Consumer<Integer> consumer) {
         var result = new Object2LongOpenCustomHashMap<>(CacheHashStrategies.IngredientHashStrategy.INSTANCE);

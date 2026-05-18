@@ -14,9 +14,7 @@ import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMaps;
 import lombok.Setter;
 
-import java.util.Collections;
 import java.util.List;
-import java.util.Set;
 import java.util.function.Predicate;
 
 public class MEPatternBufferProxyRecipeHandler<T extends Predicate<S>, S> extends NotifiableMERecipeHandlerTrait<T, S> {
@@ -44,11 +42,11 @@ public class MEPatternBufferProxyRecipeHandler<T extends Predicate<S>, S> extend
     }
 
     @Override
-    public Set<Integer> getActiveSlots() {
+    public int[] getActiveSlots() {
         if (handler != null) {
             return handler.getActiveSlots();
         }
-        return Collections.emptySet();
+        return new int[0];
     }
 
     @Override

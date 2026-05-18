@@ -36,7 +36,7 @@ public interface IMERecipeHandler<T extends Predicate<S>, S> extends IFilteredHa
      *
      * @return 激活的slot index[]
      */
-    Set<Integer> getActiveSlots();
+    int[] getActiveSlots();
 
     // ==================== Content Management ====================
 

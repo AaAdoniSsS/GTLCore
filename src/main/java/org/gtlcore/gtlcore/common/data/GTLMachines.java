@@ -10,6 +10,7 @@ import org.gtlcore.gtlcore.common.machine.multiblock.electric.CoilWorkableElectr
 import org.gtlcore.gtlcore.common.machine.multiblock.part.*;
 import org.gtlcore.gtlcore.common.machine.multiblock.part.ae.*;
 import org.gtlcore.gtlcore.common.machine.multiblock.part.maintenance.*;
+import org.gtlcore.gtlcore.integration.wildcard.WildcardPatternCompat;
 
 import com.gregtechceu.gtceu.GTCEu;
 import com.gregtechceu.gtceu.api.GTValues;
@@ -843,6 +844,9 @@ public class GTLMachines {
                 .tooltipBuilder(GTL_ADD)
                 .register();
 
-        public static void init() {}
+        public static void init() {
+            // Register optional wildcard pattern integration
+            WildcardPatternCompat.registerMachines();
+        }
     }
 }

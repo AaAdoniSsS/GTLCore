@@ -65,7 +65,7 @@ public class MEPatternBufferProxyPartMachine extends MultiblockPartMachine imple
     @Getter
     @DescSynced
     private BlockPos bufferPos;
-    private @Nullable MEPatternBufferPartMachine buffer = null;
+    private @Nullable MEPatternBufferPartMachineBase buffer = null;
     private @Nullable IMEPatternTrait bufferTrait = null;
     private boolean bufferResolved = false;
 
@@ -87,7 +87,7 @@ public class MEPatternBufferProxyPartMachine extends MultiblockPartMachine imple
         var level = getLevel();
         releaseBuffer();
         if (level != null && pos != null) {
-            if (MetaMachine.getMachine(level, pos) instanceof MEPatternBufferPartMachine machine) {
+            if (MetaMachine.getMachine(level, pos) instanceof MEPatternBufferPartMachineBase machine) {
                 bufferPos = pos;
                 buffer = machine;
                 machine.addProxy(this);
@@ -105,12 +105,16 @@ public class MEPatternBufferProxyPartMachine extends MultiblockPartMachine imple
     }
 
     @Nullable
-    public MEPatternBufferPartMachine getBuffer() {
+    public MEPatternBufferPartMachineBase getBuffer() {
         if (!bufferResolved) setBuffer(bufferPos);
         return buffer;
     }
 
     protected void releaseBuffer() {
+        var oldBuffer = buffer;
+        if (oldBuffer != null) {
+            oldBuffer.removeProxy(this);
+        }
         buffer = null;
         bufferPos = null;
         if (!isRemote()) {
@@ -195,16 +199,7 @@ public class MEPatternBufferProxyPartMachine extends MultiblockPartMachine imple
 
     @Override
     public void onMachineRemoved() {
-        var buf = getBuffer();
-        if (buf != null) {
-            buf.removeProxy(this);
-        }
-        for (int i = 0; i < handlerSubscriptions.length; i++) {
-            if (handlerSubscriptions[i] != null) {
-                handlerSubscriptions[i].unsubscribe();
-                handlerSubscriptions[i] = null;
-            }
-        }
+        releaseBuffer();
     }
 
     @Override

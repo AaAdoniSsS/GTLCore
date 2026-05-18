@@ -2,12 +2,9 @@ package org.gtlcore.gtlcore.common.machine.multiblock.part.ae;
 
 import org.gtlcore.gtlcore.api.gui.MEPatternCatalystUIManager;
 import org.gtlcore.gtlcore.api.machine.trait.*;
-import org.gtlcore.gtlcore.api.machine.trait.MEPart.IMEPatternPartMachine;
 import org.gtlcore.gtlcore.api.machine.trait.MEPart.IMEPatternTrait;
 import org.gtlcore.gtlcore.common.data.GTLMachines;
 import org.gtlcore.gtlcore.integration.ae2.AEUtils;
-import org.gtlcore.gtlcore.integration.ae2.handler.MEBufferPatternHelper;
-import org.gtlcore.gtlcore.integration.ae2.handler.SlotCacheManager;
 import org.gtlcore.gtlcore.integration.ae2.widget.AEPatternViewExtendSlotWidget;
 import org.gtlcore.gtlcore.utils.GTLUtil;
 import org.gtlcore.gtlcore.utils.Registries;
@@ -18,25 +15,17 @@ import com.gregtechceu.gtceu.api.gui.fancy.ConfiguratorPanel;
 import com.gregtechceu.gtceu.api.gui.fancy.IFancyConfiguratorButton;
 import com.gregtechceu.gtceu.api.machine.*;
 import com.gregtechceu.gtceu.api.machine.fancyconfigurator.*;
-import com.gregtechceu.gtceu.api.machine.feature.IInteractedMachine;
 import com.gregtechceu.gtceu.api.machine.feature.multiblock.IMultiController;
-import com.gregtechceu.gtceu.api.machine.trait.NotifiableItemStackHandler;
 import com.gregtechceu.gtceu.api.recipe.GTRecipe;
-import com.gregtechceu.gtceu.api.recipe.content.Content;
 import com.gregtechceu.gtceu.api.recipe.ingredient.FluidIngredient;
-import com.gregtechceu.gtceu.common.data.GTItems;
 import com.gregtechceu.gtceu.common.data.GTRecipeTypes;
 import com.gregtechceu.gtceu.common.item.IntCircuitBehaviour;
 import com.gregtechceu.gtceu.integration.ae2.gui.widget.AETextInputButtonWidget;
 import com.gregtechceu.gtceu.utils.*;
 
-import com.lowdragmc.lowdraglib.gui.texture.GuiTextureGroup;
-import com.lowdragmc.lowdraglib.gui.util.ClickData;
 import com.lowdragmc.lowdraglib.gui.widget.*;
 import com.lowdragmc.lowdraglib.misc.*;
 import com.lowdragmc.lowdraglib.side.fluid.*;
-import com.lowdragmc.lowdraglib.syncdata.IContentChangeAware;
-import com.lowdragmc.lowdraglib.syncdata.ITagSerializable;
 import com.lowdragmc.lowdraglib.syncdata.annotation.DescSynced;
 import com.lowdragmc.lowdraglib.syncdata.annotation.LazyManaged;
 import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
@@ -49,38 +38,24 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.InteractionHand;
-import net.minecraft.world.InteractionResult;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
-import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.BlockHitResult;
 
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.implementations.blockentities.PatternContainerGroup;
 import appeng.api.inventories.InternalInventory;
-import appeng.api.networking.IGrid;
 import appeng.api.networking.IGridNode;
-import appeng.api.networking.IGridNodeListener;
-import appeng.api.networking.crafting.ICraftingProvider;
 import appeng.api.networking.ticking.*;
 import appeng.api.stacks.*;
 import appeng.core.definitions.AEItems;
 import appeng.crafting.pattern.EncodedPatternItem;
 import appeng.crafting.pattern.ProcessingPatternItem;
-import appeng.helpers.patternprovider.PatternContainer;
 import com.google.common.collect.BiMap;
 import com.google.common.collect.HashBiMap;
-import com.google.common.primitives.Ints;
-import com.hepdd.gtmthings.common.block.machine.trait.CatalystFluidStackHandler;
-import com.hepdd.gtmthings.common.block.machine.trait.CatalystItemStackHandler;
 import it.unimi.dsi.fastutil.Pair;
 import it.unimi.dsi.fastutil.ints.*;
 import it.unimi.dsi.fastutil.objects.*;
 import lombok.Getter;
-import lombok.Setter;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -89,10 +64,10 @@ import java.util.stream.Stream;
 
 import static org.gtlcore.gtlcore.api.pattern.AdvancedBlockPattern.foundItem;
 
-public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInteractedMachine, ICraftingProvider, PatternContainer, IMEPatternPartMachine {
+public class MEPatternBufferPartMachine extends MEPatternBufferPartMachineBase {
 
     protected static final ManagedFieldHolder MANAGED_FIELD_HOLDER = new ManagedFieldHolder(
-            MEPatternBufferPartMachine.class, MEIOPartMachine.MANAGED_FIELD_HOLDER);
+            MEPatternBufferPartMachine.class, MEPatternBufferPartMachineBase.MANAGED_FIELD_HOLDER);
 
     @DescSynced
     @Persisted
@@ -132,18 +107,12 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
     // Info
     // ========================================
 
-    @DescSynced
-    @Persisted
-    @Setter
-    @Getter
-    protected String customName = "";
-    @Persisted
-    protected boolean keepByProduct = false;
     protected final int maxPatternCount;
     private final boolean[] hasPatternArray;
     @DescSynced
     protected final boolean[] cacheRecipe;
-    private boolean needPatternSync;
+    @Persisted
+    protected boolean keepByProduct = false;
 
     // ========================================
     // Inventory
@@ -152,18 +121,6 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
     @Getter
     @Persisted
     private final ItemStackTransfer patternInventory;
-
-    @Getter
-    @Persisted(key = "shareInventory")
-    protected final CatalystItemStackHandler sharedCatalystInventory;
-
-    @Getter
-    @Persisted(key = "shareTank")
-    protected final CatalystFluidStackHandler sharedCatalystTank;
-
-    @Getter
-    @Persisted(key = "mePatternCircuitInventory")
-    protected final NotifiableItemStackHandler sharedCircuitInventory;
 
     @Persisted
     protected final ItemStackTransfer[] catalystItems;
@@ -176,18 +133,10 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
     @Persisted
     protected final InternalSlot[] internalInventory;
 
-    @Getter
-    protected final Object2LongOpenHashMap<AEKey> buffer;
-
     // ========================================
     // Handlers
     // ========================================
 
-    /** Pattern circuit handler for managing circuit logic */
-    @Getter
-    protected final MEBufferPatternHelper realPatternHelper;
-
-    /** Recipe handler trait for ME Pattern Buffer */
     protected final MEPatternBufferRecipeHandlerTrait recipeHandler;
 
     // ========================================
@@ -200,21 +149,11 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
     private final Int2ObjectMap<IPatternDetails> slot2PatternMap;
     protected IntConsumer removeSlotFromMap = i -> {};
 
-    // ========================================
-    // Proxy
-    // ========================================
-
-    @Persisted
-    private final ObjectOpenHashSet<BlockPos> proxies;
-    private final Set<MEPatternBufferProxyPartMachine> proxyMachines;
-
     public MEPatternBufferPartMachine(IMachineBlockEntity holder, int maxPatternCount, IO io) {
         super(holder, io);
 
-        // Initialize UI configuration
         this.maxPatternCount = maxPatternCount;
 
-        // Initialize arrays with calculated size
         this.hasPatternArray = new boolean[maxPatternCount];
         this.cacheRecipe = new boolean[maxPatternCount];
         this.internalInventory = new InternalSlot[maxPatternCount];
@@ -222,20 +161,13 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
         this.catalystFluids = new FluidTransferList[maxPatternCount];
         this.cacheRecipeCount = new byte[maxPatternCount];
 
-        // Initialize pattern cache
         this.patternSlotMap = HashBiMap.create();
         this.slot2PatternMap = new Int2ObjectOpenHashMap<>();
         this.recipeMultipleCacheMap = new Int2ReferenceOpenHashMap<>();
 
-        // Initialize Proxy
-        this.proxies = new ObjectOpenHashSet<>();
-        this.proxyMachines = new ReferenceOpenHashSet<>();
-
-        // Initialize inventories
-        this.buffer = new Object2LongOpenHashMap<>();
         this.patternInventory = new ItemStackTransfer(maxPatternCount);
         this.patternInventory.setFilter(AEUtils.PROCESS_FILTER);
-        Arrays.setAll(internalInventory, InternalSlot::new);
+        Arrays.setAll(internalInventory, PatternBufferInternalSlot::new);
         Arrays.setAll(catalystItems, i -> {
             var transfer = new ItemStackTransfer(9);
             transfer.setFilter(stack -> !(stack.getItem() instanceof ProcessingPatternItem));
@@ -246,15 +178,15 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
                 .toList()));
         Arrays.fill(cacheRecipeCount, (byte) 1);
 
-        // Initialize handlers
-        this.sharedCircuitInventory = new NotifiableCircuitItemStackHandler(this);
-        this.realPatternHelper = new MEBufferPatternHelper((NotifiableCircuitItemStackHandler) sharedCircuitInventory);
-        this.sharedCatalystInventory = new CatalystItemStackHandler(this, 9, IO.IN, IO.NONE);
-        this.sharedCatalystTank = new CatalystFluidStackHandler(this, 9, 16 * FluidHelper.getBucket(), IO.IN, IO.NONE);
         this.recipeHandler = new MEPatternBufferRecipeHandlerTrait(this, io);
 
-        // Initialize AE2 Service
-        getMainNode().addService(ICraftingProvider.class, this);
+        for (InternalSlot internalSlot : internalInventory) {
+            internalSlot.setOnContentsChanged(() -> {
+                recipeHandler.getMeFluidHandler().notifyListeners();
+                recipeHandler.getMeItemHandler().notifyListeners();
+            });
+        }
+
         if (io == IO.BOTH) {
             getMainNode().addService(IGridTickable.class, new Ticker());
         }
@@ -263,9 +195,6 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
     // ========================================
     // LIFECYCLE & NETWORK MANAGEMENT
     // ========================================
-
-    @Nullable
-    protected TickableSubscription updateSubs;
 
     @Override
     public void onLoad() {
@@ -285,6 +214,10 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
             });
             for (int i = 0; i < maxPatternCount; i++) {
                 final int index = i;
+                internalInventory[index].setOnContentsChanged(() -> {
+                    recipeHandler.getMeFluidHandler().notifyListeners();
+                    recipeHandler.getMeItemHandler().notifyListeners();
+                });
                 catalystItems[index].setOnContentsChanged(() -> reCalculateCatalystItemMap(index));
                 for (IFluidTransfer transfer : catalystFluids[index].transfers) {
                     if (transfer instanceof FluidStorage storage) {
@@ -292,28 +225,6 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
                     }
                 }
             }
-        }
-    }
-
-    @Override
-    public void onMainNodeStateChanged(IGridNodeListener.@NotNull State reason) {
-        super.onMainNodeStateChanged(reason);
-        this.updateSubscription();
-    }
-
-    protected void updateSubscription() {
-        if (getMainNode().isOnline()) {
-            updateSubs = subscribeServerTick(updateSubs, this::update);
-        } else if (updateSubs != null) {
-            updateSubs.unsubscribe();
-            updateSubs = null;
-        }
-    }
-
-    protected void update() {
-        if (needPatternSync) {
-            ICraftingProvider.requestUpdate(getMainNode());
-            this.needPatternSync = false;
         }
     }
 
@@ -325,7 +236,6 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
         var newPatternDetailsWithOutCircuit = getRealPattern(index, newPattern);
         var oldPatternDetails = slot2PatternMap.get(index);
 
-        // Update pattern mapping and tracking
         if (newPatternDetailsWithOutCircuit != null) {
             slot2PatternMap.put(index, newPatternDetailsWithOutCircuit);
             hasPatternArray[index] = true;
@@ -334,11 +244,10 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
             hasPatternArray[index] = false;
         }
 
-        // remove old pattern cache
         if (oldPatternDetails != null && !oldPatternDetails.equals(newPatternDetailsWithOutCircuit)) {
-            internalInv.cacheManager.clearAllCaches();
+            internalInv.getCacheManager().clearAllCaches();
             removeSlotFromGTRecipeCache(index);
-            refundSlot(internalInv);
+            refundSlot(internalInv.getItemInventory(), internalInv.getFluidInventory());
             AEUtils.reFunds(buffer, getMainNode().getGrid(), actionSource);
         }
 
@@ -348,18 +257,15 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
 
     @Override
     public void onMachineRemoved() {
+        super.onMachineRemoved();
         clearInventory(patternInventory);
-        clearInventory(sharedCatalystInventory);
         for (ItemStackTransfer catalystItem : catalystItems) {
             clearInventory(catalystItem);
-        }
-        for (MEPatternBufferProxyPartMachine proxy : this.getProxies()) {
-            proxy.setBuffer(null);
         }
     }
 
     private void reCalculateCatalystItemMap(int slot) {
-        final var itemCatalystInventory = internalInventory[slot].itemCatalystInventory;
+        final var itemCatalystInventory = internalInventory[slot].getItemCatalystInventory();
         itemCatalystInventory.clear();
         var catalystItem = catalystItems[slot];
         for (int i = 0; i < catalystItem.getSlots(); i++) {
@@ -368,11 +274,11 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
                 itemCatalystInventory.mergeLong(AEItemKey.of(stack), stack.getCount(), Long::sum);
             }
         }
-        internalInventory[slot].onContentsChanged.run();
+        internalInventory[slot].getOnContentsChanged().run();
     }
 
     private void reCalculateCatalystFluidMap(int slot) {
-        final var fluidCatalystInventory = internalInventory[slot].fluidCatalystInventory;
+        final var fluidCatalystInventory = internalInventory[slot].getFluidCatalystInventory();
         fluidCatalystInventory.clear();
         var catalystFluid = catalystFluids[slot];
         for (int i = 0; i < catalystFluid.getTanks(); i++) {
@@ -381,7 +287,7 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
                 fluidCatalystInventory.mergeLong(AEFluidKey.of(stack.getFluid()), stack.getAmount(), Long::sum);
             }
         }
-        internalInventory[slot].onContentsChanged.run();
+        internalInventory[slot].getOnContentsChanged().run();
     }
 
     protected void reCalculatePatternSlotMap() {
@@ -400,9 +306,7 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
         cacheRecipe[slot] = false;
         recipeMultipleCacheMap.remove(slot);
         removeSlotFromMap.accept(slot);
-        for (MEPatternBufferProxyPartMachine proxy : this.getProxies()) {
-            proxy.removeSlotFromMap.accept(slot);
-        }
+        notifyProxySlotRemoved(slot);
     }
 
     protected void refreshAllByProduct() {
@@ -419,7 +323,37 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
     }
 
     // ========================================
-    // Persist
+    // Slot Access and Pattern Routing
+    // ========================================
+
+    @Override
+    @Nullable
+    protected Integer getSlotIndexForPattern(IPatternDetails pattern) {
+        return patternSlotMap.get(pattern);
+    }
+
+    @Override
+    protected int getInternalSlotCount() {
+        return internalInventory.length;
+    }
+
+    @Override
+    protected InternalSlot getInternalSlot(int slotIndex) {
+        return internalInventory[slotIndex];
+    }
+
+    @Override
+    protected boolean hasRecipeCacheInSlot(int slotIndex) {
+        return cacheRecipe[slotIndex];
+    }
+
+    @Override
+    protected boolean hasPatternInSlot(int slotIndex) {
+        return slotIndex >= 0 && slotIndex < hasPatternArray.length && hasPatternArray[slotIndex];
+    }
+
+    // ========================================
+    // Persistence
     // ========================================
 
     @Override
@@ -442,9 +376,6 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
         }
 
         tag.putByteArray("cacheRecipeCount", cacheRecipeCount);
-
-        ListTag bufferTag = AEUtils.createListTag(AEKey::toTagGeneric, buffer);
-        if (!bufferTag.isEmpty()) tag.put("buffer", bufferTag);
     }
 
     @Override
@@ -488,10 +419,7 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
                     }
                 }
             }
-        } // Compatibility
-
-        ListTag bufferTag = tag.getList("buffer", Tag.TAG_COMPOUND);
-        AEUtils.loadInventory(bufferTag, AEKey::fromTagGeneric, buffer);
+        }
     }
 
     public void copyFromTag(CompoundTag tag, ServerPlayer serverPlayer) {
@@ -561,12 +489,12 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
             CompoundTag patternData = patternList.getCompound(listIndex);
             var patternTag = patternData.getCompound("pattern");
             var sourceCacheCount = patternData.getByte("cacheCount");
-            var catalystItems = patternData.getCompound("catalystItems");
-            var catalystFluids = patternData.getCompound("catalystFluids");
+            var catalystItemsTag = patternData.getCompound("catalystItems");
+            var catalystFluidsTag = patternData.getCompound("catalystFluids");
 
             internalPatternInventory.setItemDirect(slotIndex, ItemStack.of(patternTag));
-            this.catalystItems[slotIndex].deserializeNBT(catalystItems);
-            this.catalystFluids[slotIndex].deserializeNBT(catalystFluids);
+            this.catalystItems[slotIndex].deserializeNBT(catalystItemsTag);
+            this.catalystFluids[slotIndex].deserializeNBT(catalystFluidsTag);
             if (sourceCacheCount > 0) this.cacheRecipeCount[slotIndex] = sourceCacheCount;
 
             this.catalystItems[slotIndex].onContentsChanged();
@@ -587,11 +515,7 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
         this.sharedCatalystTank.onContentsChanged();
         this.sharedCatalystInventory.onContentsChanged();
 
-        for (MEPatternBufferProxyPartMachine proxy : this.getProxies()) {
-            proxy.setBuffer(null);
-        }
-        proxyMachines.clear();
-        proxies.clear();
+        releaseProxies();
 
         for (long l : tag.getLongArray("proxies")) {
             var pos = BlockPos.of(l);
@@ -636,7 +560,7 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
         tag.put("sharedCatalystInventory", sharedCatalystInventory.storage.serializeNBT());
         tag.put("sharedCircuitInventory", sharedCircuitInventory.storage.serializeNBT());
         tag.putBoolean("keepByProduct", keepByProduct);
-        tag.put("proxies", new LongArrayTag(proxies.stream().map(BlockPos::asLong).toList()));
+        tag.put("proxies", new LongArrayTag(getProxyPosList()));
 
         var tankList = new ListTag();
         Arrays.stream(sharedCatalystTank.getStorages())
@@ -653,11 +577,7 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
         sharedCatalystInventory.onContentsChanged();
         sharedCatalystTank.onContentsChanged();
 
-        for (MEPatternBufferProxyPartMachine proxy : this.getProxies()) {
-            proxy.setBuffer(null);
-        }
-        proxyMachines.clear();
-        proxies.clear();
+        releaseProxies();
 
         tags.put("cut", tag);
         return tags;
@@ -670,127 +590,12 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
     }
 
     // ========================================
-    // PROXY MANAGEMENT SYSTEM
-    // ========================================
-
-    public void addProxy(MEPatternBufferProxyPartMachine proxy) {
-        proxies.add(proxy.getPos());
-        proxyMachines.add(proxy);
-    }
-
-    public void removeProxy(MEPatternBufferProxyPartMachine proxy) {
-        proxies.remove(proxy.getPos());
-        proxyMachines.remove(proxy);
-    }
-
-    public Set<MEPatternBufferProxyPartMachine> getProxies() {
-        if (proxyMachines.size() != proxies.size()) {
-            proxyMachines.clear();
-            for (var it = proxies.iterator(); it.hasNext();) {
-                var pos = it.next();
-                if (MetaMachine.getMachine(Objects.requireNonNull(getLevel()), pos) instanceof MEPatternBufferProxyPartMachine proxy) {
-                    proxyMachines.add(proxy);
-                } else it.remove();
-            }
-        }
-        return Collections.unmodifiableSet(proxyMachines);
-    }
-
-    // ========================================
-    // REFUND SYSTEM
-    // ========================================
-
-    private void refundAll(ClickData clickData) {
-        if (!clickData.isRemote) {
-            // Move all slot contents to pending refund
-            Arrays.stream(internalInventory)
-                    .filter(InternalSlot::isActive)
-                    .forEach(this::refundSlot);
-
-            // Immediately try to process pending refunds
-            AEUtils.reFunds(buffer, getMainNode().getGrid(), actionSource);
-        }
-    }
-
-    public void refundSlot(InternalSlot slot) {
-        // Move all item contents to pending refund
-        for (var it = slot.itemInventory.object2LongEntrySet().fastIterator(); it.hasNext();) {
-            var entry = it.next();
-            long amount = entry.getLongValue();
-            if (amount > 0) {
-                buffer.addTo(entry.getKey(), amount);
-                it.remove();
-            }
-        }
-
-        // Move all fluid contents to pending refund
-        for (var it = slot.fluidInventory.object2LongEntrySet().fastIterator(); it.hasNext();) {
-            var entry = it.next();
-            long amount = entry.getLongValue();
-            if (amount > 0) {
-                buffer.addTo(entry.getKey(), amount);
-                it.remove();
-            }
-        }
-    }
-
-    // ========================================
-    // DATA STICK INTERACTION
-    // ========================================
-
-    @Override
-    public InteractionResult onUse(BlockState state, Level world, BlockPos pos, Player player,
-                                   InteractionHand hand, BlockHitResult hit) {
-        ItemStack stack = player.getItemInHand(hand);
-        if (stack.isEmpty()) return InteractionResult.PASS;
-
-        if (stack.is(GTItems.TOOL_DATA_STICK.asItem())) {
-            if (!world.isClientSide) {
-                // Check if it's research data - if so, pass to avoid conflicts
-                var researchData = ResearchManager.readResearchId(stack);
-                if (researchData != null) {
-                    return InteractionResult.PASS;
-                }
-
-                // Store this pattern buffer's position in the data stick
-                stack.getOrCreateTag().putIntArray("pos", new int[] { pos.getX(), pos.getY(), pos.getZ() });
-                player.sendSystemMessage(Component.translatable("gtceu.machine.me.import_copy_settings"));
-            }
-            return InteractionResult.sidedSuccess(world.isClientSide);
-        }
-
-        return InteractionResult.PASS;
-    }
-
-    // ========================================
     // GUI SYSTEM
     // ========================================
 
     @Override
     public void attachConfigurators(ConfiguratorPanel configuratorPanel) {
-        // Refund all button
-        configuratorPanel.attachConfigurators(new ButtonConfigurator(
-                new GuiTextureGroup(GuiTextures.BUTTON, GuiTextures.REFUND_OVERLAY), this::refundAll)
-                .setTooltips(List.of(Component.translatable("gui.gtceu.refund_all.desc"))));
-
-        // Circuit configurator
-        configuratorPanel.attachConfigurators(new CircuitFancyConfigurator(sharedCircuitInventory.storage));
-
-        // Share inventory configurator
-        configuratorPanel.attachConfigurators(new FancyInvConfigurator(
-                sharedCatalystInventory.storage, Component.translatable("gui.gtceu.share_inventory.title"))
-                .setTooltips(List.of(
-                        Component.translatable("gui.gtceu.share_inventory.desc.0"),
-                        Component.translatable("gui.gtceu.share_inventory.desc.1"))));
-
-        // Share tank configurator
-        configuratorPanel.attachConfigurators(new FancyTankConfigurator(
-                sharedCatalystTank.getStorages(), Component.translatable("gui.gtceu.share_tank.title"))
-                .setTooltips(List.of(
-                        Component.translatable("gui.gtceu.share_tank.desc.0"),
-                        Component.translatable("gui.gtceu.share_inventory.desc.1"))));
-
-        // By Product configurator
+        super.attachConfigurators(configuratorPanel);
         configuratorPanel.attachConfigurators(new IFancyConfiguratorButton.Toggle(
                 GuiTextures.BUTTON_SILK_TOUCH_MODE.getSubTexture(0, 0, 1, 0.5),
                 GuiTextures.BUTTON_SILK_TOUCH_MODE.getSubTexture(0, 0.5, 1, 0.5),
@@ -816,11 +621,9 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
         int colSize = maxPatternCount / rowSize;
         var group = new WidgetGroup(0, 0, 18 * rowSize + 16, 18 * colSize + 16);
 
-        // ME Network status indicator
         group.addWidget(new LabelWidget(8, 2,
                 () -> this.isOnline ? "gtceu.gui.me_network.online" : "gtceu.gui.me_network.offline"));
 
-        // Custom name input widget
         group.addWidget(new AETextInputButtonWidget(18 * rowSize + 8 - 70, 2, 70, 10)
                 .setText(customName)
                 .setOnConfirm(this::setCustomName)
@@ -864,19 +667,9 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
         if (!stack.isEmpty()) {
             var internalSlot = internalInventory[slot];
             return realPatternHelper.processPatternWithCircuit(
-                    stack, internalSlot.cacheManager::setCircuitCache, getLevel(), keepByProduct);
+                    stack, internalSlot.getCacheManager()::setCircuitCache, getLevel(), keepByProduct);
         }
         return null;
-    }
-
-    /**
-     * 获取用于配方的电路
-     *
-     * @param slotIndex 槽位索引
-     * @return 电路ItemStack，可能为空
-     */
-    public ItemStack getCircuitForRecipe(int slotIndex) {
-        return realPatternHelper.getCircuitForRecipe(internalInventory[slotIndex].cacheManager.getCircuitStack());
     }
 
     // ========================================
@@ -888,33 +681,9 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
         return patternSlotMap.keySet().stream().toList();
     }
 
-    @Override
-    public boolean pushPattern(IPatternDetails patternDetails, KeyCounter[] inputHolder) {
-        if (!getMainNode().isActive() || !patternSlotMap.containsKey(patternDetails)) {
-            return false;
-        }
-
-        var slotIndex = patternSlotMap.get(patternDetails);
-        if (slotIndex != null && slotIndex >= 0) {
-            internalInventory[slotIndex].pushPattern(inputHolder);
-            return true;
-        }
-        return false;
-    }
-
-    @Override
-    public boolean isBusy() {
-        return false;
-    }
-
     // ========================================
     // PATTERN CONTAINER IMPLEMENTATION
     // ========================================
-
-    @Override
-    public @Nullable IGrid getGrid() {
-        return getMainNode().getGrid();
-    }
 
     @Override
     public InternalInventory getTerminalPatternInventory() {
@@ -925,7 +694,6 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
     public PatternContainerGroup getTerminalGroup() {
         List<IMultiController> controllers = getControllers();
 
-        // Handle multiblock controller grouping
         if (!controllers.isEmpty()) {
             IMultiController controller = controllers.get(0);
             MultiblockMachineDefinition controllerDefinition = controller.self().getDefinition();
@@ -968,13 +736,8 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
     // ========================================
 
     @Override
-    protected @NotNull IMEPatternTrait createMETrait() {
+    protected @NotNull MEPatternTrait createMETrait() {
         return new MEPatternTrait(this);
-    }
-
-    @Override
-    public @NotNull IMEPatternTrait getMETrait() {
-        return (IMEPatternTrait) meTrait;
     }
 
     @Override
@@ -982,137 +745,47 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
         return Pair.of(recipeHandler.meItemHandler, recipeHandler.meFluidHandler);
     }
 
-    /**
-     * Internal Slot: Pattern-specific inventory management
-     * Each slot represents a single pattern's ingredient storage with separate item and fluid inventories.
-     * Provides optimized handling for recipe matching
-     * and ingredient consumption with efficient serialization.
-     * Features:
-     * - Separate inventories per pattern
-     * - Efficient recipe matching with early exit conditions
-     */
-    public class InternalSlot implements ITagSerializable<CompoundTag>, IContentChangeAware {
+    protected class PatternBufferInternalSlot extends InternalSlot {
 
         @Getter
-        @Setter
-        protected Runnable onContentsChanged = () -> {
-            recipeHandler.getMeFluidHandler().notifyListeners();
-            recipeHandler.getMeItemHandler().notifyListeners();
-        };
-
-        @Getter
-        private final Object2LongOpenHashMap<AEItemKey> itemInventory = new Object2LongOpenHashMap<>();
-
-        @Getter
-        private final Object2LongOpenHashMap<AEFluidKey> fluidInventory = new Object2LongOpenHashMap<>();
-
         private final Object2LongMap<AEItemKey> itemCatalystInventory = new Object2LongArrayMap<>();
 
+        @Getter
         private final Object2LongMap<AEFluidKey> fluidCatalystInventory = new Object2LongArrayMap<>();
 
-        @Persisted
-        @Getter
-        private final SlotCacheManager cacheManager = new SlotCacheManager();
-
-        @Getter
-        private final int slotIndex;
-
-        public InternalSlot(int slotIndex) {
-            this.slotIndex = slotIndex;
-            itemInventory.defaultReturnValue(0);
-            fluidInventory.defaultReturnValue(0);
+        public PatternBufferInternalSlot(int slotIndex) {
+            super(slotIndex);
             itemCatalystInventory.defaultReturnValue(0);
             fluidCatalystInventory.defaultReturnValue(0);
         }
 
-        public boolean isActive() {
-            return hasPatternArray[slotIndex] && (!itemInventory.isEmpty() || !fluidInventory.isEmpty());
+        @Override
+        protected boolean hasItemCatalystInventory() {
+            return !itemCatalystInventory.isEmpty();
         }
 
-        public boolean isItemActive(boolean simulate) {
-            return hasPatternArray[slotIndex] && simulate ? (!itemInventory.isEmpty() || !sharedCatalystInventory.isEmpty() || !realPatternHelper.getCircuitForRecipe(cacheManager.getCircuitStack()).isEmpty() || !itemCatalystInventory.isEmpty()) : !itemInventory.isEmpty();
+        @Override
+        protected boolean hasFluidCatalystInventory() {
+            return !fluidCatalystInventory.isEmpty();
         }
 
-        public boolean isFluidActive(boolean simulate) {
-            return hasPatternArray[slotIndex] && simulate ? !fluidInventory.isEmpty() || !sharedCatalystTank.isEmpty() || !fluidCatalystInventory.isEmpty() : !fluidInventory.isEmpty();
-        }
-
-        private void add(AEKey what, long amount) {
-            if (amount <= 0L) return;
-            if (what instanceof AEItemKey itemKey) {
-                itemInventory.addTo(itemKey, amount);
-            } else if (what instanceof AEFluidKey fluidKey) {
-                fluidInventory.addTo(fluidKey, amount);
+        @Override
+        protected void appendLimitItemCatalystInputs(ObjectList<ItemStack> limitInput) {
+            for (var entry : Object2LongMaps.fastIterable(itemCatalystInventory)) {
+                limitInput.add(entry.getKey().toStack((int) Math.min(entry.getLongValue(), Integer.MAX_VALUE)));
             }
         }
 
-        public Object2LongMap<ItemStack> getItemStackInputMap() {
-            var itemInputMap = new Object2LongOpenCustomHashMap<>(ItemStackHashStrategy.comparingAllButCount());
-            for (Object2LongMap.Entry<AEItemKey> entry : Object2LongMaps.fastIterable(itemInventory)) {
-                AEItemKey key = entry.getKey();
-                long amount = entry.getLongValue();
-                if (amount <= 0) continue;
-
-                ItemStack stack = key.toStack(1);
-                itemInputMap.addTo(stack, amount);
-            }
-            return itemInputMap;
-        }
-
-        public Object2LongMap<FluidStack> getFluidStackInputMap() {
-            var fluidInputMap = new Object2LongOpenCustomHashMap<>(FluidStackHashStrategy.comparingAllButAmount());
-            for (Object2LongMap.Entry<AEFluidKey> entry : Object2LongMaps.fastIterable(fluidInventory)) {
-                AEFluidKey key = entry.getKey();
-                long amount = entry.getLongValue();
-                if (amount <= 0) continue;
-
-                FluidStack stack = FluidStack.create(key.getFluid(), 1);
-                fluidInputMap.addTo(stack, amount);
-            }
-            return fluidInputMap;
-        }
-
-        public ObjectList<ItemStack> getLimitItemStackInput() {
-            var limitInput = new ObjectArrayList<ItemStack>(itemInventory.size());
-            for (var it = Object2LongMaps.fastIterator(itemInventory); it.hasNext();) {
-                var entry = it.next();
-                long amount = entry.getLongValue();
-                if (amount <= 0) {
-                    it.remove();
-                    continue;
-                }
-                limitInput.add(entry.getKey().toStack(Ints.saturatedCast(amount)));
-            }
-            for (Object2LongMap.Entry<AEItemKey> entry : Object2LongMaps.fastIterable(itemCatalystInventory)) {
-                limitInput.add(entry.getKey().toStack(Ints.saturatedCast(entry.getLongValue())));
-            }
-            return limitInput;
-        }
-
-        public ObjectList<FluidStack> getLimitFluidStackInput() {
-            var limitInput = new ObjectArrayList<FluidStack>(fluidInventory.size());
-            for (var it = Object2LongMaps.fastIterator(fluidInventory); it.hasNext();) {
-                var entry = it.next();
-                long amount = entry.getLongValue();
-                if (amount <= 0) {
-                    it.remove();
-                    continue;
-                }
-                limitInput.add(FluidStack.create(entry.getKey().getFluid(), amount));
-            }
-            for (Object2LongMap.Entry<AEFluidKey> entry : Object2LongMaps.fastIterable(fluidCatalystInventory)) {
+        @Override
+        protected void appendLimitFluidCatalystInputs(ObjectList<FluidStack> limitInput) {
+            for (var entry : Object2LongMaps.fastIterable(fluidCatalystInventory)) {
                 limitInput.add(FluidStack.create(entry.getKey().getFluid(), entry.getLongValue()));
             }
-            return limitInput;
         }
 
-        public void pushPattern(KeyCounter[] inputHolder) {
-            AEUtils.pushInputsToMEPatternBufferInventory(inputHolder, this::add);
-            onContentsChanged.run();
-        }
-
+        @Override
         public boolean testCatalystItemInternal(GTRecipe recipe) {
-            for (Content content : recipe.getInputContents(ItemRecipeCapability.CAP)) {
+            for (var content : recipe.getInputContents(ItemRecipeCapability.CAP)) {
                 if (content.chance <= 0) continue;
                 var ingredient = (Ingredient) content.getContent();
                 for (ItemStack item : ingredient.getItems()) {
@@ -1123,8 +796,9 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
             return true;
         }
 
+        @Override
         public boolean testCatalystFluidInternal(GTRecipe recipe) {
-            for (Content content : recipe.getInputContents(FluidRecipeCapability.CAP)) {
+            for (var content : recipe.getInputContents(FluidRecipeCapability.CAP)) {
                 if (content.chance <= 0) continue;
                 var fluidIngredient = (FluidIngredient) content.getContent();
                 for (FluidStack stack : fluidIngredient.getStacks()) {
@@ -1135,106 +809,19 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
             return true;
         }
 
-        public boolean handleItemInternal(Object2LongMap<Ingredient> left, int leftCircuit, boolean simulate) {
-            if (left.isEmpty() && leftCircuit < 0) return true;
-
-            if (simulate && leftCircuit > 0 && !(leftCircuit == cacheManager.getCircuitCache())) {
-                return false;
-            }
-
-            for (var it = Object2LongMaps.fastIterator(left); it.hasNext();) {
-                var entry = it.next();
-                var ingredient = entry.getKey();
-                long needAmount = entry.getLongValue();
-                if (needAmount <= 0) {
-                    it.remove();
-                    continue;
-                }
-
-                AEItemKey bestMatch = simulate ? cacheManager.getBestItemMatchSimulate(ingredient, itemInventory, itemCatalystInventory, needAmount) :
-                        cacheManager.getBestItemMatch(ingredient, itemInventory, needAmount);
-                if (bestMatch == null) {
-                    return false;
-                }
-            }
-
-            if (!simulate) {
-                for (var it = Object2LongMaps.fastIterator(left); it.hasNext();) {
-                    var entry = it.next();
-                    var ingredient = entry.getKey();
-                    long needAmount = entry.getLongValue();
-
-                    var bestMatch = cacheManager.getBestItemMatch(ingredient, itemInventory, needAmount);
-                    if (bestMatch != null) {
-                        long amount = itemInventory.getLong(bestMatch);
-                        long except = amount - needAmount;
-                        if (except <= 0) {
-                            itemInventory.removeLong(bestMatch);
-                        } else {
-                            itemInventory.put(bestMatch, except);
-                        }
-                        it.remove();
-                    }
-                }
-            }
-
-            return true;
-        }
-
-        public boolean handleFluidInternal(Object2LongMap<FluidIngredient> left, boolean simulate) {
-            if (left.isEmpty()) return true;
-
-            for (var it = Object2LongMaps.fastIterator(left); it.hasNext();) {
-                var entry = it.next();
-                var ingredient = entry.getKey();
-                long needAmount = entry.getLongValue();
-                if (needAmount <= 0) {
-                    it.remove();
-                    continue;
-                }
-
-                AEFluidKey bestMatch = simulate ? cacheManager.getBestFluidMatchSimulate(ingredient, fluidInventory, fluidCatalystInventory, needAmount) :
-                        cacheManager.getBestFluidMatch(ingredient, fluidInventory, needAmount);
-                if (bestMatch == null) {
-                    return false;
-                }
-            }
-
-            if (!simulate) {
-                for (var it = Object2LongMaps.fastIterator(left); it.hasNext();) {
-                    var entry = it.next();
-                    var ingredient = entry.getKey();
-                    long needAmount = entry.getLongValue();
-
-                    AEFluidKey bestMatch = cacheManager.getBestFluidMatch(ingredient, fluidInventory, needAmount);
-                    if (bestMatch != null) {
-                        long amount = fluidInventory.getLong(bestMatch);
-                        long except = amount - needAmount;
-                        if (except <= 0) {
-                            fluidInventory.removeLong(bestMatch);
-                        } else {
-                            fluidInventory.put(bestMatch, except);
-                        }
-                        it.remove();
-                    }
-                }
-            }
-
-            return true;
+        @Override
+        public void clearInventories() {
+            super.clearInventories();
+            itemCatalystInventory.clear();
+            fluidCatalystInventory.clear();
         }
 
         @Override
         public CompoundTag serializeNBT() {
-            CompoundTag tag = new CompoundTag();
-
-            ListTag itemsTag = AEUtils.createListTag(AEItemKey::toTag, itemInventory);
-            if (!itemsTag.isEmpty()) tag.put("inventory", itemsTag);
+            CompoundTag tag = super.serializeNBT();
 
             ListTag itemCatalystTag = AEUtils.createListTag(AEItemKey::toTag, itemCatalystInventory);
             if (!itemCatalystTag.isEmpty()) tag.put("catalystInventory", itemCatalystTag);
-
-            ListTag fluidsTag = AEUtils.createListTag(AEFluidKey::toTag, fluidInventory);
-            if (!fluidsTag.isEmpty()) tag.put("fluidInventory", fluidsTag);
 
             ListTag fluidCatalystTag = AEUtils.createListTag(AEFluidKey::toTag, fluidCatalystInventory);
             if (!fluidCatalystTag.isEmpty()) tag.put("catalystFluidInventory", fluidCatalystTag);
@@ -1244,20 +831,13 @@ public class MEPatternBufferPartMachine extends MEIOPartMachine implements IInte
 
         @Override
         public void deserializeNBT(CompoundTag tag) {
-            itemInventory.clear();
+            super.deserializeNBT(tag);
+
             itemCatalystInventory.clear();
-            fluidInventory.clear();
-            fluidCatalystInventory.clear();
-
-            ListTag items = tag.getList("inventory", Tag.TAG_COMPOUND);
-            AEUtils.loadInventory(items, AEItemKey::fromTag, itemInventory);
-
             ListTag catalystItems = tag.getList("catalystInventory", Tag.TAG_COMPOUND);
             AEUtils.loadInventory(catalystItems, AEItemKey::fromTag, itemCatalystInventory);
 
-            ListTag fluids = tag.getList("fluidInventory", Tag.TAG_COMPOUND);
-            AEUtils.loadInventory(fluids, AEFluidKey::fromTag, fluidInventory);
-
+            fluidCatalystInventory.clear();
             ListTag catalystFluids = tag.getList("catalystFluidInventory", Tag.TAG_COMPOUND);
             AEUtils.loadInventory(catalystFluids, AEFluidKey::fromTag, fluidCatalystInventory);
         }

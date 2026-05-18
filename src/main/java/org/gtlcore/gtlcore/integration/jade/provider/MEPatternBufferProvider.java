@@ -1,7 +1,6 @@
 package org.gtlcore.gtlcore.integration.jade.provider;
 
-import org.gtlcore.gtlcore.common.machine.multiblock.part.ae.MEPatternBufferPartMachine;
-import org.gtlcore.gtlcore.integration.ae2.AEUtils;
+import org.gtlcore.gtlcore.common.machine.multiblock.part.ae.MEPatternBufferPartMachineBase;
 import org.gtlcore.gtlcore.utils.NumberUtils;
 import org.gtlcore.gtlcore.utils.Registries;
 
@@ -37,7 +36,7 @@ public class MEPatternBufferProvider implements IBlockComponentProvider, IServer
     @Override
     public void appendTooltip(ITooltip iTooltip, BlockAccessor blockAccessor, IPluginConfig iPluginConfig) {
         if (blockAccessor.getBlockEntity() instanceof IMachineBlockEntity blockEntity) {
-            if (blockEntity.getMetaMachine() instanceof MEPatternBufferPartMachine) {
+            if (blockEntity.getMetaMachine() instanceof MEPatternBufferPartMachineBase) {
                 CompoundTag serverData = blockAccessor.getServerData();
                 readBufferContents(iTooltip, serverData);
             }
@@ -47,15 +46,17 @@ public class MEPatternBufferProvider implements IBlockComponentProvider, IServer
     @Override
     public void appendServerData(CompoundTag compoundTag, BlockAccessor blockAccessor) {
         if (blockAccessor.getBlockEntity() instanceof IMachineBlockEntity blockEntity) {
-            if (blockEntity.getMetaMachine() instanceof MEPatternBufferPartMachine buffer) {
+            if (blockEntity.getMetaMachine() instanceof MEPatternBufferPartMachineBase buffer) {
                 putTag(compoundTag, buffer);
             }
         }
     }
 
     public static void readBufferContents(ITooltip iTooltip, CompoundTag serverData) {
-        iTooltip.add(Component.translatable("gtceu.top.proxies_bound", serverData.getInt("proxies"))
-                .withStyle(ChatFormatting.LIGHT_PURPLE));
+        if (serverData.contains("proxies", Tag.TAG_INT)) {
+            iTooltip.add(Component.translatable("gtceu.top.proxies_bound", serverData.getInt("proxies"))
+                    .withStyle(ChatFormatting.LIGHT_PURPLE));
+        }
 
         ListTag itemTags = serverData.getList("items", Tag.TAG_COMPOUND);
         ListTag fluidTags = serverData.getList("fluids", Tag.TAG_COMPOUND);
@@ -122,12 +123,11 @@ public class MEPatternBufferProvider implements IBlockComponentProvider, IServer
         }
     }
 
-    public static void putTag(CompoundTag compoundTag, MEPatternBufferPartMachine buffer) {
+    public static void putTag(CompoundTag compoundTag, MEPatternBufferPartMachineBase buffer) {
         compoundTag.putInt("proxies", buffer.getProxies().size());
-
-        var merged = AEUtils.mergeInternalSlot(buffer.getInternalInventory());
-        var items = merged.getLeft();
-        var fluids = merged.getRight();
+        var merged = buffer.getMergedInternalSlot();
+        var items = merged.left();
+        var fluids = merged.right();
 
         ListTag itemTags = new ListTag();
         for (var it = items.object2LongEntrySet().fastIterator(); it.hasNext();) {
