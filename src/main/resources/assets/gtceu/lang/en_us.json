@@ -775,7 +775,7 @@
   "gtceu.machine.me_pattern_buffer.desc.4": "Built-in §6Recipe Cache§f function, single slot cache one recipe for default, support customize",
   "gtceu.machine.me_pattern_buffer.desc.5": "Built-in §6ME Output§f function, no need to place additional output hatches",
   "gtceu.machine.me_pattern_buffer_proxy.desc.0": "Mirror IO determined by §6bound ME Pattern Buffer§f",
-  "gtceu.machine.me_wildcard_pattern_buffer.desc.0": "Specialized device for wildcard patterns",
+  "gtceu.machine.me_wildcard_pattern_buffer.desc.0": "Specialized hatch for wildcard patterns.",
   "gtceu.machine.me_wildcard_pattern_buffer.patterns": "Patterns: %s",
   "gtceu.machine.me_wildcard_pattern_buffer.cached": "Cached: %s",
   "gtceu.machine.module": "Installed Module Count: %s",

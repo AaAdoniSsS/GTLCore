@@ -9,6 +9,8 @@ import org.gtlcore.gtlcore.integration.ae2.AEUtils;
 
 import com.gregtechceu.gtceu.api.capability.recipe.*;
 import com.gregtechceu.gtceu.api.gui.GuiTextures;
+import com.gregtechceu.gtceu.api.gui.fancy.ConfiguratorPanel;
+import com.gregtechceu.gtceu.api.gui.fancy.IFancyConfiguratorButton;
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
 import com.gregtechceu.gtceu.api.recipe.GTRecipe;
 import com.gregtechceu.gtceu.api.recipe.ingredient.FluidIngredient;
@@ -18,6 +20,7 @@ import com.gregtechceu.gtceu.integration.ae2.gui.widget.AETextInputButtonWidget;
 import com.lowdragmc.lowdraglib.gui.widget.*;
 import com.lowdragmc.lowdraglib.misc.ItemStackTransfer;
 import com.lowdragmc.lowdraglib.side.fluid.FluidStack;
+import com.lowdragmc.lowdraglib.syncdata.annotation.DescSynced;
 import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
 import com.lowdragmc.lowdraglib.syncdata.field.ManagedFieldHolder;
 
@@ -86,6 +89,15 @@ public class MEWildcardPatternBufferPartMachine extends MEPatternBufferPartMachi
     // ========================================
 
     protected final WildcardRecipeHandlerTrait recipeHandler;
+
+    @DescSynced
+    @Persisted
+    public boolean isHiddenTerminal = false;
+
+    @Override
+    public boolean isVisibleInTerminal() {
+        return !isHiddenTerminal;
+    }
 
     // AE2 terminal wrapper for the persisted wildcard pattern slot.
     private final InternalInventory internalPatternInventory = new InternalInventory() {
@@ -291,6 +303,18 @@ public class MEWildcardPatternBufferPartMachine extends MEPatternBufferPartMachi
     // ========================================
 
     @Override
+    public void attachConfigurators(ConfiguratorPanel configuratorPanel) {
+        super.attachConfigurators(configuratorPanel);
+        // Visibility in ME Pattern Access Terminal
+        configuratorPanel.attachConfigurators(new IFancyConfiguratorButton.Toggle(
+                org.gtlcore.gtlcore.api.gui.GuiTextures.BUTTON_VISIBLE.getSubTexture(0, 0, 1, 0.5),
+                org.gtlcore.gtlcore.api.gui.GuiTextures.BUTTON_VISIBLE.getSubTexture(0, 0.5, 1, 0.5),
+                () -> this.isHiddenTerminal, (clickData, pressed) -> this.isHiddenTerminal = pressed)
+                .setTooltipsSupplier(pressed -> List.of(
+                        Component.translatable(pressed ? "gui.gtlcore.hidden_in_terminal" : "gui.gtlcore.visible_in_terminal"))));
+    }
+
+    @Override
     public @NotNull Widget createUIWidget() {
         var group = new WidgetGroup(0, 0, 158, 156);
 
@@ -317,7 +341,6 @@ public class MEWildcardPatternBufferPartMachine extends MEPatternBufferPartMachi
                         recipeCacheMap.size()).getString()));
 
         group.addWidget(new PatternCycleWidget(8, 116, 142, 36, this::getCachedPreviewPatterns));
-
         return group;
     }
 

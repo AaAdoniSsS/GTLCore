@@ -23,6 +23,7 @@ import com.gregtechceu.gtceu.data.recipe.CustomTags;
 import com.gregtechceu.gtceu.data.recipe.VanillaRecipeHelper;
 
 import net.minecraft.data.recipes.FinishedRecipe;
+import net.minecraftforge.fml.ModList;
 
 import appeng.core.definitions.AEItems;
 import com.hepdd.gtmthings.GTMThings;
@@ -43,7 +44,11 @@ import static com.gregtechceu.gtceu.common.data.GTRecipeTypes.ASSEMBLER_RECIPES;
 import static com.gregtechceu.gtceu.common.data.GTRecipeTypes.ASSEMBLY_LINE_RECIPES;
 import static com.gregtechceu.gtceu.data.recipe.CraftingComponent.*;
 import static com.gregtechceu.gtceu.data.recipe.misc.MetaTileEntityLoader.registerMachineRecipe;
+import static org.gtlcore.gtlcore.common.data.GTLMachines.GTAEMachines.ME_EXTEND_PATTERN_BUFFER;
+import static org.gtlcore.gtlcore.common.data.GTLMachines.TAG_FILTER_ME_STOCK_BUS_PART_MACHINE;
+import static org.gtlcore.gtlcore.common.data.GTLMaterials.*;
 import static org.gtlcore.gtlcore.common.data.GTLRecipeTypes.SPACE_COSMIC_PROBE_RECEIVERS_RECIPES;
+import static org.gtlcore.gtlcore.integration.wildcard.WildcardPatternCompatImpl.ME_WILDCARD_PATTERN_BUFFER;
 
 public class MachineRecipe {
 
@@ -764,6 +769,33 @@ public class MachineRecipe {
                         .EUt(VA[UXV])
                         .CWUt(512))
                 .duration(400).EUt(V[UXV]).save(provider);
+
+        if (ModList.get().isLoaded("wildcard_pattern")) {
+            ASSEMBLY_LINE_RECIPES.recipeBuilder("me_wildcard_pattern_buffer")
+                    .inputItems(ME_EXTEND_PATTERN_BUFFER)
+                    .inputItems(EMITTER_UHV, 4)
+                    .inputItems(CIRCUIT.getIngredient(UEV), 16)
+                    .inputItems(TAG_FILTER_ME_STOCK_BUS_PART_MACHINE, 4)
+                    .inputItems(Registries.getItem("kubejs:low_frequency_laser"), 8)
+                    .inputItems(Registries.getItem("kubejs:medium_frequency_laser"), 8)
+                    .inputItems(Registries.getItem("kubejs:high_frequency_laser"), 8)
+                    .inputItems(ORE_DICTIONARY_FILTER, 32)
+                    .inputItems(TAG_FLUID_FILTER, 32)
+                    .inputItems(plate, Kevlar, 8)
+                    .inputItems(plate, CarbonNanotubes, 8)
+                    .inputItems(wireFine, Enderite, 36)
+                    .inputFluids(GTLMaterials.MutatedLivingSolder.getFluid(576))
+                    .inputFluids(Lubricant.getFluid(500))
+                    .inputFluids(GTLMaterials.UuAmplifier.getFluid(576))
+                    .outputItems(ME_WILDCARD_PATTERN_BUFFER)
+                    .EUt(GTValues.VA[GTValues.UHV])
+                    .duration(600)
+                    .stationResearch(b -> b.researchStack(ME_EXTEND_PATTERN_BUFFER.asStack())
+                            .dataStack(GTItems.TOOL_DATA_MODULE.asStack())
+                            .EUt(GTValues.VA[GTValues.UEV])
+                            .CWUt(256))
+                    .save(provider);
+        }
 
         VanillaRecipeHelper.addShapedRecipe(provider, true, GTLCore.id("performance_monitor"), GTLMachines.PERFORMANCE_MONITOR.asStack(),
                 "AAA",

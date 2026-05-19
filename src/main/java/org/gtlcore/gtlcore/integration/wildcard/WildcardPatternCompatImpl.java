@@ -25,9 +25,9 @@ import static com.gregtechceu.gtceu.common.registry.GTRegistration.REGISTRATE;
  * Actual implementation of wildcard pattern integration.
  * This class will only be loaded when wildcard_pattern mod is present.
  */
-class WildcardPatternCompatImpl {
+public class WildcardPatternCompatImpl {
 
-    private static MachineDefinition ME_WILDCARD_PATTERN_BUFFER;
+    public static MachineDefinition ME_WILDCARD_PATTERN_BUFFER;
 
     static void init() {
         // Initialization logic if needed
@@ -37,7 +37,7 @@ class WildcardPatternCompatImpl {
         ME_WILDCARD_PATTERN_BUFFER = REGISTRATE
                 .machine("me_wildcard_pattern_buffer", holder -> new MEWildcardPatternBufferPartMachine(holder, IO.BOTH))
                 .langValue("ME Wildcard Pattern Buffer")
-                .tier(GTValues.ZPM)
+                .tier(GTValues.UHV)
                 .rotationState(RotationState.ALL)
                 .abilities(PartAbility.IMPORT_ITEMS, PartAbility.IMPORT_FLUIDS, PartAbility.EXPORT_ITEMS,
                         PartAbility.EXPORT_FLUIDS)
@@ -45,7 +45,6 @@ class WildcardPatternCompatImpl {
                 .tooltips(
                         Component.translatable("block.gtceu.pattern_buffer.desc.0"),
                         Component.translatable("gtceu.machine.me_wildcard_pattern_buffer.desc.0"),
-                        Component.translatable("gtceu.machine.me_pattern_buffer.desc.0"),
                         Component.translatable("gtceu.machine.me_pattern_buffer.desc.5"),
                         Component.translatable("block.gtceu.pattern_buffer.desc.2"),
                         Component.translatable("gtceu.universal.enabled"))

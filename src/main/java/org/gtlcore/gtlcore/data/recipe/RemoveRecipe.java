@@ -7,6 +7,7 @@ import com.gregtechceu.gtceu.common.data.GTMaterials;
 
 import net.minecraft.resources.ResourceLocation;
 
+import appeng.core.AppEng;
 import com.glodblock.github.extendedae.ExtendedAE;
 
 import java.util.function.Consumer;
@@ -87,5 +88,6 @@ public class RemoveRecipe {
         consumer.accept(ExtendedAE.id("assembler_matrix_frame"));
         consumer.accept(ExtendedAE.id("assembler_matrix_wall"));
         consumer.accept(ExtendedAE.id("assembler_matrix_glass"));
+        consumer.accept(AppEng.makeId("network/blocks/quantum_link"));
     }
 }

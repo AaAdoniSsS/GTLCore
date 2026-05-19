@@ -775,7 +775,7 @@
   "gtceu.machine.me_pattern_buffer.desc.4": "自带§6配方缓存§f功能，单个槽位默认缓存一种配方，可自定义修改。",
   "gtceu.machine.me_pattern_buffer.desc.5": "自带§6ME输出§f功能，无需放置额外的输出舱室。",
   "gtceu.machine.me_pattern_buffer_proxy.desc.0": "镜像IO由§6绑定的ME样板总成§f决定。",
-  "gtceu.machine.me_wildcard_pattern_buffer.desc.0": "支持通配符样板的专用设备",
+  "gtceu.machine.me_wildcard_pattern_buffer.desc.0": "支持通配符样板的专用仓室。",
   "gtceu.machine.me_wildcard_pattern_buffer.patterns": "样板数：%s",
   "gtceu.machine.me_wildcard_pattern_buffer.cached": "已缓存：%s",
   "gtceu.machine.module": "已安装的模块数量：%s",
