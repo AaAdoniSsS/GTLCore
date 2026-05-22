@@ -1,4 +1,4 @@
-﻿package org.gtlcore.gtlcore.common.machine.multiblock.part.ae;
+package org.gtlcore.gtlcore.common.machine.multiblock.part.ae;
 
 import org.gtlcore.gtlcore.api.gui.AdvancedMEConfigurator;
 import org.gtlcore.gtlcore.api.gui.MEPatternCatalystUIManager;
@@ -183,10 +183,12 @@ public class MEStockingPatternBufferPartMachine extends MEPatternBufferPartMachi
         return MANAGED_FIELD_HOLDER;
     }
 
-    protected void onStockInputConfigChanged() {
+    protected void onStockInputConfigChanged(boolean removedConfig) {
         if (!isRemote()) {
             syncStockInput();
-            invalidateRecipeCaches();
+            if (removedConfig) {
+                invalidateRecipeCaches();
+            }
         }
     }
 
@@ -449,8 +451,7 @@ public class MEStockingPatternBufferPartMachine extends MEPatternBufferPartMachi
             stockMap.defaultReturnValue(0);
             for (ExportOnlyAEItemSlot slot : inventory) {
                 ((IMESlot) slot).setOnConfigChanged(() -> {
-                    onConfigChanged();
-                    onStockInputConfigChanged();
+                    onStockInputConfigChanged(onConfigChanged());
                 });
             }
         }
@@ -461,7 +462,7 @@ public class MEStockingPatternBufferPartMachine extends MEPatternBufferPartMachi
                 ((IMESlot) slot).setConfigWithoutNotify(null);
                 slot.setStock(null);
             }
-            onConfigChanged();
+            onStockInputConfigChanged(onConfigChanged());
         }
 
         public void clearStocks() {
@@ -487,7 +488,8 @@ public class MEStockingPatternBufferPartMachine extends MEPatternBufferPartMachi
             }
         }
 
-        public void onConfigChanged() {
+        public boolean onConfigChanged() {
+            var previousConfig = new ObjectOpenHashSet<>(configList);
             configList.clear();
             configIndexList.clear();
             for (int i = 0; i < inventory.length; i++) {
@@ -495,8 +497,10 @@ public class MEStockingPatternBufferPartMachine extends MEPatternBufferPartMachi
                 if (config != null && config.what() instanceof AEItemKey key) {
                     configList.add(key);
                     configIndexList.add(i);
+                    previousConfig.remove(key);
                 }
             }
+            return !previousConfig.isEmpty();
         }
 
         public boolean hasConfig() {
@@ -557,8 +561,7 @@ public class MEStockingPatternBufferPartMachine extends MEPatternBufferPartMachi
             stockMap.defaultReturnValue(0);
             for (ExportOnlyAEFluidSlot slot : inventory) {
                 ((IMESlot) slot).setOnConfigChanged(() -> {
-                    onConfigChanged();
-                    onStockInputConfigChanged();
+                    onStockInputConfigChanged(onConfigChanged());
                 });
             }
         }
@@ -569,7 +572,7 @@ public class MEStockingPatternBufferPartMachine extends MEPatternBufferPartMachi
                 ((IMESlot) slot).setConfigWithoutNotify(null);
                 slot.setStock(null);
             }
-            onConfigChanged();
+            onStockInputConfigChanged(onConfigChanged());
         }
 
         public void clearStocks() {
@@ -595,7 +598,8 @@ public class MEStockingPatternBufferPartMachine extends MEPatternBufferPartMachi
             }
         }
 
-        public void onConfigChanged() {
+        public boolean onConfigChanged() {
+            var previousConfig = new ObjectOpenHashSet<>(configList);
             configList.clear();
             configIndexList.clear();
             for (int i = 0; i < inventory.length; i++) {
@@ -603,8 +607,10 @@ public class MEStockingPatternBufferPartMachine extends MEPatternBufferPartMachi
                 if (config != null && config.what() instanceof AEFluidKey key) {
                     configList.add(key);
                     configIndexList.add(i);
+                    previousConfig.remove(key);
                 }
             }
+            return !previousConfig.isEmpty();
         }
 
         public boolean hasConfig() {
