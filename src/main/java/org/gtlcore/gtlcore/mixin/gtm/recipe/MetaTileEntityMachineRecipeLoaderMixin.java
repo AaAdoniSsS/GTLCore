@@ -39,7 +39,9 @@ import static com.gregtechceu.gtceu.common.data.GTMachines.*;
 import static com.gregtechceu.gtceu.common.data.GTMaterials.*;
 import static com.gregtechceu.gtceu.common.data.GTRecipeTypes.*;
 import static com.hepdd.gtmthings.data.CustomMachines.HUGE_INPUT_DUAL_HATCH;
-import static org.gtlcore.gtlcore.common.data.GTLItems.CELL_COMPONENT_256M;
+import static com.hepdd.gtmthings.data.CustomMachines.ME_EXPORT_BUFFER;
+import static org.gtlcore.gtlcore.common.data.GTLItems.INFINITE_CELL_COMPONENT;
+import static org.gtlcore.gtlcore.common.data.GTLMachines.GTAEMachines.ME_EXTENDED_EXPORT_BUFFER;
 import static org.gtlcore.gtlcore.common.data.GTLMaterials.*;
 
 @Mixin(MetaTileEntityMachineRecipeLoader.class)
@@ -287,12 +289,14 @@ public abstract class MetaTileEntityMachineRecipeLoaderMixin {
                     .inputItems(FIELD_GENERATOR_UHV, 4)
                     .inputItems(CustomTags.UHV_CIRCUITS, 8)
                     .inputItems(GTLMachines.ME_DUAL_HATCH_STOCK_PART_MACHINE)
-                    .inputItems(AEBlocks.INTERFACE.asItem(), 4)
-                    .inputItems(CELL_COMPONENT_256M, 2)
+                    .inputItems(ME_EXTENDED_EXPORT_BUFFER)
+                    .inputItems(INFINITE_CELL_COMPONENT)
+                    .inputItems(wireFine, TitanSteel, 48)
                     .inputItems(wireFine, TitanSteel, 48)
                     .inputFluids(MutatedLivingSolder.getFluid(L * 4))
                     .inputFluids(Lubricant.getFluid(500))
                     .inputFluids(Zylon.getFluid(L * 2))
+                    .inputFluids(GradePurifiedWater8.getFluid(8000))
                     .outputItems(GTLMachines.GTAEMachines.ME_STOCKING_PATTERN_BUFFER)
                     .stationResearch(b -> b.researchStack(DUAL_IMPORT_HATCH[UHV].asStack())
                             .dataStack(GTItems.TOOL_DATA_MODULE.asStack())
@@ -346,7 +350,7 @@ public abstract class MetaTileEntityMachineRecipeLoaderMixin {
                     .inputFluids(Mithril.getFluid(576))
                     .inputFluids(Iron.getFluid(FluidStorageKeys.PLASMA, 576))
                     .inputFluids(SterileGrowthMedium.getFluid(576))
-                    .outputItems(GTLMachines.GTAEMachines.ME_EXTENDED_EXPORT_BUFFER)
+                    .outputItems(ME_EXTENDED_EXPORT_BUFFER)
                     .EUt(VA[UV]).duration(400)
                     .cleanroom(CleanroomType.CLEANROOM)
                     .save(provider);

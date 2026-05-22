@@ -776,7 +776,7 @@
   "gtceu.machine.me_pattern_buffer.desc.3": "自带§6样板倍增§f功能，只需填写基础数量的样板，下单时会一次性发配所需乘数。",
   "gtceu.machine.me_pattern_buffer.desc.4": "自带§6配方缓存§f功能，单个槽位默认缓存一种配方，可自定义修改。",
   "gtceu.machine.me_pattern_buffer.desc.5": "自带§6ME输出§f功能，无需放置额外的输出舱室。",
-  "gtlcore.machine.me_stocking_pattern_buffer.desc.0": "新增§6库存输入设置§f，可从ME网络标记物品和流体输入。",
+  "gtlcore.machine.me_stocking_pattern_buffer.desc.0": "拥有§6库存输入设置§f，可从ME网络标记物品和流体输入，此处的物品和流体不会与样板隔离。",
   "gtlcore.machine.me_stocking_pattern_buffer.desc.1": "库存输入会随每个激活样板槽一起检测，没有样板输入时不会单独检测配方。",
   "gtceu.machine.me_pattern_buffer_proxy.desc.0": "镜像IO由§6绑定的ME样板总成§f决定。",
   "gtceu.machine.me_wildcard_pattern_buffer.desc.0": "支持通配符样板的专用仓室。",

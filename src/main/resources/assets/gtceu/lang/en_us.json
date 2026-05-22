@@ -776,7 +776,7 @@
   "gtceu.machine.me_pattern_buffer.desc.3": "Built-in §6Pattern Multiplication§f function, only fill basic quantity pattern, ordering will dispatch required multiplier at once",
   "gtceu.machine.me_pattern_buffer.desc.4": "Built-in §6Recipe Cache§f function, single slot cache one recipe for default, support customize",
   "gtceu.machine.me_pattern_buffer.desc.5": "Built-in §6ME Output§f function, no need to place additional output hatches",
-  "gtlcore.machine.me_stocking_pattern_buffer.desc.0": "Adds §6Stock Input Settings§f to mark item and fluid inputs from the ME network",
+  "gtlcore.machine.me_stocking_pattern_buffer.desc.0": "Has §6Stock Input Settings§f to mark item and fluid inputs from the ME network, the items and fluids here will not be isolated from the sample",
   "gtlcore.machine.me_stocking_pattern_buffer.desc.1": "Stocked inputs are checked together with each active pattern slot and never trigger recipe checks without pattern inputs",
   "gtceu.machine.me_pattern_buffer_proxy.desc.0": "Mirror IO determined by §6bound ME Pattern Buffer§f",
   "gtceu.machine.me_wildcard_pattern_buffer.desc.0": "Specialized hatch for wildcard patterns.",
