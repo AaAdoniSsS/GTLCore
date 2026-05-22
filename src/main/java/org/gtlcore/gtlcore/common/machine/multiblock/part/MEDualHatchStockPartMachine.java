@@ -254,7 +254,7 @@ public class MEDualHatchStockPartMachine extends MEBusPartMachine implements IDa
                 "gtceu.gui.me_network.offline"));
 
         // Config slots
-        group.addWidget(new AEDualConfigWidget(3, 10, this.aeItemHandler, this.aeFluidHandler, this, page));
+        group.addWidget(new AEDualConfigWidget(3, 10, this.aeItemHandler, this.aeFluidHandler, this::setPage, page));
 
         return group;
     }

@@ -167,7 +167,7 @@ public class MEPatternBufferPartMachine extends MEPatternBufferPartMachineBase {
 
         this.patternInventory = new ItemStackTransfer(maxPatternCount);
         this.patternInventory.setFilter(AEUtils.PROCESS_FILTER);
-        Arrays.setAll(internalInventory, PatternBufferInternalSlot::new);
+        Arrays.setAll(internalInventory, this::createInternalSlot);
         Arrays.setAll(catalystItems, i -> {
             var transfer = new ItemStackTransfer(9);
             transfer.setFilter(stack -> !(stack.getItem() instanceof ProcessingPatternItem));
@@ -178,7 +178,7 @@ public class MEPatternBufferPartMachine extends MEPatternBufferPartMachineBase {
                 .toList()));
         Arrays.fill(cacheRecipeCount, (byte) 1);
 
-        this.recipeHandler = new MEPatternBufferRecipeHandlerTrait(this, io);
+        this.recipeHandler = createRecipeHandler(io);
 
         for (InternalSlot internalSlot : internalInventory) {
             internalSlot.setOnContentsChanged(() -> {
@@ -190,6 +190,14 @@ public class MEPatternBufferPartMachine extends MEPatternBufferPartMachineBase {
         if (io == IO.BOTH) {
             getMainNode().addService(IGridTickable.class, new Ticker());
         }
+    }
+
+    protected InternalSlot createInternalSlot(int slotIndex) {
+        return new PatternBufferInternalSlot(slotIndex);
+    }
+
+    protected MEPatternBufferRecipeHandlerTrait createRecipeHandler(IO io) {
+        return new MEPatternBufferRecipeHandlerTrait(this, io);
     }
 
     // ========================================

@@ -39,6 +39,7 @@ import static com.gregtechceu.gtceu.common.data.GTMachines.*;
 import static com.gregtechceu.gtceu.common.data.GTMaterials.*;
 import static com.gregtechceu.gtceu.common.data.GTRecipeTypes.*;
 import static com.hepdd.gtmthings.data.CustomMachines.HUGE_INPUT_DUAL_HATCH;
+import static org.gtlcore.gtlcore.common.data.GTLItems.CELL_COMPONENT_256M;
 import static org.gtlcore.gtlcore.common.data.GTLMaterials.*;
 
 @Mixin(MetaTileEntityMachineRecipeLoader.class)
@@ -280,6 +281,24 @@ public abstract class MetaTileEntityMachineRecipeLoaderMixin {
                     .stationResearch(b -> b.researchStack(HUGE_INPUT_DUAL_HATCH[UV].asStack())
                             .CWUt(96))
                     .duration(600).EUt(VA[UV]).save(provider);
+
+            ASSEMBLY_LINE_RECIPES.recipeBuilder(GTLCore.id("me_stocking_pattern_buffer"))
+                    .inputItems(GTLMachines.GTAEMachines.ME_EXTEND_PATTERN_BUFFER)
+                    .inputItems(FIELD_GENERATOR_UHV, 4)
+                    .inputItems(CustomTags.UHV_CIRCUITS, 8)
+                    .inputItems(GTLMachines.ME_DUAL_HATCH_STOCK_PART_MACHINE)
+                    .inputItems(AEBlocks.INTERFACE.asItem(), 4)
+                    .inputItems(CELL_COMPONENT_256M, 2)
+                    .inputItems(wireFine, TitanSteel, 48)
+                    .inputFluids(MutatedLivingSolder.getFluid(L * 4))
+                    .inputFluids(Lubricant.getFluid(500))
+                    .inputFluids(Zylon.getFluid(L * 2))
+                    .outputItems(GTLMachines.GTAEMachines.ME_STOCKING_PATTERN_BUFFER)
+                    .stationResearch(b -> b.researchStack(DUAL_IMPORT_HATCH[UHV].asStack())
+                            .dataStack(GTItems.TOOL_DATA_MODULE.asStack())
+                            .EUt(GTValues.VA[GTValues.UEV])
+                            .CWUt(128))
+                    .duration(600).EUt(VA[UHV]).save(provider);
 
             ASSEMBLY_LINE_RECIPES.recipeBuilder(GTLCore.id("me_final_pattern_buffer"))
                     .inputItems(HUGE_INPUT_DUAL_HATCH[UEV], 1)

@@ -1,7 +1,5 @@
 package org.gtlcore.gtlcore.client.gui.widget;
 
-import org.gtlcore.gtlcore.common.machine.multiblock.part.MEDualHatchStockPartMachine;
-
 import com.gregtechceu.gtceu.api.gui.GuiTextures;
 import com.gregtechceu.gtceu.integration.ae2.gui.widget.slot.AEConfigSlotWidget;
 import com.gregtechceu.gtceu.integration.ae2.slot.*;
@@ -22,6 +20,8 @@ import appeng.api.stacks.GenericStack;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 
+import java.util.function.IntConsumer;
+
 /**
  * @author EasterFG on 2025/3/7
  */
@@ -36,7 +36,7 @@ public class AEDualConfigWidget extends WidgetGroup {
     protected ButtonWidget pageDownWidget;
     private final ExportOnlyAEItemList aeItem;
     private final ExportOnlyAEFluidList aeFluid;
-    private final MEDualHatchStockPartMachine machine;
+    private final IntConsumer pageSetter;
 
     public static final int CONFIG_SIZE = 16;
     protected int page;
@@ -45,11 +45,11 @@ public class AEDualConfigWidget extends WidgetGroup {
 
     private static final int UPDATE_ID = 1001;
 
-    public AEDualConfigWidget(int x, int y, ExportOnlyAEItemList aeItem, ExportOnlyAEFluidList aeFluid, MEDualHatchStockPartMachine machine, int page) {
+    public AEDualConfigWidget(int x, int y, ExportOnlyAEItemList aeItem, ExportOnlyAEFluidList aeFluid, IntConsumer pageSetter, int page) {
         super(new Position(x, y), new Size(CONFIG_SIZE / 2 * 18, 18 * 4 + 2 + 19));
         this.aeItem = aeItem;
         this.aeFluid = aeFluid;
-        this.machine = machine;
+        this.pageSetter = pageSetter;
         this.offset = aeItem.getSize();
         this.page = page;
         this.MAX_PAGE = Math.max(1, offset / CONFIG_SIZE);
@@ -67,13 +67,13 @@ public class AEDualConfigWidget extends WidgetGroup {
     protected void pageUp(ClickData data) {
         if (page < 2) return;
         page--;
-        machine.setPage(page);
+        pageSetter.accept(page);
     }
 
     protected void pageDown(ClickData data) {
         if (page >= MAX_PAGE) return;
         page++;
-        machine.setPage(page);
+        pageSetter.accept(page);
     }
 
     protected boolean isAutoPull() {

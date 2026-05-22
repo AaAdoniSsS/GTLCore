@@ -739,6 +739,27 @@ public class GTLMachines {
                 .tooltipBuilder(GTL_ADD)
                 .register();
 
+        public static final MachineDefinition ME_STOCKING_PATTERN_BUFFER = REGISTRATE
+                .machine("me_stocking_pattern_buffer", (h) -> new MEStockingPatternBufferPartMachine(h, 36, IO.BOTH))
+                .tier(9)
+                .rotationState(RotationState.ALL)
+                .abilities(PartAbility.IMPORT_ITEMS, PartAbility.IMPORT_FLUIDS, PartAbility.EXPORT_ITEMS, PartAbility.EXPORT_FLUIDS)
+                .overlayTieredHullRenderer("me_pattern_buffer")
+                .langValue("ME Stocking Pattern Buffer")
+                .tooltips(Component.translatable("block.gtceu.pattern_buffer.desc.0"),
+                        Component.translatable("gtceu.machine.me_pattern_buffer.desc.0"),
+                        Component.translatable("gtceu.machine.me_pattern_buffer.desc.1"),
+                        Component.translatable("gtceu.machine.me_pattern_buffer.desc.2"),
+                        Component.translatable("gtceu.machine.me_pattern_buffer.desc.3"),
+                        Component.translatable("gtceu.machine.me_pattern_buffer.desc.4"),
+                        Component.translatable("gtceu.machine.me_pattern_buffer.desc.5"),
+                        Component.translatable("gtlcore.machine.me_stocking_pattern_buffer.desc.0"),
+                        Component.translatable("gtlcore.machine.me_stocking_pattern_buffer.desc.1"),
+                        Component.translatable("block.gtceu.pattern_buffer.desc.2"),
+                        Component.translatable("gtceu.universal.enabled"))
+                .tooltipBuilder(GTL_ADD)
+                .register();
+
         public static final MachineDefinition ME_FINAL_PATTERN_BUFFER = REGISTRATE
                 .machine("me_final_pattern_buffer", (h) -> new MEPatternBufferPartMachine(h, 72, IO.BOTH))
                 .tier(10)
