@@ -215,6 +215,7 @@
   "item.gtlcore.max_electric_pump": "§4§lMAX§r Electric Pump",
   "item.gtlcore.max_emitter": "§4§lMAX§r Emitter",
   "item.gtlcore.max_field_generator": "§4§lMAX§r Field Generator",
+  "item.gtlcore.max_fluid_regulator": "§4§lMAX§r Fluid Regulator",
   "item.gtlcore.max_robot_arm": "§4§lMAX§r Robot Arm",
   "item.gtlcore.max_sensor": "§4§lMAX§r Sensor",
   "item.gtlcore.me_pattern_buffer_copy": "ME Pattern Buffer Copy Tool",

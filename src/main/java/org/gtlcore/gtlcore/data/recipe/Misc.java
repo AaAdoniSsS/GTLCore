@@ -36,6 +36,8 @@ import static com.gregtechceu.gtceu.api.data.tag.TagPrefix.*;
 import static com.gregtechceu.gtceu.common.data.GTItems.*;
 import static com.gregtechceu.gtceu.common.data.GTMaterials.*;
 import static com.gregtechceu.gtceu.common.data.GTRecipeTypes.*;
+import static org.gtlcore.gtlcore.common.data.GTLItems.ELECTRIC_PUMP_MAX;
+import static org.gtlcore.gtlcore.common.data.GTLItems.FLUID_REGULATOR_MAX;
 import static org.gtlcore.gtlcore.common.data.GTLMaterials.*;
 import static org.gtlcore.gtlcore.common.data.GTLRecipeTypes.*;
 import static org.gtlcore.gtlcore.common.data.machines.MultiBlockMachineB.PRIMITIVE_VOID_ORE;
@@ -294,6 +296,14 @@ public class Misc {
                 .EUt(VA[9]).duration(200)
                 .stationResearch((b) -> b.researchStack(EX_PATTERN_PROVIDER.asItem().getDefaultInstance())
                         .dataStack(GTItems.TOOL_DATA_MODULE.asStack()).EUt(VA[9]).CWUt(128))
+                .save(provider);
+
+        ASSEMBLER_RECIPES.recipeBuilder("max_fluid_regulator")
+                .inputItems(ELECTRIC_PUMP_MAX)
+                .inputItems(CustomTags.MAX_CIRCUITS, 2)
+                .circuitMeta(1)
+                .outputItems(FLUID_REGULATOR_MAX)
+                .EUt(VA[13]).duration(100)
                 .save(provider);
     }
 }

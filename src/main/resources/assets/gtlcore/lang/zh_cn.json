@@ -212,6 +212,7 @@
   "item.gtlcore.max_electric_pump": "§4§lMAX§r电动泵",
   "item.gtlcore.max_emitter": "§4§lMAX§r发射器",
   "item.gtlcore.max_field_generator": "§4§lMAX§r力场发生器",
+  "item.gtlcore.max_fluid_regulator": "§4§lMAX§r流体校准器",
   "item.gtlcore.max_robot_arm": "§4§lMAX§r机械臂",
   "item.gtlcore.max_sensor": "§4§lMAX§r传感器",
   "item.gtlcore.me_pattern_buffer_copy": "样板总成复制工具",

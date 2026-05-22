@@ -185,6 +185,15 @@ public class GTLItems {
 
     public static ItemEntry<Item> ELECTRIC_MOTOR_MAX = REGISTRATE.item("max_electric_motor", Item::new).register();
 
+    public static ItemEntry<ComponentItem> FLUID_REGULATOR_MAX = REGISTRATE
+            .item("max_fluid_regulator", ComponentItem::create)
+            .onRegister(attach(new CoverPlaceBehavior(GTLCovers.FLUID_REGULATOR_MAX)))
+            .onRegister(attach(new TooltipBehavior(lines -> {
+                lines.add(Component.translatable("item.gtceu.fluid.regulator.tooltip"));
+                lines.add(Component.translatable("gtceu.universal.tooltip.fluid_transfer_rate", 1048576));
+            })))
+            .register();
+
     public static ItemEntry<ComponentItem> ELECTRIC_PUMP_MAX = REGISTRATE
             .item("max_electric_pump", ComponentItem::create)
             .onRegister(attach(new CoverPlaceBehavior(GTLCovers.ELECTRIC_PUMP_MAX)))

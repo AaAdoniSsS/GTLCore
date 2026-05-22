@@ -4,6 +4,7 @@ import com.gregtechceu.gtceu.api.GTValues;
 import com.gregtechceu.gtceu.api.cover.CoverDefinition;
 import com.gregtechceu.gtceu.client.renderer.cover.*;
 import com.gregtechceu.gtceu.common.cover.ConveyorCover;
+import com.gregtechceu.gtceu.common.cover.FluidRegulatorCover;
 import com.gregtechceu.gtceu.common.cover.PumpCover;
 import com.gregtechceu.gtceu.common.cover.RobotArmCover;
 import com.gregtechceu.gtceu.common.data.GTCovers;
@@ -22,7 +23,12 @@ public class GTLCovers {
 
     public static final CoverDefinition FLUID_REGULATORS_ULV = GTCovers.register(
             "fluid_regulators.ulv",
-            (def, coverable, side) -> new PumpCover(def, coverable, side, GTValues.ULV),
+            (def, coverable, side) -> new FluidRegulatorCover(def, coverable, side, GTValues.ULV),
+            FluidRegulatorCoverRenderer.INSTANCE);
+
+    public static final CoverDefinition FLUID_REGULATOR_MAX = GTCovers.register(
+            "fluid_regulator.max",
+            (def, coverable, side) -> new FluidRegulatorCover(def, coverable, side, GTValues.MAX),
             FluidRegulatorCoverRenderer.INSTANCE);
 
     public static final CoverDefinition CONVEYOR_MODULE_MAX = GTCovers.register(
