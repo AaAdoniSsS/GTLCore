@@ -65,7 +65,7 @@ public abstract class EnergyContainerListMixin {
               remap = false,
               at = @At(value = "INVOKE",
                        target = "Lcom/gregtechceu/gtceu/api/misc/EnergyContainerList;calculateVoltageAmperage(JJ)[J"))
-    private static long[] redirectCalculateVoltageAmperage(long voltage, long amperage) {
+    private long[] redirectCalculateVoltageAmperage(long voltage, long amperage) {
         return new long[] { voltage, amperage };
     }
 
