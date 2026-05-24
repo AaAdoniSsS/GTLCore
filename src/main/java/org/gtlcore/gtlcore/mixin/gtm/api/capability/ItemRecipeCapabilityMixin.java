@@ -141,8 +141,8 @@ public abstract class ItemRecipeCapabilityMixin extends RecipeCapability<Ingredi
                 slot.setOnAddedTooltips((w, tooltips) -> {
                     var ingredient = CAP.of(content.content);
                     long amount = 1;
-                    if (ingredient instanceof SizedIngredient si) amount = si.getAmount();
-                    else if (ingredient instanceof LongIngredient li) amount = li.getActualAmount();
+                    if (ingredient instanceof LongIngredient li) amount = li.getActualAmount();
+                    else if (ingredient instanceof SizedIngredient si) amount = si.getAmount();
                     tooltips.add(Component.translatable("gtceu.machine.quantum_chest.items_stored")
                             .withStyle(ChatFormatting.DARK_AQUA)
                             .append(Component.literal(String.valueOf(amount))));

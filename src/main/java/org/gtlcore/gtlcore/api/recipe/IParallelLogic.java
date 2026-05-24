@@ -114,7 +114,7 @@ public interface IParallelLogic {
             Ingredient ingredient = ItemRecipeCapability.CAP.of(content.content);
             long ingredientCount;
             if (ingredient instanceof LongIngredient longIngredient) {
-                ingredientCount = longIngredient.getAmount();
+                ingredientCount = longIngredient.getActualAmount();
             } else if (ingredient instanceof SizedIngredient sizedIngredient) {
                 ingredientCount = sizedIngredient.getAmount();
             } else ingredientCount = 1;
@@ -236,7 +236,7 @@ public interface IParallelLogic {
         for (var inner : inners) {
             Ingredient ingredient = ItemRecipeCapability.CAP.of(inner);
             if (ingredient instanceof LongIngredient longIngredient) {
-                if (longIngredient.getAmount() > 0) ingredients.add(ingredient);
+                if (longIngredient.getActualAmount() > 0) ingredients.add(ingredient);
             } else if (ingredient instanceof SizedIngredient sizedIngredient) {
                 if (sizedIngredient.getAmount() > 0) ingredients.add(ingredient);
             } else ingredients.add(ingredient);
