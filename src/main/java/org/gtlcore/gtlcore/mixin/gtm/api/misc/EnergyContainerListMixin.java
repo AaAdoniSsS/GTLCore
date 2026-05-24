@@ -7,10 +7,10 @@ import org.gtlcore.gtlcore.utils.datastructure.Int128;
 import com.gregtechceu.gtceu.api.capability.IEnergyContainer;
 import com.gregtechceu.gtceu.api.misc.EnergyContainerList;
 
-import org.jetbrains.annotations.NotNull;
 import org.spongepowered.asm.mixin.*;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.List;
@@ -59,6 +59,14 @@ public abstract class EnergyContainerListMixin {
         this.inputAmperage = totalInputEut > 0 ? 1 : 0;
         this.outputVoltage = totalOutputEut;
         this.outputAmperage = totalOutputEut > 0 ? 1 : 0;
+    }
+
+    @Redirect(method = "<init>",
+              remap = false,
+              at = @At(value = "INVOKE",
+                       target = "Lcom/gregtechceu/gtceu/api/misc/EnergyContainerList;calculateVoltageAmperage(JJ)[J"))
+    private static long[] redirectCalculateVoltageAmperage(long voltage, long amperage) {
+        return new long[] { voltage, amperage };
     }
 
     /**
@@ -113,25 +121,6 @@ public abstract class EnergyContainerListMixin {
             sum = NumberUtils.saturatedAdd(sum, iEnergyContainer.getOutputPerSec());
         }
         return sum;
-    }
-
-    /**
-     * @author Dragons
-     * @reason Dont Use
-     */
-    @SuppressWarnings("NullableProblems")
-    @Overwrite(remap = false)
-    private static @NotNull long[] calculateVoltageAmperage(long voltage, long amperage) {
-        return new long[] { voltage, amperage };
-    }
-
-    /**
-     * @author Dragons
-     * @reason Dont Use
-     */
-    @Overwrite(remap = false)
-    private static boolean hasPrimeFactorGreaterThanTwo(long l) {
-        return l > 0 && (l & (l - 1)) != 0;
     }
 
     @Unique

@@ -10,6 +10,7 @@ import com.gregtechceu.gtceu.api.recipe.logic.OCResult;
 import org.jetbrains.annotations.NotNull;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
@@ -60,7 +61,8 @@ public abstract class OverclockingLogicMixin {
 
         eut *= Math.min(1, NumberUtils.pow95(Math.max(0, (providedTemp - requiredTemp) / 900)));
 
-        ((IAdvancedOCResult) (Object) result).init((long) (eut / vfPowParallel), (int) duration, (int) parallel, (long) eut, baseOCLevel, ocLevel, PERFECT_DURATION_FACTOR, STD_VOLTAGE_FACTOR);
+        ((IAdvancedOCResult) (Object) result).init(gTLCore$toRecipeEUt(eut / vfPowParallel), gTLCore$toRecipeDuration(duration),
+                (int) parallel, gTLCore$toRecipeEUt(eut), baseOCLevel, ocLevel, PERFECT_DURATION_FACTOR, STD_VOLTAGE_FACTOR);
     }
 
     @Inject(method = "getOverclockForTier", at = @At("HEAD"), remap = false, cancellable = true)
@@ -106,6 +108,19 @@ public abstract class OverclockingLogicMixin {
             }
         }
 
-        ((IAdvancedOCResult) (Object) result).init((long) (eut / vfPowParallel), (int) duration, (int) parallel, (long) eut, baseOCLevel, ocLevel, durationFactor, voltageFactor);
+        ((IAdvancedOCResult) (Object) result).init(gTLCore$toRecipeEUt(eut / vfPowParallel), gTLCore$toRecipeDuration(duration),
+                (int) parallel, gTLCore$toRecipeEUt(eut), baseOCLevel, ocLevel, durationFactor, voltageFactor);
+    }
+
+    @Unique
+    private static int gTLCore$toRecipeDuration(double duration) {
+        return duration > 0 ? Math.max(1, (int) duration) : 0;
+    }
+
+    @Unique
+    private static long gTLCore$toRecipeEUt(double eut) {
+        if (eut > 0) return Math.max(1L, (long) eut);
+        if (eut < 0) return Math.min(-1L, (long) eut);
+        return 0L;
     }
 }
