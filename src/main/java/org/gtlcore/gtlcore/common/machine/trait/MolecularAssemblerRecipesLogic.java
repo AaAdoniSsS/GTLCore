@@ -1,5 +1,6 @@
 package org.gtlcore.gtlcore.common.machine.trait;
 
+import org.gtlcore.gtlcore.api.machine.ISuspendableMachine;
 import org.gtlcore.gtlcore.api.machine.multiblock.MolecularAssemblerMultiblockMachine;
 import org.gtlcore.gtlcore.api.machine.multiblock.ParallelMachine;
 import org.gtlcore.gtlcore.mixin.gtm.api.recipe.RecipeLogicAccessor;
@@ -98,16 +99,22 @@ public class MolecularAssemblerRecipesLogic extends RecipeLogic {
             var handler = getMachine().getMAHandler();
             if (handler != null) handler.handleRecipeOutput(this.lastRecipe);
 
-            var match = getRecipe();
-            if (match != null) {
-                setupRecipe(match);
+            if (this.machine instanceof ISuspendableMachine suspendableMachine && suspendableMachine.gtlcore$isSuspendAfterFinish()) {
+                this.setStatus(RecipeLogic.Status.SUSPEND);
+                suspendableMachine.gtlcore$setSuspendAfterFinish(false);
             } else {
-                lastRecipe = null;
-                this.setStatus(RecipeLogic.Status.IDLE);
-                this.progress = 0;
-                this.duration = 0;
-                ((RecipeLogicAccessor) this).setIsActive(false);
+                var match = getRecipe();
+                if (match != null) {
+                    setupRecipe(match);
+                    return;
+                } else {
+                    lastRecipe = null;
+                    this.setStatus(RecipeLogic.Status.IDLE);
+                    ((RecipeLogicAccessor) this).setIsActive(false);
+                }
             }
+            this.progress = 0;
+            this.duration = 0;
         }
     }
 }

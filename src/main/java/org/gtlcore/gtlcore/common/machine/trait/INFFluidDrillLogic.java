@@ -1,5 +1,6 @@
 package org.gtlcore.gtlcore.common.machine.trait;
 
+import org.gtlcore.gtlcore.api.machine.ISuspendableMachine;
 import org.gtlcore.gtlcore.common.machine.multiblock.electric.INFFluidDrillMachine;
 
 import com.gregtechceu.gtceu.api.GTValues;
@@ -109,13 +110,19 @@ public class INFFluidDrillLogic extends RecipeLogic {
     public void onRecipeFinish() {
         machine.afterWorking();
         if (lastRecipe != null) handleRecipeOutput(getMachine(), lastRecipe);
-        // try it again
-        var match = getFluidDrillRecipe();
-        if (match != null) {
-            setupRecipe(match);
-            return;
+
+        if (this.machine instanceof ISuspendableMachine suspendableMachine && suspendableMachine.gtlcore$isSuspendAfterFinish()) {
+            this.setStatus(RecipeLogic.Status.SUSPEND);
+            suspendableMachine.gtlcore$setSuspendAfterFinish(false);
+        } else {
+            // try it again
+            var match = getFluidDrillRecipe();
+            if (match != null) {
+                setupRecipe(match);
+                return;
+            }
+            setStatus(Status.IDLE);
         }
-        setStatus(Status.IDLE);
         progress = 0;
         duration = 0;
     }

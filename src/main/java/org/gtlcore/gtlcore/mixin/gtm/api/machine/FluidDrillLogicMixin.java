@@ -1,5 +1,6 @@
 package org.gtlcore.gtlcore.mixin.gtm.api.machine;
 
+import org.gtlcore.gtlcore.api.machine.ISuspendableMachine;
 import org.gtlcore.gtlcore.api.recipe.RecipeRunnerHelper;
 
 import com.gregtechceu.gtceu.api.GTValues;
@@ -104,12 +105,18 @@ public abstract class FluidDrillLogicMixin extends RecipeLogic {
             RecipeRunnerHelper.handleRecipeOutput(this.machine, this.lastRecipe);
         }
         this.depleteVein();
-        GTRecipe match = this.getFluidDrillRecipe();
-        if (match != null) {
-            this.setupRecipe(match);
-            return;
+
+        if (this.machine instanceof ISuspendableMachine suspendableMachine && suspendableMachine.gtlcore$isSuspendAfterFinish()) {
+            this.setStatus(RecipeLogic.Status.SUSPEND);
+            suspendableMachine.gtlcore$setSuspendAfterFinish(false);
+        } else {
+            GTRecipe match = this.getFluidDrillRecipe();
+            if (match != null) {
+                this.setupRecipe(match);
+                return;
+            }
+            this.setStatus(Status.IDLE);
         }
-        this.setStatus(Status.IDLE);
         this.progress = 0;
         this.duration = 0;
     }

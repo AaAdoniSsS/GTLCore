@@ -1,5 +1,6 @@
 package org.gtlcore.gtlcore.common.machine.trait;
 
+import org.gtlcore.gtlcore.api.machine.ISuspendableMachine;
 import org.gtlcore.gtlcore.common.machine.multiblock.electric.AdvancedInfiniteDrillMachine;
 
 import com.gregtechceu.gtceu.api.GTValues;
@@ -137,16 +138,22 @@ public class AdvancedInfiniteDrillLogic extends RecipeLogic {
     @Override
     public void onRecipeFinish() {
         if (lastRecipe != null) handleRecipeOutput(this.machine, lastRecipe);
-        // try it again
-        var match = getFluidDrillRecipe();
-        if (match != null) {
-            var copied = match.copy(new ContentModifier(match.duration, 0));
-            if (matchRecipe(this.machine, match) && copied.matchTickRecipe(this.machine).isSuccess()) {
-                setupRecipe(match);
-                return;
+
+        if (this.machine instanceof ISuspendableMachine suspendableMachine && suspendableMachine.gtlcore$isSuspendAfterFinish()) {
+            this.setStatus(RecipeLogic.Status.SUSPEND);
+            suspendableMachine.gtlcore$setSuspendAfterFinish(false);
+        } else {
+            // try it again
+            var match = getFluidDrillRecipe();
+            if (match != null) {
+                var copied = match.copy(new ContentModifier(match.duration, 0));
+                if (matchRecipe(this.machine, match) && copied.matchTickRecipe(this.machine).isSuccess()) {
+                    setupRecipe(match);
+                    return;
+                }
             }
+            setStatus(Status.IDLE);
         }
-        setStatus(Status.IDLE);
         progress = 0;
         duration = 0;
     }
