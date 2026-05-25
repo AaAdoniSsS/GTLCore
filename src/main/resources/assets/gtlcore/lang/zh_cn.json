@@ -391,5 +391,15 @@
   "gtlcore.source_tooltip.series.ore_processing": "§d矿石处理 §8[矿石可能在后期]",
   "gtlcore.source_tooltip.productionline.nuclear_waste": "离心核废料, 打包小撮粉",
   "gtlcore.message.structure_update_notice": "[GTL] 以下结构有修改，请注意检查：",
-  "gtlcore.message.close_update_notice": "如果你不想再看到这些信息，前往gtlcore的配置文件中关闭消息显示"
+  "gtlcore.message.close_update_notice": "如果你不想再看到这些信息，前往gtlcore的配置文件中关闭消息显示",
+  "gui.gtlcore.pattern_buffer_circuit_config": "样板电路写入",
+  "gui.gtlcore.pattern_buffer_circuit_number": "目标电路编号",
+  "gui.gtlcore.pattern_buffer_skip_existing_circuit": "跳过已有电路",
+  "gui.gtlcore.pattern_buffer_apply_circuit": "写入",
+  "gui.gtlcore.pattern_buffer_clear_circuits": "清空电路",
+  "tooltip.gtlcore.pattern_buffer_circuit_config": "批量写入或清除样板总成内处理样板的编程电路",
+  "tooltip.gtlcore.pattern_buffer_circuit_number": "允许范围：1-%s",
+  "tooltip.gtlcore.pattern_buffer_skip_existing_circuit": "开启后，写入时不会改动已经包含任意编程电路的样板",
+  "tooltip.gtlcore.pattern_buffer_apply_circuit": "将目标电路编号写入所有可修改的处理样板",
+  "tooltip.gtlcore.pattern_buffer_clear_circuits": "删除所有处理样板输入中的编程电路"
 }

@@ -391,5 +391,15 @@
   "gtlcore.source_tooltip.series.ore_processing": "§dOre Processing §8[The ore may be in the later stage]",
   "gtlcore.source_tooltip.productionline.nuclear_waste": "Centrifuge nuclear waste, pack tiny dust",
   "gtlcore.message.structure_update_notice": "[GTL] The following structures have been modified, please check:",
-  "gtlcore.message.close_update_notice": "If you wish to stop seeing these messages, navigate to the gtlcore configuration file and disable message display"
+  "gtlcore.message.close_update_notice": "If you wish to stop seeing these messages, navigate to the gtlcore configuration file and disable message display",
+  "gui.gtlcore.pattern_buffer_circuit_config": "Pattern Circuit Writer",
+  "gui.gtlcore.pattern_buffer_circuit_number": "Target Circuit",
+  "gui.gtlcore.pattern_buffer_skip_existing_circuit": "Skip Existing",
+  "gui.gtlcore.pattern_buffer_apply_circuit": "Write",
+  "gui.gtlcore.pattern_buffer_clear_circuits": "Clear",
+  "tooltip.gtlcore.pattern_buffer_circuit_config": "Batch writes or clears programmed circuits in processing patterns stored by this pattern buffer",
+  "tooltip.gtlcore.pattern_buffer_circuit_number": "Allowed range: 1-%s",
+  "tooltip.gtlcore.pattern_buffer_skip_existing_circuit": "When enabled, writing will not modify patterns that already contain any programmed circuit",
+  "tooltip.gtlcore.pattern_buffer_apply_circuit": "Write the target circuit number to every modifiable processing pattern",
+  "tooltip.gtlcore.pattern_buffer_clear_circuits": "Remove programmed circuits from all processing pattern inputs"
 }

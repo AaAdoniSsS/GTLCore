@@ -80,6 +80,61 @@ public class MEBufferPatternHelper {
     }
 
     /**
+     * 创建一个写入指定电路的新处理样板。
+     *
+     * @param originalPatternStack 原始处理样板
+     * @param circuitConfig        要写入的电路编号
+     * @param replaceExisting      是否替换已有电路
+     * @param level                当前世界
+     * @return 修改后的样板；非处理样板返回空物品
+     */
+    public ItemStack createPatternWithCircuit(ItemStack originalPatternStack, int circuitConfig, boolean replaceExisting,
+                                              Level level) {
+        if (circuitConfig < 1 || circuitConfig > IntCircuitBehaviour.CIRCUIT_MAX) {
+            return originalPatternStack;
+        }
+        return rebuildPatternCircuit(originalPatternStack, circuitConfig, replaceExisting, level);
+    }
+
+    public ItemStack removeCircuitFromPattern(ItemStack originalPatternStack, Level level) {
+        return rebuildPatternCircuit(originalPatternStack, -1, true, level);
+    }
+
+    private ItemStack rebuildPatternCircuit(ItemStack originalPatternStack, int circuitConfig, boolean replaceExisting,
+                                            Level level) {
+        if (!(PatternDetailsHelper.decodePattern(originalPatternStack, level) instanceof AEProcessingPattern processingPattern)) {
+            return ItemStack.EMPTY;
+        }
+
+        var filteredInputs = new ObjectArrayList<GenericStack>();
+        boolean hasCircuit = false;
+
+        for (var input : Arrays.stream(processingPattern.getSparseInputs()).filter(Objects::nonNull).toList()) {
+            boolean isCircuit = input.what() instanceof AEItemKey itemKey &&
+                    itemKey.getItem() == GTItems.INTEGRATED_CIRCUIT.asItem();
+
+            if (isCircuit) {
+                hasCircuit = true;
+            } else {
+                filteredInputs.add(input);
+            }
+        }
+
+        if (circuitConfig < 0 && !hasCircuit) {
+            return originalPatternStack;
+        }
+        if (circuitConfig > 0 && hasCircuit && !replaceExisting) {
+            return originalPatternStack;
+        }
+        if (circuitConfig > 0) {
+            filteredInputs.add(0, GenericStack.fromItemStack(IntCircuitBehaviour.stack(circuitConfig)));
+        }
+
+        return PatternDetailsHelper.encodeProcessingPattern(
+                filteredInputs.toArray(new GenericStack[0]), processingPattern.getSparseOutputs());
+    }
+
+    /**
      * 从样板中提取电路
      *
      * @param processingPattern 处理样板

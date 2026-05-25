@@ -1,6 +1,7 @@
 package org.gtlcore.gtlcore.common.machine.multiblock.part.ae;
 
 import org.gtlcore.gtlcore.api.gui.MEPatternCatalystUIManager;
+import org.gtlcore.gtlcore.api.gui.PatternCircuitConfigurator;
 import org.gtlcore.gtlcore.api.machine.trait.*;
 import org.gtlcore.gtlcore.api.machine.trait.MEPart.IMEPatternTrait;
 import org.gtlcore.gtlcore.common.data.GTLMachines;
@@ -23,6 +24,7 @@ import com.gregtechceu.gtceu.common.item.IntCircuitBehaviour;
 import com.gregtechceu.gtceu.integration.ae2.gui.widget.AETextInputButtonWidget;
 import com.gregtechceu.gtceu.utils.*;
 
+import com.lowdragmc.lowdraglib.gui.util.ClickData;
 import com.lowdragmc.lowdraglib.gui.widget.*;
 import com.lowdragmc.lowdraglib.misc.*;
 import com.lowdragmc.lowdraglib.side.fluid.*;
@@ -113,6 +115,12 @@ public class MEPatternBufferPartMachine extends MEPatternBufferPartMachineBase {
     protected final boolean[] cacheRecipe;
     @Persisted
     protected boolean keepByProduct = false;
+    @DescSynced
+    @Persisted
+    private int embeddedCircuitConfig = 1;
+    @DescSynced
+    @Persisted
+    private boolean skipExistingCircuitPatterns = true;
 
     // ========================================
     // Inventory
@@ -605,8 +613,8 @@ public class MEPatternBufferPartMachine extends MEPatternBufferPartMachineBase {
     public void attachConfigurators(ConfiguratorPanel configuratorPanel) {
         super.attachConfigurators(configuratorPanel);
         configuratorPanel.attachConfigurators(new IFancyConfiguratorButton.Toggle(
-                GuiTextures.BUTTON_SILK_TOUCH_MODE.getSubTexture(0, 0, 1, 0.5),
-                GuiTextures.BUTTON_SILK_TOUCH_MODE.getSubTexture(0, 0.5, 1, 0.5),
+                org.gtlcore.gtlcore.api.gui.GuiTextures.BUTTON_DISABLE_BYPRODUCT.getSubTexture(0, 0, 1, 0.5),
+                org.gtlcore.gtlcore.api.gui.GuiTextures.BUTTON_DISABLE_BYPRODUCT.getSubTexture(0, 0.5, 1, 0.5),
                 () -> !this.keepByProduct, (clickData, pressed) -> {
                     this.keepByProduct = !pressed;
                     refreshAllByProduct();
@@ -621,6 +629,14 @@ public class MEPatternBufferPartMachine extends MEPatternBufferPartMachineBase {
                 () -> this.isHiddenTerminal, (clickData, pressed) -> this.isHiddenTerminal = pressed)
                 .setTooltipsSupplier(pressed -> List.of(
                         Component.translatable(pressed ? "gui.gtlcore.hidden_in_terminal" : "gui.gtlcore.visible_in_terminal"))));
+
+        configuratorPanel.attachConfigurators(new PatternCircuitConfigurator(
+                () -> embeddedCircuitConfig,
+                this::setEmbeddedCircuitConfig,
+                () -> skipExistingCircuitPatterns,
+                (clickData, pressed) -> skipExistingCircuitPatterns = pressed,
+                this::applyConfiguredCircuit,
+                this::removeAllPatternCircuits));
     }
 
     @Override
@@ -670,6 +686,41 @@ public class MEPatternBufferPartMachine extends MEPatternBufferPartMachineBase {
     // ========================================
     // CIRCUIT HANDLING
     // ========================================
+
+    private void setEmbeddedCircuitConfig(int embeddedCircuitConfig) {
+        this.embeddedCircuitConfig = Math.max(1, Math.min(IntCircuitBehaviour.CIRCUIT_MAX, embeddedCircuitConfig));
+    }
+
+    private void applyConfiguredCircuit(ClickData clickData) {
+        if (clickData.isRemote) return;
+        embedCircuitToPatterns(embeddedCircuitConfig, !skipExistingCircuitPatterns);
+    }
+
+    private void removeAllPatternCircuits(ClickData clickData) {
+        if (clickData.isRemote) return;
+        for (int i = 0; i < internalPatternInventory.size(); i++) {
+            ItemStack stack = internalPatternInventory.getStackInSlot(i);
+            if (stack.isEmpty()) continue;
+
+            ItemStack after = realPatternHelper.removeCircuitFromPattern(stack, getLevel());
+            if (!after.isEmpty() && !ItemStack.matches(stack, after)) {
+                internalPatternInventory.setItemDirect(i, after);
+            }
+        }
+    }
+
+    private void embedCircuitToPatterns(int circuitConfig, boolean replaceExisting) {
+        int safeCircuitConfig = Math.max(1, Math.min(IntCircuitBehaviour.CIRCUIT_MAX, circuitConfig));
+        for (int i = 0; i < internalPatternInventory.size(); i++) {
+            ItemStack stack = internalPatternInventory.getStackInSlot(i);
+            if (stack.isEmpty()) continue;
+
+            ItemStack after = realPatternHelper.createPatternWithCircuit(stack, safeCircuitConfig, replaceExisting, getLevel());
+            if (!after.isEmpty() && !ItemStack.matches(stack, after)) {
+                internalPatternInventory.setItemDirect(i, after);
+            }
+        }
+    }
 
     private IPatternDetails getRealPattern(int slot, ItemStack stack) {
         if (!stack.isEmpty()) {
