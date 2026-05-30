@@ -72,9 +72,9 @@ public class ForgeCommonEventListener {
     public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
         if (ConfigHolder.INSTANCE.sendUpdateMessages && event.getEntity() instanceof ServerPlayer player) {
             player.displayClientMessage(Component.translatable("gtlcore.message.structure_update_notice"), false);
-            player.displayClientMessage(Component.translatable("block.gtceu.create_aggregation"), false);
-            player.displayClientMessage(Component.translatable("block.gtceu.bedrock_drilling_rig"), false);
-            player.displayClientMessage(Component.translatable("block.gtceu.dimensional_focus_engraving_array"), false);
+            player.displayClientMessage(Component.translatable("block.gtceu.advanced_rare_earth_centrifugal"), false);
+            player.displayClientMessage(Component.translatable("block.gtceu.cooling_tower"), false);
+            player.displayClientMessage(Component.translatable("block.gtceu.space_cosmic_probe_receivers"), false);
             player.displayClientMessage(Component.translatable("gtlcore.message.close_update_notice"), false);
         }
     }
