@@ -37,8 +37,13 @@ public abstract class HugeBusPartMachineMixin extends TieredIOPartMachine {
     protected void createInventory(Object[] args, CallbackInfoReturnable<NotifiableItemStackHandler> cir) {
         if (io == IO.IN) {
             cir.setReturnValue(new NotifiableItemStackHandler(this, getInventorySize(), IO.IN, IO.IN,
-                    UnlimitedItemStackTransfer::new)
-                    .setFilter(itemStack -> !IntCircuitBehaviour.isIntegratedCircuit(itemStack)));
+                    UnlimitedItemStackTransfer::new) {
+
+                @Override
+                public boolean canCapOutput() {
+                    return true;
+                }
+            }.setFilter(itemStack -> !IntCircuitBehaviour.isIntegratedCircuit(itemStack)));
         }
     }
 
