@@ -22,6 +22,9 @@ import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;
 import org.spongepowered.asm.mixin.Unique;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.List;
 
@@ -33,6 +36,11 @@ public abstract class CatalystFluidStackHandlerMixin extends NotifiableFluidTank
 
     public CatalystFluidStackHandlerMixin(MetaMachine machine, int slots, long capacity, IO io, IO capabilityIO) {
         super(machine, slots, capacity, io, capabilityIO);
+    }
+
+    @Inject(method = "<init>(Lcom/gregtechceu/gtceu/api/machine/MetaMachine;IJLcom/gregtechceu/gtceu/api/capability/recipe/IO;Lcom/gregtechceu/gtceu/api/capability/recipe/IO;)V", at = @At("RETURN"), remap = false)
+    private void gTLCore$disableExternalCapability(MetaMachine machine, int slots, long capacity, IO io, IO capabilityIO, CallbackInfo ci) {
+        setCapabilityValidator(side -> false);
     }
 
     /**
