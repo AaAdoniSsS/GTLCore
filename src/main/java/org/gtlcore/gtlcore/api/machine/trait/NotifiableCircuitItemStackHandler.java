@@ -25,7 +25,9 @@ public class NotifiableCircuitItemStackHandler extends NotifiableItemStackHandle
     @Override
     public ItemStack insertItem(int slot, @NotNull ItemStack stack, boolean simulate, boolean notifyChange) {
         if (GTItems.INTEGRATED_CIRCUIT.isIn(stack)) {
-            storage.setStackInSlot(slot, stack);
+            if (!simulate) {
+                storage.setStackInSlot(slot, stack.copyWithCount(1));
+            }
             return ItemStack.EMPTY;
         }
         return stack;

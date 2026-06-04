@@ -22,6 +22,9 @@ import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;
 import org.spongepowered.asm.mixin.Unique;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.List;
 import java.util.function.Function;
@@ -34,6 +37,11 @@ public abstract class CatalystItemStackHandlerMixin extends NotifiableItemStackH
 
     public CatalystItemStackHandlerMixin(MetaMachine machine, int slots, @NotNull IO handlerIO, @NotNull IO capabilityIO, Function<Integer, ItemStackTransfer> transferFactory) {
         super(machine, slots, handlerIO, capabilityIO, transferFactory);
+    }
+
+    @Inject(method = "<init>(Lcom/gregtechceu/gtceu/api/machine/MetaMachine;ILcom/gregtechceu/gtceu/api/capability/recipe/IO;Lcom/gregtechceu/gtceu/api/capability/recipe/IO;)V", at = @At("RETURN"), remap = false)
+    private void gTLCore$disableExternalCapability(MetaMachine machine, int slots, IO handlerIO, IO capabilityIO, CallbackInfo ci) {
+        setCapabilityValidator(side -> false);
     }
 
     /**
