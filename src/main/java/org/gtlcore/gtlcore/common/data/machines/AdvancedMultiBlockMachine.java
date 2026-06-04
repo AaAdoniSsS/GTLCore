@@ -70,6 +70,7 @@ import static com.gregtechceu.gtceu.api.pattern.Predicates.*;
 import static com.gregtechceu.gtceu.api.pattern.util.RelativeDirection.*;
 import static com.gregtechceu.gtceu.common.data.GTRecipeTypes.DUMMY_RECIPES;
 import static com.gregtechceu.gtceu.common.registry.GTRegistration.REGISTRATE;
+import static java.lang.Math.max;
 import static net.minecraft.core.registries.Registries.DIMENSION;
 
 @SuppressWarnings("unused")
@@ -401,7 +402,7 @@ public class AdvancedMultiBlockMachine {
                 int p = 0;
                 if (machine instanceof StorageMachine storageMachine) {
                     ItemStack item = storageMachine.getMachineStorageItem();
-                    p = item.getCount() * 2;
+                    p = Math.min((item.getCount() * 2), 128);
                     long inputEUt = RecipeHelper.getInputEUt(recipe);
                     if (inputEUt == GTValues.VA[GTValues.UV]) {
                         isParallel = Objects.equals(Registries.getItemId(item), "kubejs:precision_circuit_assembly_robot_mk1");
@@ -697,7 +698,7 @@ public class AdvancedMultiBlockMachine {
                 }
                 if (controller instanceof CoilWorkableElectricMultiblockMachine coilMachine && controller.isFormed()) {
                     components.add(Component.translatable("gtceu.multiblock.blast_furnace.max_temperature",
-                            Component.translatable(FormattingUtil.formatNumbers(coilMachine.getCoilType().getCoilTemperature() + 100L * Math.max(0, coilMachine.getTier() - GTValues.MV)) + "K")
+                            Component.translatable(FormattingUtil.formatNumbers(coilMachine.getCoilType().getCoilTemperature() + 100L * max(0, coilMachine.getTier() - GTValues.MV)) + "K")
                                     .setStyle(Style.EMPTY.withColor(ChatFormatting.RED))));
                 }
             })
@@ -1445,7 +1446,7 @@ public class AdvancedMultiBlockMachine {
             .additionalDisplay((controller, components) -> {
                 if (controller.isFormed() && controller instanceof StorageMachine machine) {
                     if (Objects.equals(Registries.getItemId(machine.getMachineStorageItem()), "gtceu:carbon_nanoswarm")) {
-                        components.add(Component.translatable("gtceu.multiblock.parallel", Component.literal(String.valueOf(machine.getMachineStorageItem().getCount())).withStyle(ChatFormatting.DARK_PURPLE)).withStyle(ChatFormatting.GRAY));
+                        components.add(Component.translatable("gtceu.multiblock.parallel", Component.literal(String.valueOf(Math.min((machine.getMachineStorageItem().getCount()), 64))).withStyle(ChatFormatting.DARK_PURPLE)).withStyle(ChatFormatting.GRAY));
                     } else {
                         components.add(Component.translatable("message.gtlcore.need_carbon_nano_swarm_red").withStyle(ChatFormatting.RED));
                     }
@@ -1495,7 +1496,7 @@ public class AdvancedMultiBlockMachine {
             .additionalDisplay((controller, components) -> {
                 if (controller.isFormed() && controller instanceof StorageMachine machine) {
                     if (Objects.equals(Registries.getItemId(machine.getMachineStorageItem()), "gtceu:neutronium_nanoswarm")) {
-                        components.add(Component.translatable("gtceu.multiblock.parallel", Component.literal(String.valueOf(machine.getMachineStorageItem().getCount())).withStyle(ChatFormatting.DARK_PURPLE)).withStyle(ChatFormatting.GRAY));
+                        components.add(Component.translatable("gtceu.multiblock.parallel", Component.literal(String.valueOf(Math.min((machine.getMachineStorageItem().getCount()), 64))).withStyle(ChatFormatting.DARK_PURPLE)).withStyle(ChatFormatting.GRAY));
                     } else {
                         components.add(Component.translatable("message.gtlcore.need_neutronium_nano_swarm_red").withStyle(ChatFormatting.RED));
                     }
@@ -1547,7 +1548,7 @@ public class AdvancedMultiBlockMachine {
             .additionalDisplay((controller, components) -> {
                 if (controller.isFormed() && controller instanceof StorageMachine machine) {
                     if (Objects.equals(Registries.getItemId(machine.getMachineStorageItem()), "gtceu:draconium_nanoswarm")) {
-                        components.add(Component.translatable("gtceu.multiblock.parallel", Component.literal(String.valueOf(machine.getMachineStorageItem().getCount())).withStyle(ChatFormatting.DARK_PURPLE)).withStyle(ChatFormatting.GRAY));
+                        components.add(Component.translatable("gtceu.multiblock.parallel", Component.literal(String.valueOf(Math.min((machine.getMachineStorageItem().getCount()), 64))).withStyle(ChatFormatting.DARK_PURPLE)).withStyle(ChatFormatting.GRAY));
                     } else {
                         components.add(Component.translatable("message.gtlcore.need_dragon_nano_swarm_red").withStyle(ChatFormatting.RED));
                     }

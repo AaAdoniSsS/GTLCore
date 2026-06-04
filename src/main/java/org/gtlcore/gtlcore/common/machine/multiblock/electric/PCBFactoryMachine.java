@@ -24,6 +24,8 @@ import java.util.Objects;
 
 import javax.annotation.ParametersAreNonnullByDefault;
 
+import static java.lang.Math.max;
+
 @ParametersAreNonnullByDefault
 @MethodsReturnNonnullByDefault
 public class PCBFactoryMachine extends StorageMachine {
@@ -38,10 +40,10 @@ public class PCBFactoryMachine extends StorageMachine {
         ItemStack itemStack = getMachineStorageItem();
         String item = Registries.getItemId(itemStack);
         if (Objects.equals(item, "gtceu:vibranium_nanoswarm")) {
-            reductionDuration = (double) (100 - itemStack.getCount()) / 100;
+            reductionDuration = Math.max(((double) (100 - itemStack.getCount()) / 100), 0.36);
             reductionEUt = 0.25;
         } else if (Objects.equals(item, "gtceu:gold_nanoswarm")) {
-            reductionDuration = (100 - (itemStack.getCount() * 0.5)) / 100;
+            reductionDuration = Math.max(((100 - (itemStack.getCount() * 0.5)) / 100), 0.68);
         }
     }
 

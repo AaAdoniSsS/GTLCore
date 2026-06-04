@@ -104,7 +104,7 @@ public class GTLRecipeModifiers {
                     return null;
                 }
             }
-            GTRecipe recipe1 = GTRecipeModifiers.accurateParallel(machine, recipe, (int) (storageMachine.getMachineStorageItem().getCount() * Math.pow(2, tier - t)), false).getFirst();
+            GTRecipe recipe1 = GTRecipeModifiers.accurateParallel(machine, recipe, (int) (Math.min((storageMachine.getMachineStorageItem().getCount()), 64) * Math.pow(2, tier - t)), false).getFirst();
             return RecipeHelper.applyOverclock(new OverclockingLogic(1 / Math.pow(2, 1 + tier - t), 4, false), recipe1, storageMachine.getOverclockVoltage(), params, result);
         }
         return null;
