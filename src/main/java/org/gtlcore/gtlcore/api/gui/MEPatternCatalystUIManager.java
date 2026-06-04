@@ -10,6 +10,7 @@ import com.lowdragmc.lowdraglib.side.fluid.IFluidTransfer;
 import com.lowdragmc.lowdraglib.side.item.IItemTransfer;
 import com.lowdragmc.lowdraglib.utils.Position;
 
+import net.minecraft.network.chat.Component;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 
@@ -106,7 +107,6 @@ public class MEPatternCatalystUIManager extends WidgetGroup {
 
         if (maxWidth == 0) maxWidth = 16;
         if (currentY <= 0) currentY = 16;
-
         this.setSize(maxWidth, currentY);
         this.setVisible(true).setActive(true);
         lastIndex = index;
@@ -114,7 +114,7 @@ public class MEPatternCatalystUIManager extends WidgetGroup {
 
     private static @NotNull Widget createCacheCountInputWidget(Supplier<Integer> supplier, Consumer<Integer> consumer) {
         WidgetGroup group = new WidgetGroup(new Position(0, 0));
-        group.addWidget(new LabelWidget(PAD_OUT, 2, "实际配方数量"));
+        group.addWidget(new ExtendLabelWidget(PAD_OUT, 2, Component.translatable("gui.gtlcore.pattern_buffer_gui_1")));
         group.addWidget(new IntInputWidget(new Position(PAD_OUT, PAD_OUT + 4), supplier, consumer)
                 .setMin(1)
                 .setMax((int) Byte.MAX_VALUE));
@@ -130,7 +130,7 @@ public class MEPatternCatalystUIManager extends WidgetGroup {
         final int groupH = PAD_OUT * 2 + containerH;
 
         WidgetGroup group = new WidgetGroup(0, 0, groupW, groupH);
-        group.addWidget(new LabelWidget(PAD_OUT, 2, "物品催化剂槽"));
+        group.addWidget(new ExtendLabelWidget(PAD_OUT, 2, Component.translatable("gui.gtlcore.pattern_buffer_gui_2")));
         WidgetGroup container = new WidgetGroup(PAD_OUT, PAD_OUT + 4, containerW, containerH);
 
         int index = 0;
@@ -156,7 +156,7 @@ public class MEPatternCatalystUIManager extends WidgetGroup {
         final int groupH = PAD_OUT * 2 + containerH;
 
         WidgetGroup group = new WidgetGroup(0, 0, groupW, groupH);
-        group.addWidget(new LabelWidget(PAD_OUT, 2, "流体催化剂槽"));
+        group.addWidget(new ExtendLabelWidget(PAD_OUT, 2, Component.translatable("gui.gtlcore.pattern_buffer_gui_3")));
         WidgetGroup container = new WidgetGroup(PAD_OUT, PAD_OUT + 4, containerW, containerH);
 
         int index = 0;
