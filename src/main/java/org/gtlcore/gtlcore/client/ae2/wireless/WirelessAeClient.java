@@ -1,19 +1,19 @@
 package org.gtlcore.gtlcore.client.ae2.wireless;
 
 import org.gtlcore.gtlcore.integration.ae2.wireless.GTLWirelessAeContent;
+
 import net.minecraft.client.gui.screens.MenuScreens;
-import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 
 public final class WirelessAeClient {
-    private WirelessAeClient() {
-    }
+
+    private WirelessAeClient() {}
 
     public static void register(IEventBus modBus) {
         modBus.addListener(WirelessAeClient::onClientSetup);
         modBus.addListener(WirelessNetworkCoreRenderer::registerAdditionalModels);
-        WirelessAeScreenHooks.register(MinecraftForge.EVENT_BUS);
+        WirelessAeScreenHooks.register();
     }
 
     public static void onClientSetup(FMLClientSetupEvent event) {

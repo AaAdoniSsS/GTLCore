@@ -1,7 +1,6 @@
 package org.gtlcore.gtlcore.integration.ae2.wireless;
 
-import org.gtlcore.gtlcore.integration.ae2.wireless.GTLWirelessAeContent;
-import java.util.UUID;
+import lombok.Getter;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
@@ -14,10 +13,17 @@ import net.minecraft.world.inventory.DataSlot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraftforge.network.NetworkHooks;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.UUID;
 
 public class WirelessNetworkCoreMenu extends AbstractContainerMenu {
+
+    @Getter
     private final BlockPos pos;
+    @Getter
     private final UUID frequency;
+    @Getter
     private final String networkName;
     private int linkedToAeNetwork;
 
@@ -28,8 +34,7 @@ public class WirelessNetworkCoreMenu extends AbstractContainerMenu {
                 data.readBlockPos(),
                 data.readUUID(),
                 data.readUtf(32),
-                data.readBoolean()
-        );
+                data.readBoolean());
     }
 
     public WirelessNetworkCoreMenu(int containerId, Inventory inventory, BlockPos pos, UUID frequency,
@@ -40,10 +45,10 @@ public class WirelessNetworkCoreMenu extends AbstractContainerMenu {
         this.networkName = networkName;
         this.linkedToAeNetwork = linkedToAeNetwork ? 1 : 0;
         this.addDataSlot(new DataSlot() {
+
             @Override
             public int get() {
-                if (!inventory.player.level().isClientSide
-                        && inventory.player.level().getBlockEntity(pos) instanceof WirelessNetworkCoreBlockEntity core) {
+                if (!inventory.player.level().isClientSide && inventory.player.level().getBlockEntity(pos) instanceof WirelessNetworkCoreBlockEntity core) {
                     return core.isLinkedToAeNetwork() ? 1 : 0;
                 }
                 return WirelessNetworkCoreMenu.this.linkedToAeNetwork;
@@ -65,18 +70,18 @@ public class WirelessNetworkCoreMenu extends AbstractContainerMenu {
         NetworkHooks.openScreen(
                 player,
                 new MenuProvider() {
+
                     @Override
-                    public Component getDisplayName() {
+                    public @NotNull Component getDisplayName() {
                         return Component.translatable("screen.gtlcore.wireless_core");
                     }
 
                     @Override
-                    public AbstractContainerMenu createMenu(int containerId, Inventory inventory, Player menuPlayer) {
+                    public AbstractContainerMenu createMenu(int containerId, @NotNull Inventory inventory, @NotNull Player menuPlayer) {
                         return new WirelessNetworkCoreMenu(containerId, inventory, pos, frequency, networkName, linked);
                     }
                 },
-                buffer -> write(buffer, pos, frequency, networkName, linked)
-        );
+                buffer -> write(buffer, pos, frequency, networkName, linked));
     }
 
     private static void write(FriendlyByteBuf buffer, BlockPos pos, UUID frequency, String networkName,
@@ -87,24 +92,12 @@ public class WirelessNetworkCoreMenu extends AbstractContainerMenu {
         buffer.writeBoolean(linked);
     }
 
-    public BlockPos getPos() {
-        return this.pos;
-    }
-
-    public UUID getFrequency() {
-        return this.frequency;
-    }
-
-    public String getNetworkName() {
-        return this.networkName;
-    }
-
     public boolean isLinkedToAeNetwork() {
         return this.linkedToAeNetwork != 0;
     }
 
     @Override
-    public ItemStack quickMoveStack(Player player, int index) {
+    public @NotNull ItemStack quickMoveStack(@NotNull Player player, int index) {
         return ItemStack.EMPTY;
     }
 
@@ -115,11 +108,9 @@ public class WirelessNetworkCoreMenu extends AbstractContainerMenu {
         }
 
         BlockEntity blockEntity = player.level().getBlockEntity(this.pos);
-        return blockEntity instanceof WirelessNetworkCoreBlockEntity
-                && player.distanceToSqr(
+        return blockEntity instanceof WirelessNetworkCoreBlockEntity && player.distanceToSqr(
                 this.pos.getX() + 0.5D,
                 this.pos.getY() + 0.5D,
-                this.pos.getZ() + 0.5D
-        ) <= 64.0D;
+                this.pos.getZ() + 0.5D) <= 64.0D;
     }
 }

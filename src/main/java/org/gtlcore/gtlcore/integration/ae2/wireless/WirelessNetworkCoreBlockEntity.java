@@ -1,27 +1,15 @@
 package org.gtlcore.gtlcore.integration.ae2.wireless;
 
-import appeng.api.networking.GridFlags;
-import appeng.api.networking.GridHelper;
-import appeng.api.networking.IGridConnection;
-import appeng.api.networking.IGridNode;
-import appeng.api.networking.IGridNodeListener;
-import appeng.api.networking.IInWorldGridNodeHost;
-import appeng.api.networking.IManagedGridNode;
-import appeng.api.networking.security.IActionHost;
-import appeng.api.util.AECableType;
 import org.gtlcore.gtlcore.GTLCore;
-import org.gtlcore.gtlcore.integration.ae2.wireless.GTLWirelessAeContent;
+
 import com.gregtechceu.gtceu.api.item.tool.GTToolType;
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
 import com.gregtechceu.gtceu.api.machine.MachineDefinition;
 import com.gregtechceu.gtceu.api.machine.MetaMachine;
+
 import com.lowdragmc.lowdraglib.gui.texture.ResourceTexture;
 import com.lowdragmc.lowdraglib.syncdata.managed.MultiManagedStorage;
-import java.util.ArrayList;
-import java.util.EnumSet;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
@@ -36,19 +24,37 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.shapes.Shapes;
 
+import appeng.api.networking.GridFlags;
+import appeng.api.networking.GridHelper;
+import appeng.api.networking.IGridConnection;
+import appeng.api.networking.IGridNode;
+import appeng.api.networking.IGridNodeListener;
+import appeng.api.networking.IInWorldGridNodeHost;
+import appeng.api.networking.IManagedGridNode;
+import appeng.api.networking.security.IActionHost;
+import appeng.api.util.AECableType;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+
 public class WirelessNetworkCoreBlockEntity extends BlockEntity
-        implements IActionHost, IInWorldGridNodeHost, IMachineBlockEntity {
+                                            implements IActionHost, IInWorldGridNodeHost, IMachineBlockEntity {
+
     private static final String TAG_FREQUENCY = "frequency";
     private static final String NODE_TAG = "wireless_core";
     private static final MachineDefinition DEFINITION = createDefinition();
 
-    private static final IGridNodeListener<WirelessNetworkCoreBlockEntity> NODE_LISTENER =
-            new IGridNodeListener<>() {
-                @Override
-                public void onSaveChanges(WirelessNetworkCoreBlockEntity host, IGridNode node) {
-                    host.setChanged();
-                }
-            };
+    private static final IGridNodeListener<WirelessNetworkCoreBlockEntity> NODE_LISTENER = new IGridNodeListener<>() {
+
+        @Override
+        public void onSaveChanges(WirelessNetworkCoreBlockEntity host, IGridNode node) {
+            host.setChanged();
+        }
+    };
 
     private final IManagedGridNode mainNode = GridHelper.createManagedNode(this, NODE_LISTENER)
             .setFlags(GridFlags.DENSE_CAPACITY)
@@ -103,7 +109,7 @@ public class WirelessNetworkCoreBlockEntity extends BlockEntity
     }
 
     @Override
-    public void load(CompoundTag tag) {
+    public void load(@NotNull CompoundTag tag) {
         super.load(tag);
         if (tag.hasUUID(TAG_FREQUENCY)) {
             this.frequency = tag.getUUID(TAG_FREQUENCY);
@@ -112,7 +118,7 @@ public class WirelessNetworkCoreBlockEntity extends BlockEntity
     }
 
     @Override
-    protected void saveAdditional(CompoundTag tag) {
+    protected void saveAdditional(@NotNull CompoundTag tag) {
         super.saveAdditional(tag);
         tag.putUUID(TAG_FREQUENCY, ensureFrequency());
         this.mainNode.saveToNBT(tag);
@@ -218,15 +224,13 @@ public class WirelessNetworkCoreBlockEntity extends BlockEntity
 
     private static MachineDefinition createDefinition() {
         MachineDefinition definition = MachineDefinition.createDefinition(
-                new ResourceLocation(GTLCore.MOD_ID, "wireless_network_core")
-        );
-        definition.setBlockSupplier(() -> GTLWirelessAeContent.WIRELESS_NETWORK_CORE.get());
-        definition.setBlockEntityTypeSupplier(() -> GTLWirelessAeContent.WIRELESS_NETWORK_CORE_BE.get());
+                new ResourceLocation(GTLCore.MOD_ID, "wireless_network_core"));
+        definition.setBlockSupplier(GTLWirelessAeContent.WIRELESS_NETWORK_CORE::get);
+        definition.setBlockEntityTypeSupplier(GTLWirelessAeContent.WIRELESS_NETWORK_CORE_BE::get);
         definition.setMachineSupplier(WirelessNetworkCoreMachine::new);
         definition.setShape(Shapes.block());
         definition.setAppearance(() -> GTLWirelessAeContent.WIRELESS_NETWORK_CORE.get().defaultBlockState());
-        definition.setTooltipBuilder((stack, tooltip) -> {
-        });
+        definition.setTooltipBuilder((stack, tooltip) -> {});
         return definition;
     }
 
@@ -262,8 +266,7 @@ public class WirelessNetworkCoreBlockEntity extends BlockEntity
         }
 
         try {
-            for (Map.Entry<Direction, IGridConnection> entry
-                    : new ArrayList<>(node.getInWorldConnections().entrySet())) {
+            for (Map.Entry<Direction, IGridConnection> entry : new ArrayList<>(node.getInWorldConnections().entrySet())) {
                 if (entry.getKey() != connectionSide) {
                     entry.getValue().destroy();
                 }
@@ -302,6 +305,7 @@ public class WirelessNetworkCoreBlockEntity extends BlockEntity
     }
 
     private static final class WirelessNetworkCoreMachine extends MetaMachine {
+
         private final WirelessNetworkCoreBlockEntity core;
 
         private WirelessNetworkCoreMachine(IMachineBlockEntity holder) {
@@ -310,7 +314,7 @@ public class WirelessNetworkCoreBlockEntity extends BlockEntity
         }
 
         @Override
-        public void onRotated(Direction oldFacing, Direction newFacing) {
+        public void onRotated(@NotNull Direction oldFacing, @NotNull Direction newFacing) {
             super.onRotated(oldFacing, newFacing);
             if (this.core != null) {
                 this.core.refreshConnectionSide(oldFacing, newFacing);
@@ -319,6 +323,7 @@ public class WirelessNetworkCoreBlockEntity extends BlockEntity
     }
 
     private static final class LevelUpdate {
+
         private static void send(WirelessNetworkCoreBlockEntity core, BlockState state) {
             if (core.level != null) {
                 core.level.sendBlockUpdated(core.worldPosition, state, state, 3);

@@ -17,12 +17,11 @@ import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.registries.RegistryObject;
 
 public final class GTLWirelessAeContent {
+
     private static final DeferredRegister<Block> BLOCKS = DeferredRegister.create(ForgeRegistries.BLOCKS, GTLCore.MOD_ID);
     private static final DeferredRegister<Item> ITEMS = DeferredRegister.create(ForgeRegistries.ITEMS, GTLCore.MOD_ID);
-    private static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITY_TYPES =
-            DeferredRegister.create(ForgeRegistries.BLOCK_ENTITY_TYPES, GTLCore.MOD_ID);
-    private static final DeferredRegister<MenuType<?>> MENU_TYPES =
-            DeferredRegister.create(ForgeRegistries.MENU_TYPES, GTLCore.MOD_ID);
+    private static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITY_TYPES = DeferredRegister.create(ForgeRegistries.BLOCK_ENTITY_TYPES, GTLCore.MOD_ID);
+    private static final DeferredRegister<MenuType<?>> MENU_TYPES = DeferredRegister.create(ForgeRegistries.MENU_TYPES, GTLCore.MOD_ID);
 
     public static final RegistryObject<Block> WIRELESS_NETWORK_CORE = BLOCKS.register(
             "wireless_network_core",
@@ -32,23 +31,20 @@ public final class GTLWirelessAeContent {
             "wireless_network_core",
             () -> new BlockItem(WIRELESS_NETWORK_CORE.get(), new Item.Properties()));
 
-    public static final RegistryObject<BlockEntityType<WirelessNetworkCoreBlockEntity>> WIRELESS_NETWORK_CORE_BE =
-            BLOCK_ENTITY_TYPES.register(
-                    "wireless_network_core",
-                    () -> BlockEntityType.Builder.of(
-                            WirelessNetworkCoreBlockEntity::new,
-                            WIRELESS_NETWORK_CORE.get())
-                            .build(null));
+    public static final RegistryObject<BlockEntityType<WirelessNetworkCoreBlockEntity>> WIRELESS_NETWORK_CORE_BE = BLOCK_ENTITY_TYPES.register(
+            "wireless_network_core",
+            () -> BlockEntityType.Builder.of(
+                    WirelessNetworkCoreBlockEntity::new,
+                    WIRELESS_NETWORK_CORE.get())
+                    .build(null));
 
-    public static final RegistryObject<MenuType<WirelessNetworkCoreMenu>> WIRELESS_NETWORK_CORE_MENU =
-            MENU_TYPES.register(
-                    "wireless_network_core",
-                    () -> IForgeMenuType.create(WirelessNetworkCoreMenu::new));
+    public static final RegistryObject<MenuType<WirelessNetworkCoreMenu>> WIRELESS_NETWORK_CORE_MENU = MENU_TYPES.register(
+            "wireless_network_core",
+            () -> IForgeMenuType.create(WirelessNetworkCoreMenu::new));
 
-    public static final RegistryObject<MenuType<WirelessAeTargetMenu>> WIRELESS_AE_TARGET_MENU =
-            MENU_TYPES.register(
-                    "wireless_ae_target",
-                    () -> IForgeMenuType.create(WirelessAeTargetMenu::new));
+    public static final RegistryObject<MenuType<WirelessAeTargetMenu>> WIRELESS_AE_TARGET_MENU = MENU_TYPES.register(
+            "wireless_ae_target",
+            () -> IForgeMenuType.create(WirelessAeTargetMenu::new));
 
     private GTLWirelessAeContent() {}
 
@@ -61,8 +57,7 @@ public final class GTLWirelessAeContent {
     }
 
     private static void addCreativeTabItems(BuildCreativeModeTabContentsEvent event) {
-        if (CreativeModeTabs.FUNCTIONAL_BLOCKS.equals(event.getTabKey())
-                || GTLCreativeModeTabs.GTL_CORE.getKey().equals(event.getTabKey())) {
+        if (CreativeModeTabs.FUNCTIONAL_BLOCKS.equals(event.getTabKey()) || GTLCreativeModeTabs.GTL_CORE.getKey().equals(event.getTabKey())) {
             event.accept(WIRELESS_NETWORK_CORE_ITEM);
         }
     }

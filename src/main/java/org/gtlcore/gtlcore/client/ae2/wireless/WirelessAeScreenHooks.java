@@ -2,20 +2,15 @@ package org.gtlcore.gtlcore.client.ae2.wireless;
 
 import org.gtlcore.gtlcore.integration.ae2.wireless.WirelessAeNetworkRuntime;
 import org.gtlcore.gtlcore.integration.ae2.wireless.WirelessAePackets;
+
 import com.gregtechceu.gtceu.api.gui.fancy.FancyMachineUIWidget;
 import com.gregtechceu.gtceu.api.gui.fancy.IFancyUIProvider;
 import com.gregtechceu.gtceu.api.gui.fancy.TabsWidget;
-import com.lowdragmc.lowdraglib.gui.texture.IGuiTexture;
+
 import com.lowdragmc.lowdraglib.gui.modular.ModularUIGuiContainer;
+import com.lowdragmc.lowdraglib.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib.gui.widget.Widget;
-import com.lowdragmc.lowdraglib.gui.widget.WidgetGroup;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.IdentityHashMap;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
@@ -33,10 +28,19 @@ import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.client.event.ScreenEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
-import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.registries.ForgeRegistries;
+import org.jetbrains.annotations.NotNull;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 
 final class WirelessAeScreenHooks {
+
     private static final long RECENT_CLICK_MILLIS = 60000L;
     private static final long REQUEST_RETRY_MILLIS = 1000L;
     private static final long CLICK_REFRESH_DELAY_MILLIS = 250L;
@@ -46,8 +50,7 @@ final class WirelessAeScreenHooks {
     private static final int FANCY_HEADER_HEIGHT = 24;
     private static final int NETWORK_ROW_HEIGHT = 24;
     private static final IGuiTexture WIRELESS_TAB_ICON = WirelessAeScreenHooks::drawWirelessTabIcon;
-    private static final ResourceLocation WIRELESS_TAB_TEXTURE =
-            new ResourceLocation("gtlcore", "textures/gui/wireless/tab_wireless_selected.png");
+    private static final ResourceLocation WIRELESS_TAB_TEXTURE = new ResourceLocation("gtlcore", "textures/gui/wireless/tab_wireless_selected.png");
 
     private static final String[] POSITION_METHODS = {
             "getBlockPos",
@@ -100,13 +103,12 @@ final class WirelessAeScreenHooks {
     private static IFancyUIProvider fancyMainPage;
     private static WirelessAeFancyPageProvider fancyProvider;
 
-    private WirelessAeScreenHooks() {
-    }
+    private WirelessAeScreenHooks() {}
 
-    static void register(IEventBus forgeBus) {
-        forgeBus.addListener(WirelessAeScreenHooks::onRightClickBlock);
-        forgeBus.addListener(WirelessAeScreenHooks::onScreenInit);
-        forgeBus.addListener(WirelessAeScreenHooks::onScreenRenderPre);
+    static void register() {
+        net.minecraftforge.common.MinecraftForge.EVENT_BUS.addListener(WirelessAeScreenHooks::onRightClickBlock);
+        net.minecraftforge.common.MinecraftForge.EVENT_BUS.addListener(WirelessAeScreenHooks::onScreenInit);
+        net.minecraftforge.common.MinecraftForge.EVENT_BUS.addListener(WirelessAeScreenHooks::onScreenRenderPre);
     }
 
     private static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
@@ -130,9 +132,7 @@ final class WirelessAeScreenHooks {
 
     private static void installWirelessUiForScreen(Screen screen) {
         closeEmbeddedPanelIfScreenChanged(screen);
-        if (!(screen instanceof ModularUIGuiContainer modularScreen)
-                || screen instanceof WirelessAeTargetScreen
-                || screen instanceof WirelessNetworkCoreScreen) {
+        if (!(screen instanceof ModularUIGuiContainer modularScreen)) {
             return;
         }
 
@@ -204,11 +204,7 @@ final class WirelessAeScreenHooks {
                                                                         BlockPos targetPos,
                                                                         FancyMachineUIWidget fancy) {
         IFancyUIProvider mainPage = fancy.getMainPage();
-        if (fancyScreen != screen
-                || fancyProvider == null
-                || fancyMainPage != mainPage
-                || fancyTargetPos == null
-                || !fancyTargetPos.equals(targetPos)) {
+        if (fancyScreen != screen || fancyProvider == null || fancyMainPage != mainPage || fancyTargetPos == null || !fancyTargetPos.equals(targetPos)) {
             fancyScreen = screen;
             fancyTargetPos = targetPos.immutable();
             fancyMainPage = mainPage;
@@ -216,8 +212,7 @@ final class WirelessAeScreenHooks {
                     screen,
                     fancyTargetPos,
                     mainPage,
-                    snapshotOriginalSubTabs(fancy.getSideTabsWidget())
-            );
+                    snapshotOriginalSubTabs(fancy.getSideTabsWidget()));
         } else {
             fancyProvider.updateTarget(screen, targetPos);
         }
@@ -252,7 +247,7 @@ final class WirelessAeScreenHooks {
             updated.add(provider);
         }
         if (!updated.equals(pages)) {
-            writeField(fancy, "allPages", List.copyOf(updated));
+            writeField(fancy, List.copyOf(updated));
         }
     }
 
@@ -318,8 +313,7 @@ final class WirelessAeScreenHooks {
         embeddedRequestAtMillis = System.currentTimeMillis();
         TargetHit hit = getEmbeddedTargetHit(targetPos);
         WirelessAePackets.CHANNEL.sendToServer(
-                new WirelessAePackets.RequestTargetNetworksPacket(targetPos, hit.side(), hit.location())
-        );
+                new WirelessAePackets.RequestTargetNetworksPacket(targetPos, hit.side(), hit.location()));
     }
 
     static void receiveTargetNetworks(BlockPos targetPos, List<WirelessAePackets.TargetNetworkEntry> entries) {
@@ -342,8 +336,7 @@ final class WirelessAeScreenHooks {
                 x + PANEL_MARGIN,
                 y + FANCY_HEADER_HEIGHT,
                 width - PANEL_MARGIN * 2,
-                height - FANCY_HEADER_HEIGHT - PANEL_MARGIN
-        );
+                height - FANCY_HEADER_HEIGHT - PANEL_MARGIN);
 
         graphics.drawString(
                 font,
@@ -351,8 +344,7 @@ final class WirelessAeScreenHooks {
                 x + 8,
                 y + 8,
                 WirelessAeStyle.TEXT,
-                false
-        );
+                false);
 
         int contentX = x + PANEL_MARGIN + 6;
         int contentY = y + FANCY_HEADER_HEIGHT + 8;
@@ -363,14 +355,11 @@ final class WirelessAeScreenHooks {
         WirelessAeStyle.drawTrimmedString(
                 graphics,
                 font,
-                connected == null
-                        ? Component.translatable("label.gtlcore.wireless_target.current_disconnected")
-                        : Component.translatable("label.gtlcore.wireless_target.current_connected", connected.name()),
+                connected == null ? Component.translatable("label.gtlcore.wireless_target.current_disconnected") : Component.translatable("label.gtlcore.wireless_target.current_connected", connected.name()),
                 contentX + 14,
                 contentY + 1,
                 contentWidth - 14,
-                connected == null ? WirelessAeStyle.MUTED_TEXT : WirelessAeStyle.ONLINE_TEXT
-        );
+                connected == null ? WirelessAeStyle.MUTED_TEXT : WirelessAeStyle.ONLINE_TEXT);
         int listY = contentY + 18;
 
         if (!embeddedHasData) {
@@ -381,8 +370,7 @@ final class WirelessAeScreenHooks {
                     contentX,
                     listY,
                     contentWidth,
-                    WirelessAeStyle.MUTED_TEXT
-            );
+                    WirelessAeStyle.MUTED_TEXT);
             return;
         }
 
@@ -394,8 +382,7 @@ final class WirelessAeScreenHooks {
                     contentX,
                     listY,
                     contentWidth,
-                    WirelessAeStyle.WARNING_TEXT
-            );
+                    WirelessAeStyle.WARNING_TEXT);
             return;
         }
 
@@ -406,20 +393,20 @@ final class WirelessAeScreenHooks {
             WirelessAePackets.TargetNetworkEntry entry = embeddedEntries.get(i);
             int rowY = listY + i * NETWORK_ROW_HEIGHT;
             boolean hovered = isInsideRect(mouseX, mouseY, contentX, rowY, contentWidth, 20);
-            drawNetworkRow(graphics, contentX, rowY, contentWidth, 20, entry, hovered);
+            drawNetworkRow(graphics, contentX, rowY, contentWidth, entry, hovered);
         }
 
         if (connected != null) {
             int disconnectY = y + height - 30;
             WirelessAeStyle.drawSeparator(graphics, contentX, disconnectY - 5, contentWidth);
             boolean hovered = isInsideRect(mouseX, mouseY, contentX, disconnectY, contentWidth, 20);
-            drawDisconnectRow(graphics, contentX, disconnectY, contentWidth, 20, hovered);
+            drawDisconnectRow(graphics, contentX, disconnectY, contentWidth, hovered);
         }
     }
 
-    private static void drawNetworkRow(GuiGraphics graphics, int x, int y, int width, int height,
+    private static void drawNetworkRow(GuiGraphics graphics, int x, int y, int width,
                                        WirelessAePackets.TargetNetworkEntry entry, boolean hovered) {
-        WirelessAeStyle.drawButtonBackground(graphics, x, y, width, height,
+        WirelessAeStyle.drawButtonBackground(graphics, x, y, width, 20,
                 true, entry.connected(), false, hovered);
 
         net.minecraft.client.gui.Font font = Minecraft.getInstance().font;
@@ -432,12 +419,11 @@ final class WirelessAeScreenHooks {
                 textX,
                 y + 5,
                 Math.max(8, width - 20 - checkSpace),
-                WirelessAeStyle.TEXT
-        );
+                WirelessAeStyle.TEXT);
     }
 
-    private static void drawDisconnectRow(GuiGraphics graphics, int x, int y, int width, int height, boolean hovered) {
-        WirelessAeStyle.drawButtonBackground(graphics, x, y, width, height,
+    private static void drawDisconnectRow(GuiGraphics graphics, int x, int y, int width, boolean hovered) {
+        WirelessAeStyle.drawButtonBackground(graphics, x, y, width, 20,
                 true, false, true, hovered);
         WirelessAeStyle.drawTrimmedString(
                 graphics,
@@ -446,8 +432,7 @@ final class WirelessAeScreenHooks {
                 x + 8,
                 y + 5,
                 width - 16,
-                WirelessAeStyle.WARNING_TEXT
-        );
+                WirelessAeStyle.WARNING_TEXT);
     }
 
     private static void handleWirelessPageClick(BlockPos targetPos, int x, int y, int width, int height,
@@ -489,9 +474,7 @@ final class WirelessAeScreenHooks {
                             hit.side(),
                             hit.location(),
                             entry.frequency(),
-                            false
-                    )
-            );
+                            false));
             markEmbeddedConnection(entry.frequency());
             scheduleEmbeddedRefresh();
         }
@@ -505,9 +488,7 @@ final class WirelessAeScreenHooks {
                         hit.side(),
                         hit.location(),
                         entry.frequency(),
-                        true
-                )
-        );
+                        true));
         markEmbeddedConnection(null);
         scheduleEmbeddedRefresh();
     }
@@ -518,8 +499,7 @@ final class WirelessAeScreenHooks {
             updated.add(new WirelessAePackets.TargetNetworkEntry(
                     entry.frequency(),
                     entry.name(),
-                    frequency != null && entry.frequency().equals(frequency)
-            ));
+                    entry.frequency().equals(frequency)));
         }
         embeddedEntries = List.copyOf(updated);
         embeddedHasData = true;
@@ -563,23 +543,18 @@ final class WirelessAeScreenHooks {
             return TargetHit.EMPTY;
         }
 
-        if (Minecraft.getInstance().hitResult instanceof BlockHitResult hit
-                && hit.getType() == HitResult.Type.BLOCK
-                && targetPos.equals(hit.getBlockPos())) {
+        if (Minecraft.getInstance().hitResult instanceof BlockHitResult hit && hit.getType() == HitResult.Type.BLOCK && targetPos.equals(hit.getBlockPos())) {
             return new TargetHit(hit.getDirection(), hit.getLocation());
         }
 
-        if (recentClickedPos != null
-                && targetPos.equals(recentClickedPos)
-                && System.currentTimeMillis() - recentClickedAtMillis <= RECENT_CLICK_MILLIS) {
+        if (targetPos.equals(recentClickedPos) && System.currentTimeMillis() - recentClickedAtMillis <= RECENT_CLICK_MILLIS) {
             return new TargetHit(recentClickedSide, recentClickedLocation);
         }
         return TargetHit.EMPTY;
     }
 
     private static BlockPos getCrosshairBlockPos() {
-        if (Minecraft.getInstance().hitResult instanceof BlockHitResult hit
-                && hit.getType() == HitResult.Type.BLOCK) {
+        if (Minecraft.getInstance().hitResult instanceof BlockHitResult hit && hit.getType() == HitResult.Type.BLOCK) {
             return hit.getBlockPos();
         }
         return null;
@@ -591,9 +566,7 @@ final class WirelessAeScreenHooks {
         }
 
         BlockEntity blockEntity = level.getBlockEntity(pos);
-        return isLikelyAeTarget(blockEntity)
-                || isLikelyAeTarget(invokeNoArg(blockEntity, "getMetaMachine"))
-                || isLikelyAeBlockId(ForgeRegistries.BLOCKS.getKey(level.getBlockState(pos).getBlock()));
+        return isLikelyAeTarget(blockEntity) || isLikelyAeTarget(invokeNoArg(blockEntity, "getMetaMachine")) || isLikelyAeBlockId(ForgeRegistries.BLOCKS.getKey(level.getBlockState(pos).getBlock()));
     }
 
     private static boolean isLikelyAeTarget(Object target) {
@@ -602,22 +575,7 @@ final class WirelessAeScreenHooks {
         }
 
         String className = target.getClass().getName().toLowerCase(java.util.Locale.ROOT);
-        return className.startsWith("appeng.")
-                || className.startsWith("com.glodblock.github.")
-                || className.startsWith("com.gregtechceu.gtceu.integration.ae2.")
-                || className.startsWith("org.gtlcore.gtlcore.integration.ae2.")
-                || className.startsWith("org.gtlcore.gtlcore.common.machine.multiblock.part.ae.")
-                || className.startsWith("com.hepdd.gtmthings.common.block.machine.multiblock.part.appeng.")
-                || className.contains(".ae2.")
-                || className.contains(".ae.")
-                || className.contains(".appeng.")
-                || className.contains("extendedae")
-                || className.contains("expattern")
-                || className.contains("mepattern")
-                || className.contains("me_pattern")
-                || className.contains("patternbuffer")
-                || className.contains("pattern_buffer")
-                || className.contains("pattern_provider");
+        return className.startsWith("appeng.") || className.startsWith("com.glodblock.github.") || className.startsWith("com.gregtechceu.gtceu.integration.ae2.") || className.startsWith("org.gtlcore.gtlcore.integration.ae2.") || className.startsWith("org.gtlcore.gtlcore.common.machine.multiblock.part.ae.") || className.startsWith("com.hepdd.gtmthings.common.block.machine.multiblock.part.appeng.") || className.contains(".ae2.") || className.contains(".ae.") || className.contains(".appeng.") || className.contains("extendedae") || className.contains("expattern") || className.contains("mepattern") || className.contains("me_pattern") || className.contains("patternbuffer") || className.contains("pattern_buffer") || className.contains("pattern_provider");
     }
 
     private static boolean isLikelyAeBlockId(ResourceLocation blockId) {
@@ -627,31 +585,11 @@ final class WirelessAeScreenHooks {
 
         String namespace = blockId.getNamespace();
         String path = blockId.getPath();
-        return "ae2".equals(namespace)
-                || "appeng".equals(namespace)
-                || "expatternprovider".equals(namespace)
-                || "extendedae".equals(namespace)
-                || "megacells".equals(namespace)
-                || ("gtceu".equals(namespace) && isLikelyAePath(path))
-                || ("gtlcore".equals(namespace) && isLikelyAePath(path))
-                || ("gtmthings".equals(namespace) && isLikelyAePath(path))
-                || path.contains("me_")
-                || path.contains("ae")
-                || path.contains("pattern")
-                || path.contains("interface")
-                || path.contains("provider");
+        return "ae2".equals(namespace) || "appeng".equals(namespace) || "expatternprovider".equals(namespace) || "extendedae".equals(namespace) || "megacells".equals(namespace) || ("gtceu".equals(namespace) && isLikelyAePath(path)) || ("gtlcore".equals(namespace) && isLikelyAePath(path)) || ("gtmthings".equals(namespace) && isLikelyAePath(path)) || path.contains("me_") || path.contains("ae") || path.contains("pattern") || path.contains("interface") || path.contains("provider");
     }
 
     private static boolean isLikelyAePath(String path) {
-        return path.contains("me_")
-                || path.contains("ae")
-                || path.contains("pattern")
-                || path.contains("interface")
-                || path.contains("provider")
-                || path.contains("stocking")
-                || path.contains("import_bus")
-                || path.contains("export_bus")
-                || path.contains("storage_bus");
+        return path.contains("me_") || path.contains("ae") || path.contains("pattern") || path.contains("interface") || path.contains("provider") || path.contains("stocking") || path.contains("import_bus") || path.contains("export_bus") || path.contains("storage_bus");
     }
 
     private static List<BlockPos> findTargetPositions(Object target) {
@@ -757,12 +695,12 @@ final class WirelessAeScreenHooks {
         }
     }
 
-    private static void writeField(Object target, String fieldName, Object value) {
+    private static void writeField(Object target, Object value) {
         if (target == null) {
             return;
         }
 
-        Field field = findField(target.getClass(), fieldName);
+        Field field = findField(target.getClass(), "allPages");
         if (field == null) {
             return;
         }
@@ -787,6 +725,7 @@ final class WirelessAeScreenHooks {
     }
 
     private static final class WirelessAeFancyPageProvider implements IFancyUIProvider {
+
         private AbstractContainerScreen<?> screen;
         private BlockPos targetPos;
         private final IFancyUIProvider mainPage;
@@ -825,7 +764,7 @@ final class WirelessAeScreenHooks {
         public void attachSideTabs(TabsWidget tabsWidget) {
             tabsWidget.setMainTab(mainPage);
             for (IFancyUIProvider tab : siblingTabs) {
-                if (tab != this && !(tab instanceof WirelessAeFancyPageProvider)) {
+                if (!(tab instanceof WirelessAeFancyPageProvider)) {
                     tabsWidget.attachSubTab(tab);
                 }
             }
@@ -844,6 +783,7 @@ final class WirelessAeScreenHooks {
     }
 
     private static final class WirelessAeFancyPageWidget extends Widget {
+
         private final AbstractContainerScreen<?> screen;
         private final BlockPos targetPos;
 
@@ -855,7 +795,7 @@ final class WirelessAeScreenHooks {
         }
 
         @Override
-        public void drawInBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
+        public void drawInBackground(@NotNull GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
             if (Minecraft.getInstance().screen != this.screen) {
                 return;
             }
@@ -891,6 +831,7 @@ final class WirelessAeScreenHooks {
     }
 
     private record TargetHit(Direction side, Vec3 location) {
+
         private static final TargetHit EMPTY = new TargetHit(null, null);
     }
 

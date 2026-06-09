@@ -1,23 +1,7 @@
 package org.gtlcore.gtlcore.integration.ae2.wireless;
 
-import appeng.api.networking.GridHelper;
-import appeng.api.networking.IGridConnection;
-import appeng.api.networking.IGridNode;
-import appeng.api.networking.IInWorldGridNodeHost;
-import appeng.api.networking.IManagedGridNode;
-import appeng.api.parts.IPart;
-import appeng.api.parts.IPartHost;
-import appeng.api.networking.security.IActionHost;
 import org.gtlcore.gtlcore.GTLCore;
-import java.util.Collections;
-import java.lang.reflect.Method;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.IdentityHashMap;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
@@ -32,7 +16,27 @@ import net.minecraftforge.event.level.BlockEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.registries.ForgeRegistries;
 
+import appeng.api.networking.GridHelper;
+import appeng.api.networking.IGridConnection;
+import appeng.api.networking.IGridNode;
+import appeng.api.networking.IInWorldGridNodeHost;
+import appeng.api.networking.IManagedGridNode;
+import appeng.api.networking.security.IActionHost;
+import appeng.api.parts.IPart;
+import appeng.api.parts.IPartHost;
+
+import java.lang.reflect.Method;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.IdentityHashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+
 public final class WirelessAeNetworkRuntime {
+
     private static final int CONNECT_INTERVAL_TICKS = 20;
 
     private static final Map<UUID, Map<WirelessAeSavedData.MemberKey, IGridConnection>> CONNECTIONS = new HashMap<>();
@@ -48,8 +52,7 @@ public final class WirelessAeNetworkRuntime {
         FAILED
     }
 
-    private WirelessAeNetworkRuntime() {
-    }
+    private WirelessAeNetworkRuntime() {}
 
     public static void register(IEventBus forgeBus) {
         forgeBus.addListener(WirelessAeNetworkRuntime::onBlockBreak);
@@ -124,8 +127,7 @@ public final class WirelessAeNetworkRuntime {
             return ConnectionResult.CORE_NOT_CONNECTED;
         }
 
-        Map<WirelessAeSavedData.MemberKey, IGridConnection> frequencyConnections =
-                CONNECTIONS.computeIfAbsent(frequency, ignored -> new HashMap<>());
+        Map<WirelessAeSavedData.MemberKey, IGridConnection> frequencyConnections = CONNECTIONS.computeIfAbsent(frequency, ignored -> new HashMap<>());
         ConnectionResult result = connectMember(frequency, corePos, member, bridgeNode, frequencyConnections);
         removeEmptyConnectionSet(frequency, frequencyConnections);
         return result;
@@ -219,9 +221,7 @@ public final class WirelessAeNetworkRuntime {
     public static WirelessAeSavedData.MemberKey resolveWirelessTarget(ServerLevel level, BlockPos pos, Direction side,
                                                                       Vec3 hitLocation) {
         BlockPos targetPos = resolveWirelessTargetPos(level, pos);
-        Direction targetSide = targetPos.equals(pos)
-                ? resolvePartSide(level, targetPos, side, hitLocation)
-                : null;
+        Direction targetSide = targetPos.equals(pos) ? resolvePartSide(level, targetPos, side, hitLocation) : null;
         return WirelessAeSavedData.MemberKey.of(level.dimension(), targetPos, targetSide);
     }
 
@@ -277,8 +277,7 @@ public final class WirelessAeNetworkRuntime {
             return;
         }
 
-        Iterator<Map.Entry<WirelessAeSavedData.MemberKey, IGridConnection>> iterator =
-                frequencyConnections.entrySet().iterator();
+        Iterator<Map.Entry<WirelessAeSavedData.MemberKey, IGridConnection>> iterator = frequencyConnections.entrySet().iterator();
         while (iterator.hasNext()) {
             Map.Entry<WirelessAeSavedData.MemberKey, IGridConnection> entry = iterator.next();
             if (entry.getKey().pos().equals(member)) {
@@ -319,11 +318,9 @@ public final class WirelessAeNetworkRuntime {
         }
 
         Set<WirelessAeSavedData.MemberKey> members = data.getMembers(frequency);
-        Map<WirelessAeSavedData.MemberKey, IGridConnection> frequencyConnections =
-                CONNECTIONS.computeIfAbsent(frequency, ignored -> new HashMap<>());
+        Map<WirelessAeSavedData.MemberKey, IGridConnection> frequencyConnections = CONNECTIONS.computeIfAbsent(frequency, ignored -> new HashMap<>());
 
-        Iterator<Map.Entry<WirelessAeSavedData.MemberKey, IGridConnection>> existing =
-                frequencyConnections.entrySet().iterator();
+        Iterator<Map.Entry<WirelessAeSavedData.MemberKey, IGridConnection>> existing = frequencyConnections.entrySet().iterator();
         while (existing.hasNext()) {
             Map.Entry<WirelessAeSavedData.MemberKey, IGridConnection> entry = existing.next();
             if (!members.contains(entry.getKey())) {
@@ -378,8 +375,7 @@ public final class WirelessAeNetworkRuntime {
                     corePos,
                     member,
                     shortFrequency(frequency),
-                    error
-            );
+                    error);
             return ConnectionResult.FAILED;
         }
     }
@@ -412,10 +408,6 @@ public final class WirelessAeNetworkRuntime {
             return null;
         }
         return level.getBlockEntity(pos.pos());
-    }
-
-    private static IGridNode findTargetNode(MinecraftServer server, GlobalPos pos) {
-        return findTargetNode(server, new WirelessAeSavedData.MemberKey(pos, null));
     }
 
     private static IGridNode findTargetNode(MinecraftServer server, WirelessAeSavedData.MemberKey member) {
@@ -609,7 +601,7 @@ public final class WirelessAeNetworkRuntime {
                 return noSideNode;
             }
 
-            IGridNode mainNode = invokeManagedGridNode(target, "getMainNode");
+            IGridNode mainNode = invokeManagedGridNode(target);
             if (mainNode != null) {
                 return mainNode;
             }
@@ -619,7 +611,7 @@ public final class WirelessAeNetworkRuntime {
                 return directNode;
             }
 
-            for (String nestedMethod : new String[]{"getMetaMachine", "getMachine", "getNodeHolder", "getMETrait"}) {
+            for (String nestedMethod : new String[] { "getMetaMachine", "getMachine", "getNodeHolder", "getMETrait" }) {
                 IGridNode nestedNode = findNode(invokeObject(target, nestedMethod), visited, depth + 1);
                 if (nestedNode != null) {
                     return nestedNode;
@@ -657,9 +649,9 @@ public final class WirelessAeNetworkRuntime {
         return null;
     }
 
-    private static IGridNode invokeManagedGridNode(Object target, String methodName) {
+    private static IGridNode invokeManagedGridNode(Object target) {
         try {
-            Method method = target.getClass().getMethod(methodName);
+            Method method = target.getClass().getMethod("getMainNode");
             Object result = method.invoke(target);
             if (result instanceof IManagedGridNode managedGridNode) {
                 return managedGridNode.getNode();
@@ -684,14 +676,14 @@ public final class WirelessAeNetworkRuntime {
             return null;
         }
 
-        for (String methodName : new String[]{"getBufferPos", "getMainPos", "getControllerPos", "getControllerBlockPos"}) {
+        for (String methodName : new String[] { "getBufferPos", "getMainPos", "getControllerPos", "getControllerBlockPos" }) {
             BlockPos pos = invokeBlockPos(target, methodName);
             if (isResolvableTargetPos(level, pos)) {
                 return pos;
             }
         }
 
-        for (String methodName : new String[]{"getBuffer", "getController"}) {
+        for (String methodName : new String[] { "getBuffer", "getController" }) {
             Object referencedTarget = invokeObject(target, methodName);
             BlockPos pos = invokeBlockPos(referencedTarget, "getPos");
             if (isResolvableTargetPos(level, pos)) {
@@ -715,9 +707,7 @@ public final class WirelessAeNetworkRuntime {
     }
 
     private static boolean isResolvableTargetPos(Level level, BlockPos pos) {
-        return pos != null
-                && level.hasChunkAt(pos)
-                && !(level.getBlockEntity(pos) instanceof WirelessNetworkCoreBlockEntity);
+        return pos != null && level.hasChunkAt(pos) && !(level.getBlockEntity(pos) instanceof WirelessNetworkCoreBlockEntity);
     }
 
     private static boolean isKnownAeTarget(Level level, BlockPos pos) {
@@ -736,22 +726,14 @@ public final class WirelessAeNetworkRuntime {
         }
 
         String className = blockEntity.getClass().getName();
-        if (className.startsWith("appeng.")
-                || className.startsWith("com.glodblock.github.extendedae.")
-                || className.startsWith("com.gregtechceu.gtceu.integration.ae2.")
-                || className.startsWith("com.hepdd.gtmthings.common.block.machine.multiblock.part.appeng.")
-                || className.startsWith("org.gtlcore.gtlcore.integration.ae2.")
-                || className.startsWith("org.gtlcore.gtlcore.common.machine.multiblock.part.ae.")) {
+        if (className.startsWith("appeng.") || className.startsWith("com.glodblock.github.extendedae.") || className.startsWith("com.gregtechceu.gtceu.integration.ae2.") || className.startsWith("com.hepdd.gtmthings.common.block.machine.multiblock.part.appeng.") || className.startsWith("org.gtlcore.gtlcore.integration.ae2.") || className.startsWith("org.gtlcore.gtlcore.common.machine.multiblock.part.ae.")) {
             return true;
         }
 
         Object metaMachine = invokeObject(blockEntity, "getMetaMachine");
         if (metaMachine != null) {
             String metaMachineClassName = metaMachine.getClass().getName();
-            if (metaMachineClassName.startsWith("com.gregtechceu.gtceu.integration.ae2.")
-                    || metaMachineClassName.startsWith("com.hepdd.gtmthings.common.block.machine.multiblock.part.appeng.")
-                    || metaMachineClassName.startsWith("org.gtlcore.gtlcore.integration.ae2.")
-                    || metaMachineClassName.startsWith("org.gtlcore.gtlcore.common.machine.multiblock.part.ae.")) {
+            if (metaMachineClassName.startsWith("com.gregtechceu.gtceu.integration.ae2.") || metaMachineClassName.startsWith("com.hepdd.gtmthings.common.block.machine.multiblock.part.appeng.") || metaMachineClassName.startsWith("org.gtlcore.gtlcore.integration.ae2.") || metaMachineClassName.startsWith("org.gtlcore.gtlcore.common.machine.multiblock.part.ae.")) {
                 return true;
             }
         }
@@ -770,28 +752,11 @@ public final class WirelessAeNetworkRuntime {
 
         String namespace = blockId.getNamespace();
         String path = blockId.getPath();
-        return "ae2".equals(namespace)
-                || "appeng".equals(namespace)
-                || "expatternprovider".equals(namespace)
-                || "extendedae".equals(namespace)
-                || "megacells".equals(namespace)
-                || ("merequester".equals(namespace) && isAeLikePath(path))
-                || ("gtceu".equals(namespace) && (path.contains("me_") || path.contains("ae") || path.contains("pattern")))
-                || ("gtlcore".equals(namespace) && (path.contains("me_") || path.contains("ae") || path.contains("pattern")))
-                || ("gtmthings".equals(namespace) && isAeLikePath(path))
-                || (namespace.contains("ae") && isAeLikePath(path));
+        return "ae2".equals(namespace) || "appeng".equals(namespace) || "expatternprovider".equals(namespace) || "extendedae".equals(namespace) || "megacells".equals(namespace) || ("merequester".equals(namespace) && isAeLikePath(path)) || ("gtceu".equals(namespace) && (path.contains("me_") || path.contains("ae") || path.contains("pattern"))) || ("gtlcore".equals(namespace) && (path.contains("me_") || path.contains("ae") || path.contains("pattern"))) || ("gtmthings".equals(namespace) && isAeLikePath(path)) || (namespace.contains("ae") && isAeLikePath(path));
     }
 
     private static boolean isAeLikePath(String path) {
-        return path.contains("me_")
-                || path.contains("ae")
-                || path.contains("pattern")
-                || path.contains("interface")
-                || path.contains("requester")
-                || path.contains("provider")
-                || path.contains("import_bus")
-                || path.contains("export_bus")
-                || path.contains("storage_bus");
+        return path.contains("me_") || path.contains("ae") || path.contains("pattern") || path.contains("interface") || path.contains("requester") || path.contains("provider") || path.contains("import_bus") || path.contains("export_bus") || path.contains("storage_bus");
     }
 
     private static boolean connectionMatches(IGridConnection connection, IGridNode coreNode, IGridNode targetNode) {

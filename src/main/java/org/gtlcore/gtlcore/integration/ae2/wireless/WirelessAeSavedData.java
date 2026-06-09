@@ -1,15 +1,5 @@
 package org.gtlcore.gtlcore.integration.ae2.wireless;
 
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.ArrayList;
-import java.util.Comparator;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
@@ -22,8 +12,21 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.saveddata.SavedData;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
 public class WirelessAeSavedData extends SavedData {
+
     private static final String DATA_NAME = "gtlcore_wireless_ae_networks";
     private static final String TAG_NETWORKS = "networks";
     private static final String TAG_FREQUENCY = "frequency";
@@ -42,8 +45,7 @@ public class WirelessAeSavedData extends SavedData {
         return server.overworld().getDataStorage().computeIfAbsent(
                 WirelessAeSavedData::load,
                 WirelessAeSavedData::new,
-                DATA_NAME
-        );
+                DATA_NAME);
     }
 
     public static WirelessAeSavedData load(CompoundTag tag) {
@@ -72,7 +74,7 @@ public class WirelessAeSavedData extends SavedData {
     }
 
     @Override
-    public CompoundTag save(CompoundTag tag) {
+    public @NotNull CompoundTag save(@NotNull CompoundTag tag) {
         ListTag networksTag = new ListTag();
         for (Map.Entry<UUID, NetworkRecord> entry : this.networks.entrySet()) {
             NetworkRecord record = entry.getValue();
@@ -279,8 +281,7 @@ public class WirelessAeSavedData extends SavedData {
         try {
             ResourceKey<Level> dimension = ResourceKey.create(
                     Registries.DIMENSION,
-                    new ResourceLocation(tag.getString(TAG_DIMENSION))
-            );
+                    new ResourceLocation(tag.getString(TAG_DIMENSION)));
             BlockPos pos = new BlockPos(tag.getInt(TAG_X), tag.getInt(TAG_Y), tag.getInt(TAG_Z));
             return GlobalPos.of(dimension, pos);
         } catch (RuntimeException ignored) {
@@ -310,15 +311,16 @@ public class WirelessAeSavedData extends SavedData {
     }
 
     private static final class NetworkRecord {
+
         private GlobalPos core;
         private String name = "";
         private final Set<MemberKey> members = new HashSet<>();
     }
 
-    public record NetworkInfo(UUID frequency, String name, GlobalPos core) {
-    }
+    public record NetworkInfo(UUID frequency, String name, GlobalPos core) {}
 
     public record MemberKey(GlobalPos pos, Direction side) {
+
         public static MemberKey of(ResourceKey<Level> dimension, BlockPos pos, Direction side) {
             return new MemberKey(GlobalPos.of(dimension, pos), side);
         }

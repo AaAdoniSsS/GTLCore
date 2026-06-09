@@ -1,9 +1,6 @@
 package org.gtlcore.gtlcore.integration.ae2.wireless;
 
-import org.gtlcore.gtlcore.integration.ae2.wireless.GTLWirelessAeContent;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
+import lombok.Getter;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.FriendlyByteBuf;
@@ -17,8 +14,15 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.network.NetworkHooks;
+import org.jetbrains.annotations.NotNull;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+@Getter
 public class WirelessAeTargetMenu extends AbstractContainerMenu {
+
     private final BlockPos targetPos;
     private final BlockPos originPos;
     private final Direction targetSide;
@@ -35,8 +39,7 @@ public class WirelessAeTargetMenu extends AbstractContainerMenu {
             this.networks.add(new Entry(
                     data.readUUID(),
                     data.readUtf(32),
-                    data.readBoolean()
-            ));
+                    data.readBoolean()));
         }
     }
 
@@ -59,8 +62,7 @@ public class WirelessAeTargetMenu extends AbstractContainerMenu {
                 level,
                 originPos,
                 targetSide,
-                hitLocation
-        );
+                hitLocation);
         BlockPos resolvedTargetPos = target.blockPos();
         WirelessAeSavedData data = WirelessAeSavedData.get(level.getServer());
         UUID currentNetwork = data.getMemberNetwork(target);
@@ -69,32 +71,30 @@ public class WirelessAeTargetMenu extends AbstractContainerMenu {
             entries.add(new Entry(
                     network.frequency(),
                     network.name(),
-                    network.frequency().equals(currentNetwork)
-            ));
+                    network.frequency().equals(currentNetwork)));
         }
 
         NetworkHooks.openScreen(
                 player,
                 new MenuProvider() {
+
                     @Override
-                    public Component getDisplayName() {
+                    public @NotNull Component getDisplayName() {
                         return Component.translatable("screen.gtlcore.wireless_target");
                     }
 
                     @Override
-                    public AbstractContainerMenu createMenu(int containerId, Inventory inventory, Player menuPlayer) {
+                    public AbstractContainerMenu createMenu(int containerId, @NotNull Inventory inventory, @NotNull Player menuPlayer) {
                         return new WirelessAeTargetMenu(
                                 containerId,
                                 inventory,
                                 resolvedTargetPos,
                                 originPos,
                                 target.side(),
-                                entries
-                        );
+                                entries);
                     }
                 },
-                buffer -> write(buffer, resolvedTargetPos, originPos, target.side(), entries)
-        );
+                buffer -> write(buffer, resolvedTargetPos, originPos, target.side(), entries));
     }
 
     private static void write(FriendlyByteBuf buffer, BlockPos targetPos, BlockPos originPos, Direction targetSide,
@@ -110,39 +110,20 @@ public class WirelessAeTargetMenu extends AbstractContainerMenu {
         }
     }
 
-    public BlockPos getTargetPos() {
-        return this.targetPos;
-    }
-
-    public BlockPos getOriginPos() {
-        return this.originPos;
-    }
-
-    public Direction getTargetSide() {
-        return this.targetSide;
-    }
-
-    public List<Entry> getNetworks() {
-        return this.networks;
-    }
-
     @Override
-    public ItemStack quickMoveStack(Player player, int index) {
+    public @NotNull ItemStack quickMoveStack(@NotNull Player player, int index) {
         return ItemStack.EMPTY;
     }
 
     @Override
     public boolean stillValid(Player player) {
-        return player.level().isClientSide
-                || player.distanceToSqr(
+        return player.level().isClientSide || player.distanceToSqr(
                 this.targetPos.getX() + 0.5D,
                 this.targetPos.getY() + 0.5D,
-                this.targetPos.getZ() + 0.5D
-        ) <= 64.0D;
+                this.targetPos.getZ() + 0.5D) <= 64.0D;
     }
 
-    public record Entry(UUID frequency, String name, boolean connected) {
-    }
+    public record Entry(UUID frequency, String name, boolean connected) {}
 
     private static void writeDirection(FriendlyByteBuf buffer, Direction direction) {
         buffer.writeBoolean(direction != null);

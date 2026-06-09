@@ -1,10 +1,7 @@
 package org.gtlcore.gtlcore.integration.ae2.wireless;
 
 import org.gtlcore.gtlcore.GTLCore;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-import java.util.function.Supplier;
+
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
@@ -26,7 +23,13 @@ import net.minecraftforge.network.NetworkRegistry;
 import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import java.util.function.Supplier;
+
 public final class WirelessAePackets {
+
     private static final String PROTOCOL_VERSION = "1";
     private static int nextPacketId;
 
@@ -34,11 +37,9 @@ public final class WirelessAePackets {
             new ResourceLocation(GTLCore.MOD_ID, "wireless_ae"),
             () -> PROTOCOL_VERSION,
             PROTOCOL_VERSION::equals,
-            PROTOCOL_VERSION::equals
-    );
+            PROTOCOL_VERSION::equals);
 
-    private WirelessAePackets() {
-    }
+    private WirelessAePackets() {}
 
     public static void register() {
         CHANNEL.registerMessage(
@@ -47,51 +48,46 @@ public final class WirelessAePackets {
                 RenameNetworkPacket::encode,
                 RenameNetworkPacket::decode,
                 RenameNetworkPacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
-        );
+                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
         CHANNEL.registerMessage(
                 nextPacketId++,
                 ConnectTargetPacket.class,
                 ConnectTargetPacket::encode,
                 ConnectTargetPacket::decode,
                 ConnectTargetPacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
-        );
+                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
         CHANNEL.registerMessage(
                 nextPacketId++,
                 OpenTargetMenuPacket.class,
                 OpenTargetMenuPacket::encode,
                 OpenTargetMenuPacket::decode,
                 OpenTargetMenuPacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
-        );
+                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
         CHANNEL.registerMessage(
                 nextPacketId++,
                 OpenNormalTargetMenuPacket.class,
                 OpenNormalTargetMenuPacket::encode,
                 OpenNormalTargetMenuPacket::decode,
                 OpenNormalTargetMenuPacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
-        );
+                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
         CHANNEL.registerMessage(
                 nextPacketId++,
                 RequestTargetNetworksPacket.class,
                 RequestTargetNetworksPacket::encode,
                 RequestTargetNetworksPacket::decode,
                 RequestTargetNetworksPacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER)
-        );
+                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
         CHANNEL.registerMessage(
                 nextPacketId++,
                 SyncTargetNetworksPacket.class,
                 SyncTargetNetworksPacket::encode,
                 SyncTargetNetworksPacket::decode,
                 SyncTargetNetworksPacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT)
-        );
+                java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT));
     }
 
     public record RenameNetworkPacket(BlockPos corePos, String name) {
+
         private static void encode(RenameNetworkPacket packet, FriendlyByteBuf buffer) {
             buffer.writeBlockPos(packet.corePos);
             buffer.writeUtf(packet.name);
@@ -105,7 +101,7 @@ public final class WirelessAePackets {
             NetworkEvent.Context context = contextSupplier.get();
             context.enqueueWork(() -> {
                 ServerPlayer player = context.getSender();
-                if (player == null || !isCloseEnough(player, packet.corePos)) {
+                if (player == null || isCloseEnough(player, packet.corePos)) {
                     return;
                 }
 
@@ -122,8 +118,7 @@ public final class WirelessAePackets {
                 WirelessAeNetworkRuntime.requestReconnect(frequency);
                 player.displayClientMessage(
                         Component.translatable("message.gtlcore.wireless_core.name_saved", data.getNetworkName(frequency)),
-                        true
-                );
+                        true);
             });
             context.setPacketHandled(true);
         }
@@ -131,6 +126,7 @@ public final class WirelessAePackets {
 
     public record ConnectTargetPacket(BlockPos targetPos, Direction targetSide, Vec3 hitLocation,
                                       UUID frequency, boolean disconnect) {
+
         public ConnectTargetPacket(BlockPos targetPos, UUID frequency, boolean disconnect) {
             this(targetPos, null, null, frequency, disconnect);
         }
@@ -149,15 +145,14 @@ public final class WirelessAePackets {
                     readDirection(buffer),
                     readVec3(buffer),
                     buffer.readUUID(),
-                    buffer.readBoolean()
-            );
+                    buffer.readBoolean());
         }
 
         private static void handle(ConnectTargetPacket packet, Supplier<NetworkEvent.Context> contextSupplier) {
             NetworkEvent.Context context = contextSupplier.get();
             context.enqueueWork(() -> {
                 ServerPlayer player = context.getSender();
-                if (player == null || !isCloseEnough(player, packet.targetPos)) {
+                if (player == null || isCloseEnough(player, packet.targetPos)) {
                     return;
                 }
 
@@ -166,8 +161,7 @@ public final class WirelessAePackets {
                         level,
                         packet.targetPos,
                         packet.targetSide,
-                        packet.hitLocation
-                );
+                        packet.hitLocation);
                 BlockPos targetPos = target.blockPos();
                 GlobalPos targetGlobalPos = target.pos();
                 WirelessAeSavedData data = WirelessAeSavedData.get(level.getServer());
@@ -178,63 +172,53 @@ public final class WirelessAePackets {
                 if (packet.disconnect) {
                     player.displayClientMessage(
                             Component.translatable("message.gtlcore.wireless_target.disconnected"),
-                            true
-                    );
+                            true);
                     return;
                 }
 
                 if (!WirelessAeNetworkRuntime.canBindAsWirelessTarget(level, targetPos, target.side())) {
                     player.displayClientMessage(
                             Component.translatable("message.gtlcore.wireless_target.invalid_target"),
-                            true
-                    );
+                            true);
                     return;
                 }
 
                 WirelessNetworkCoreBlockEntity core = WirelessAeNetworkRuntime.getLoadedCore(
                         level.getServer(),
-                        packet.frequency
-                );
+                        packet.frequency);
                 if (core == null) {
                     player.displayClientMessage(
                             Component.translatable("message.gtlcore.wireless_target.missing_core"),
-                            true
-                    );
+                            true);
                     return;
                 }
                 if (!core.isLinkedToAeNetwork()) {
                     player.displayClientMessage(
                             Component.translatable("message.gtlcore.wireless_target.core_not_connected"),
-                            true
-                    );
+                            true);
                     return;
                 }
 
                 WirelessAeNetworkRuntime.ConnectionResult result = WirelessAeNetworkRuntime.connectMemberNow(
                         level.getServer(),
                         packet.frequency,
-                        target
-                );
+                        target);
                 data.addMember(packet.frequency, target);
                 WirelessAeNetworkRuntime.requestReconnect(packet.frequency);
 
-                boolean pending = result == WirelessAeNetworkRuntime.ConnectionResult.TARGET_MISSING
-                        || result == WirelessAeNetworkRuntime.ConnectionResult.FAILED;
+                boolean pending = result == WirelessAeNetworkRuntime.ConnectionResult.TARGET_MISSING || result == WirelessAeNetworkRuntime.ConnectionResult.FAILED;
                 player.displayClientMessage(
                         Component.translatable(
-                                pending
-                                        ? "message.gtlcore.wireless_target.linked_target_pending"
-                                        : "message.gtlcore.wireless_target.linked_target",
-                                data.getNetworkName(packet.frequency)
-                        ),
-                        true
-                );
+                                pending ? "message.gtlcore.wireless_target.linked_target_pending" : "message.gtlcore.wireless_target.linked_target",
+                                data.getNetworkName(packet.frequency)),
+                        true);
             });
             context.setPacketHandled(true);
         }
     }
 
     public record OpenTargetMenuPacket(BlockPos targetPos, Direction targetSide, Vec3 hitLocation) {
+
         public OpenTargetMenuPacket(BlockPos targetPos) {
             this(targetPos, null, null);
         }
@@ -253,7 +237,7 @@ public final class WirelessAePackets {
             NetworkEvent.Context context = contextSupplier.get();
             context.enqueueWork(() -> {
                 ServerPlayer player = context.getSender();
-                if (player == null || !isCloseEnough(player, packet.targetPos)) {
+                if (player == null || isCloseEnough(player, packet.targetPos)) {
                     return;
                 }
 
@@ -262,8 +246,7 @@ public final class WirelessAePackets {
                         level,
                         packet.targetPos,
                         packet.targetSide,
-                        packet.hitLocation
-                );
+                        packet.hitLocation);
                 if (WirelessAeNetworkRuntime.canBindAsWirelessTarget(level, target.blockPos(), target.side())) {
                     WirelessAeTargetMenu.open(player, level, packet.targetPos, packet.targetSide, packet.hitLocation);
                 }
@@ -273,6 +256,7 @@ public final class WirelessAePackets {
     }
 
     public record OpenNormalTargetMenuPacket(BlockPos targetPos) {
+
         private static void encode(OpenNormalTargetMenuPacket packet, FriendlyByteBuf buffer) {
             buffer.writeBlockPos(packet.targetPos);
         }
@@ -285,7 +269,7 @@ public final class WirelessAePackets {
             NetworkEvent.Context context = contextSupplier.get();
             context.enqueueWork(() -> {
                 ServerPlayer player = context.getSender();
-                if (player == null || !isCloseEnough(player, packet.targetPos)) {
+                if (player == null || isCloseEnough(player, packet.targetPos)) {
                     return;
                 }
 
@@ -299,8 +283,7 @@ public final class WirelessAePackets {
                         Vec3.atCenterOf(packet.targetPos),
                         Direction.UP,
                         packet.targetPos,
-                        false
-                );
+                        false);
                 InteractionResult result = state.use(level, player, InteractionHand.MAIN_HAND, hit);
                 if (result.consumesAction()) {
                     return;
@@ -316,6 +299,7 @@ public final class WirelessAePackets {
     }
 
     public record RequestTargetNetworksPacket(BlockPos targetPos, Direction targetSide, Vec3 hitLocation) {
+
         public RequestTargetNetworksPacket(BlockPos targetPos) {
             this(targetPos, null, null);
         }
@@ -334,7 +318,7 @@ public final class WirelessAePackets {
             NetworkEvent.Context context = contextSupplier.get();
             context.enqueueWork(() -> {
                 ServerPlayer player = context.getSender();
-                if (player == null || !isCloseEnough(player, packet.targetPos)) {
+                if (player == null || isCloseEnough(player, packet.targetPos)) {
                     return;
                 }
 
@@ -343,22 +327,21 @@ public final class WirelessAePackets {
                         level,
                         packet.targetPos,
                         packet.targetSide,
-                        packet.hitLocation
-                );
+                        packet.hitLocation);
                 if (!WirelessAeNetworkRuntime.canBindAsWirelessTarget(level, target.blockPos(), target.side())) {
                     return;
                 }
 
                 CHANNEL.send(
                         PacketDistributor.PLAYER.with(() -> player),
-                        new SyncTargetNetworksPacket(packet.targetPos, buildTargetEntries(level, target))
-                );
+                        new SyncTargetNetworksPacket(packet.targetPos, buildTargetEntries(level, target)));
             });
             context.setPacketHandled(true);
         }
     }
 
     public record SyncTargetNetworksPacket(BlockPos targetPos, List<TargetNetworkEntry> entries) {
+
         private static void encode(SyncTargetNetworksPacket packet, FriendlyByteBuf buffer) {
             buffer.writeBlockPos(packet.targetPos);
             buffer.writeVarInt(packet.entries.size());
@@ -377,8 +360,7 @@ public final class WirelessAePackets {
                 entries.add(new TargetNetworkEntry(
                         buffer.readUUID(),
                         buffer.readUtf(32),
-                        buffer.readBoolean()
-                ));
+                        buffer.readBoolean()));
             }
             return new SyncTargetNetworksPacket(targetPos, entries);
         }
@@ -398,8 +380,7 @@ public final class WirelessAePackets {
         }
     }
 
-    public record TargetNetworkEntry(UUID frequency, String name, boolean connected) {
-    }
+    public record TargetNetworkEntry(UUID frequency, String name, boolean connected) {}
 
     private static List<TargetNetworkEntry> buildTargetEntries(ServerLevel level, WirelessAeSavedData.MemberKey target) {
         WirelessAeSavedData data = WirelessAeSavedData.get(level.getServer());
@@ -409,8 +390,7 @@ public final class WirelessAePackets {
             entries.add(new TargetNetworkEntry(
                     network.frequency(),
                     network.name(),
-                    network.frequency().equals(currentNetwork)
-            ));
+                    network.frequency().equals(currentNetwork)));
         }
         return entries;
     }
@@ -440,6 +420,6 @@ public final class WirelessAePackets {
     }
 
     private static boolean isCloseEnough(ServerPlayer player, BlockPos pos) {
-        return player.distanceToSqr(pos.getX() + 0.5D, pos.getY() + 0.5D, pos.getZ() + 0.5D) <= 64.0D;
+        return !(player.distanceToSqr(pos.getX() + 0.5D, pos.getY() + 0.5D, pos.getZ() + 0.5D) <= 64.0D);
     }
 }

@@ -2,6 +2,7 @@ package org.gtlcore.gtlcore.client.ae2.wireless;
 
 import org.gtlcore.gtlcore.integration.ae2.wireless.WirelessAePackets;
 import org.gtlcore.gtlcore.integration.ae2.wireless.WirelessAeTargetMenu;
+
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -9,6 +10,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
 
 public class WirelessAeTargetScreen extends AbstractContainerScreen<WirelessAeTargetMenu> {
+
     private static final int CONTENT_X = 14;
     private static final int TITLE_Y = 8;
     private static final int STATUS_Y = 31;
@@ -22,8 +24,7 @@ public class WirelessAeTargetScreen extends AbstractContainerScreen<WirelessAeTa
         this.imageWidth = 248;
         int rows = Math.max(1, menu.getNetworks().size());
         this.imageHeight = Math.max(128,
-                LIST_Y + 8 + rows * ROW_HEIGHT + (getConnectedEntry() == null ? 0 : DISCONNECT_GAP + BUTTON_HEIGHT)
-                        + 14);
+                LIST_Y + 8 + rows * ROW_HEIGHT + (getConnectedEntry() == null ? 0 : DISCONNECT_GAP + BUTTON_HEIGHT) + 14);
     }
 
     @Override
@@ -33,12 +34,8 @@ public class WirelessAeTargetScreen extends AbstractContainerScreen<WirelessAeTa
                 this.leftPos - 28,
                 this.topPos + 8,
                 Component.translatable("tooltip.gtlcore.wireless_target.back"),
-                WirelessAeStyle.TabIcon.BACK,
-                false,
                 button -> WirelessAePackets.CHANNEL.sendToServer(
-                        new WirelessAePackets.OpenNormalTargetMenuPacket(this.menu.getOriginPos())
-                )
-        ));
+                        new WirelessAePackets.OpenNormalTargetMenuPacket(this.menu.getOriginPos()))));
 
         int y = this.topPos + LIST_Y;
         for (WirelessAeTargetMenu.Entry entry : this.menu.getNetworks()) {
@@ -49,9 +46,7 @@ public class WirelessAeTargetScreen extends AbstractContainerScreen<WirelessAeTa
                                 this.menu.getTargetSide(),
                                 null,
                                 entry.frequency(),
-                                false
-                        )
-                );
+                                false));
                 this.onClose();
             };
             this.addRenderableWidget(WirelessAeStyle.networkButton(
@@ -61,8 +56,7 @@ public class WirelessAeTargetScreen extends AbstractContainerScreen<WirelessAeTa
                     BUTTON_HEIGHT,
                     Component.literal(entry.name()),
                     entry.connected(),
-                    onPress
-            ));
+                    onPress));
             y += ROW_HEIGHT;
         }
 
@@ -78,16 +72,13 @@ public class WirelessAeTargetScreen extends AbstractContainerScreen<WirelessAeTa
                     button -> {
                         WirelessAePackets.CHANNEL.sendToServer(
                                 new WirelessAePackets.ConnectTargetPacket(
-                                this.menu.getTargetPos(),
-                                this.menu.getTargetSide(),
-                                null,
-                                connectedEntry.frequency(),
-                                true
-                        )
-                );
+                                        this.menu.getTargetPos(),
+                                        this.menu.getTargetSide(),
+                                        null,
+                                        connectedEntry.frequency(),
+                                        true));
                         this.onClose();
-                    }
-            ));
+                    }));
         }
     }
 
@@ -106,16 +97,14 @@ public class WirelessAeTargetScreen extends AbstractContainerScreen<WirelessAeTa
                 this.leftPos + 10,
                 this.topPos + 26,
                 this.imageWidth - 20,
-                this.imageHeight - 38
-        );
+                this.imageHeight - 38);
         if (getConnectedEntry() != null) {
             int rows = Math.max(1, this.menu.getNetworks().size());
             WirelessAeStyle.drawSeparator(
                     graphics,
                     this.leftPos + 16,
                     this.topPos + LIST_Y + rows * ROW_HEIGHT + 3,
-                    this.imageWidth - 32
-            );
+                    this.imageWidth - 32);
         }
     }
 
@@ -127,15 +116,12 @@ public class WirelessAeTargetScreen extends AbstractContainerScreen<WirelessAeTa
         WirelessAeStyle.drawTrimmedString(
                 graphics,
                 this.font,
-                connectedEntry == null
-                        ? Component.translatable("label.gtlcore.wireless_target.current_disconnected")
-                        : Component.translatable("label.gtlcore.wireless_target.current_connected",
+                connectedEntry == null ? Component.translatable("label.gtlcore.wireless_target.current_disconnected") : Component.translatable("label.gtlcore.wireless_target.current_connected",
                         connectedEntry.name()),
                 CONTENT_X + 14,
                 STATUS_Y,
                 this.imageWidth - CONTENT_X * 2 - 14,
-                connectedEntry == null ? WirelessAeStyle.MUTED_TEXT : WirelessAeStyle.ONLINE_TEXT
-        );
+                connectedEntry == null ? WirelessAeStyle.MUTED_TEXT : WirelessAeStyle.ONLINE_TEXT);
         if (this.menu.getNetworks().isEmpty()) {
             WirelessAeStyle.drawTrimmedString(
                     graphics,
@@ -144,8 +130,7 @@ public class WirelessAeTargetScreen extends AbstractContainerScreen<WirelessAeTa
                     CONTENT_X,
                     LIST_Y + 6,
                     this.imageWidth - CONTENT_X * 2,
-                    WirelessAeStyle.WARNING_TEXT
-            );
+                    WirelessAeStyle.WARNING_TEXT);
         }
     }
 

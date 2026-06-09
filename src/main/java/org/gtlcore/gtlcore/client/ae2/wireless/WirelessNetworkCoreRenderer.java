@@ -2,8 +2,9 @@ package org.gtlcore.gtlcore.client.ae2.wireless;
 
 import org.gtlcore.gtlcore.GTLCore;
 import org.gtlcore.gtlcore.integration.ae2.wireless.WirelessNetworkCoreBlock;
+
 import com.lowdragmc.lowdraglib.client.renderer.impl.IModelRenderer;
-import javax.annotation.Nullable;
+
 import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -12,9 +13,11 @@ import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.client.event.ModelEvent;
 
+import javax.annotation.Nullable;
+
 public final class WirelessNetworkCoreRenderer extends IModelRenderer {
-    public static final ResourceLocation MODEL =
-            new ResourceLocation(GTLCore.MOD_ID, "block/wireless_network_core");
+
+    public static final ResourceLocation MODEL = new ResourceLocation(GTLCore.MOD_ID, "block/wireless_network_core");
     public static final WirelessNetworkCoreRenderer INSTANCE = new WirelessNetworkCoreRenderer();
 
     private WirelessNetworkCoreRenderer() {

@@ -8,14 +8,16 @@ import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
+import org.jetbrains.annotations.NotNull;
+
 final class WirelessAeStyle {
+
     static final int TEXT = 0xFF303030;
     static final int MUTED_TEXT = 0xFF5A5A5A;
     static final int WARNING_TEXT = 0xFFA33A2A;
     static final int ONLINE_TEXT = 0xFF245F68;
 
-    private static final ResourceLocation AE2_BACKGROUND =
-            new ResourceLocation("ae2", "textures/guis/background.png");
+    private static final ResourceLocation AE2_BACKGROUND = new ResourceLocation("ae2", "textures/guis/background.png");
     private static final ResourceLocation INSET_PANEL = wirelessTexture("inset_panel.png");
     private static final ResourceLocation TEXT_FIELD = wirelessTexture("text_field.png");
     private static final ResourceLocation SEPARATOR = wirelessTexture("separator.png");
@@ -26,9 +28,6 @@ final class WirelessAeStyle {
     private static final ResourceLocation BUTTON_SELECTED = wirelessTexture("button_selected.png");
     private static final ResourceLocation BUTTON_WARNING = wirelessTexture("button_warning.png");
     private static final ResourceLocation BUTTON_DISABLED = wirelessTexture("button_disabled.png");
-    private static final ResourceLocation TAB_BACK_NORMAL = wirelessTexture("tab_back_normal.png");
-    private static final ResourceLocation TAB_BACK_HOVER = wirelessTexture("tab_back_hover.png");
-    private static final ResourceLocation TAB_BACK_SELECTED = wirelessTexture("tab_back_selected.png");
     private static final ResourceLocation TAB_WIRELESS_NORMAL = wirelessTexture("tab_wireless_normal.png");
     private static final ResourceLocation TAB_WIRELESS_HOVER = wirelessTexture("tab_wireless_hover.png");
     private static final ResourceLocation TAB_WIRELESS_SELECTED = wirelessTexture("tab_wireless_selected.png");
@@ -38,10 +37,10 @@ final class WirelessAeStyle {
     private static final int BUTTON_BORDER = 4;
     private static final int RIGHT_ICON_FRAME_RIGHT_BORDER = 3;
     private static final int RIGHT_ICON_FRAME_CENTER_WIDTH = 64;
-    private static final int SELECTED_CHECK_X = 69;
-    private static final int SELECTED_CHECK_Y = 7;
-    private static final int SELECTED_CHECK_WIDTH = 8;
-    private static final int SELECTED_CHECK_HEIGHT = 7;
+    private static final int SELECTED_CHECK_X = 65;
+    private static final int SELECTED_CHECK_Y = 5;
+    private static final int SELECTED_CHECK_WIDTH = 10;
+    private static final int SELECTED_CHECK_HEIGHT = 9;
     private static final int DISABLED_CROSS_X = 69;
     private static final int DISABLED_CROSS_Y = 6;
     private static final int DISABLED_CROSS_WIDTH = 8;
@@ -51,8 +50,7 @@ final class WirelessAeStyle {
     private static final int WARNING_MARK_WIDTH = 4;
     private static final int WARNING_MARK_HEIGHT = 12;
 
-    private WirelessAeStyle() {
-    }
+    private WirelessAeStyle() {}
 
     static void drawPanel(GuiGraphics graphics, int x, int y, int width, int height) {
         graphics.blit(AE2_BACKGROUND, x, y, 0.0F, 0.0F, width, height, PANEL_TEXTURE_SIZE, PANEL_TEXTURE_SIZE);
@@ -70,8 +68,8 @@ final class WirelessAeStyle {
         drawNineSlice(graphics, INSET_PANEL, x, y, width, height, 120, 52, 4);
     }
 
-    static void drawTextField(GuiGraphics graphics, int x, int y, int width, int height) {
-        drawNineSlice(graphics, TEXT_FIELD, x, y, width, height, 120, 20, 3);
+    static void drawTextField(GuiGraphics graphics, int x, int y, int width) {
+        drawNineSlice(graphics, TEXT_FIELD, x, y, width, 20, 120, 20, 3);
     }
 
     static void drawSeparator(GuiGraphics graphics, int x, int y, int width) {
@@ -88,8 +86,8 @@ final class WirelessAeStyle {
         graphics.drawString(font, text, x, y, color, false);
     }
 
-    static Button button(int x, int y, int width, int height, Component message, Button.OnPress onPress) {
-        return new Ae2Button(x, y, width, height, message, onPress, Accent.NONE);
+    static Button button(int x, int y, int width, Component message, Button.OnPress onPress) {
+        return new Ae2Button(x, y, width, 20, message, onPress, Accent.NONE);
     }
 
     static Button selectedButton(int x, int y, int width, int height, Component message, Button.OnPress onPress) {
@@ -105,14 +103,10 @@ final class WirelessAeStyle {
         return new Ae2NetworkButton(x, y, width, height, name, connected, onPress);
     }
 
-    static Button sideTab(int x, int y, Component tooltip, TabIcon icon, boolean selected, Button.OnPress onPress) {
-        Button button = new Ae2SideTab(x, y, tooltip, icon, selected, onPress);
+    static Button sideTab(int x, int y, Component tooltip, Button.OnPress onPress) {
+        Button button = new Ae2SideTab(x, y, tooltip, TabIcon.BACK, false, onPress);
         button.setTooltip(Tooltip.create(tooltip));
         return button;
-    }
-
-    static void drawSideTab(GuiGraphics graphics, int x, int y, TabIcon icon, boolean selected, boolean hovered) {
-        Ae2SideTab.draw(graphics, x, y, icon, selected, hovered);
     }
 
     static void drawButtonBackground(GuiGraphics graphics, int x, int y, int width, int height,
@@ -123,8 +117,7 @@ final class WirelessAeStyle {
                     DISABLED_CROSS_X, DISABLED_CROSS_Y, DISABLED_CROSS_WIDTH, DISABLED_CROSS_HEIGHT);
             return;
         } else if (warning) {
-            drawLeftIconButtonBackground(graphics, BUTTON_WARNING, x, y, width, height,
-                    WARNING_MARK_X, WARNING_MARK_Y, WARNING_MARK_WIDTH, WARNING_MARK_HEIGHT);
+            drawLeftIconButtonBackground(graphics, x, y, width, height);
             return;
         } else if (selected) {
             drawRightIconButtonBackground(graphics, BUTTON_SELECTED, x, y, width, height,
@@ -231,11 +224,9 @@ final class WirelessAeStyle {
                 y,
                 width,
                 height,
-                BUTTON_BORDER,
                 RIGHT_ICON_FRAME_RIGHT_BORDER,
                 BUTTON_BORDER,
-                RIGHT_ICON_FRAME_CENTER_WIDTH
-        );
+                RIGHT_ICON_FRAME_CENTER_WIDTH);
 
         int drawX = x + width - (BUTTON_TEXTURE_WIDTH - iconX);
         int drawY = y + Math.max(0, (height - BUTTON_TEXTURE_HEIGHT) / 2) + iconY;
@@ -243,41 +234,38 @@ final class WirelessAeStyle {
                 BUTTON_TEXTURE_WIDTH, BUTTON_TEXTURE_HEIGHT);
     }
 
-    private static void drawLeftIconButtonBackground(GuiGraphics graphics, ResourceLocation texture, int x, int y,
-                                                     int width, int height, int iconX, int iconY, int iconWidth,
-                                                     int iconHeight) {
+    private static void drawLeftIconButtonBackground(GuiGraphics graphics, int x, int y,
+                                                     int width, int height) {
         if (width <= 0 || height <= 0) {
             return;
         }
 
-        int frameCenterSourceX = iconX + iconWidth;
+        int frameCenterSourceX = WirelessAeStyle.WARNING_MARK_X + WirelessAeStyle.WARNING_MARK_WIDTH;
         int frameCenterSourceWidth = BUTTON_TEXTURE_WIDTH - BUTTON_BORDER - frameCenterSourceX;
         drawButtonFrame(
                 graphics,
-                texture,
+                WirelessAeStyle.BUTTON_WARNING,
                 x,
                 y,
                 width,
                 height,
                 BUTTON_BORDER,
-                BUTTON_BORDER,
                 frameCenterSourceX,
-                frameCenterSourceWidth
-        );
+                frameCenterSourceWidth);
 
-        int drawY = y + Math.max(0, (height - BUTTON_TEXTURE_HEIGHT) / 2) + iconY;
-        blitRegion(graphics, texture, x + iconX, drawY, iconX, iconY, iconWidth, iconHeight,
+        int drawY = y + Math.max(0, (height - BUTTON_TEXTURE_HEIGHT) / 2) + WirelessAeStyle.WARNING_MARK_Y;
+        blitRegion(graphics, WirelessAeStyle.BUTTON_WARNING, x + WirelessAeStyle.WARNING_MARK_X, drawY, WirelessAeStyle.WARNING_MARK_X, WirelessAeStyle.WARNING_MARK_Y, WirelessAeStyle.WARNING_MARK_WIDTH, WirelessAeStyle.WARNING_MARK_HEIGHT,
                 BUTTON_TEXTURE_WIDTH, BUTTON_TEXTURE_HEIGHT);
     }
 
     private static void drawButtonFrame(GuiGraphics graphics, ResourceLocation texture, int x, int y, int width,
-                                        int height, int preferredLeft, int preferredRight, int centerSourceX,
+                                        int height, int preferredRight, int centerSourceX,
                                         int centerSourceWidth) {
         if (width <= 0 || height <= 0) {
             return;
         }
 
-        int left = Math.min(preferredLeft, width / 2);
+        int left = Math.min(WirelessAeStyle.BUTTON_BORDER, width / 2);
         int right = Math.min(preferredRight, width - left);
         int top = Math.min(BUTTON_BORDER, height / 2);
         int bottom = Math.min(BUTTON_BORDER, height - top);
@@ -319,6 +307,7 @@ final class WirelessAeStyle {
     }
 
     private static final class Ae2Button extends Button {
+
         private final Accent accent;
 
         private Ae2Button(int x, int y, int width, int height, Component message, OnPress onPress, Accent accent) {
@@ -327,7 +316,7 @@ final class WirelessAeStyle {
         }
 
         @Override
-        protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        protected void renderWidget(@NotNull GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
             int x = this.getX();
             int y = this.getY();
             int width = this.getWidth();
@@ -343,8 +332,7 @@ final class WirelessAeStyle {
                     this.active,
                     this.accent == Accent.SELECTED,
                     this.accent == Accent.WARNING,
-                    hovered
-            );
+                    hovered);
 
             Font font = Minecraft.getInstance().font;
             int textColor = this.active ? 0xFF202020 : 0xFF6F6F6F;
@@ -355,12 +343,12 @@ final class WirelessAeStyle {
                     x + (width - font.width(text)) / 2,
                     y + (height - 8) / 2,
                     textColor,
-                    false
-            );
+                    false);
         }
     }
 
     private static final class Ae2NetworkButton extends Button {
+
         private final Component name;
         private final boolean connected;
 
@@ -372,7 +360,7 @@ final class WirelessAeStyle {
         }
 
         @Override
-        protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        protected void renderWidget(@NotNull GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
             int x = this.getX();
             int y = this.getY();
             int width = this.getWidth();
@@ -393,6 +381,7 @@ final class WirelessAeStyle {
     }
 
     private static final class Ae2SideTab extends Button {
+
         private static final int SIZE = 24;
         private final TabIcon icon;
         private final boolean selected;
@@ -404,17 +393,13 @@ final class WirelessAeStyle {
         }
 
         @Override
-        protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-            draw(graphics, this.getX(), this.getY(), this.icon, this.selected, this.isHoveredOrFocused());
+        protected void renderWidget(@NotNull GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+            draw(graphics, this.getX(), this.getY(), this.selected, this.isHoveredOrFocused());
         }
 
-        private static void draw(GuiGraphics graphics, int x, int y, TabIcon icon, boolean selected, boolean hovered) {
+        private static void draw(GuiGraphics graphics, int x, int y, boolean selected, boolean hovered) {
             ResourceLocation texture;
-            if (icon == TabIcon.WIRELESS) {
-                texture = selected ? TAB_WIRELESS_SELECTED : (hovered ? TAB_WIRELESS_HOVER : TAB_WIRELESS_NORMAL);
-            } else {
-                texture = selected ? TAB_BACK_SELECTED : (hovered ? TAB_BACK_HOVER : TAB_BACK_NORMAL);
-            }
+            texture = selected ? TAB_WIRELESS_SELECTED : (hovered ? TAB_WIRELESS_HOVER : TAB_WIRELESS_NORMAL);
             graphics.blit(texture, x, y, 0.0F, 0.0F, SIZE, SIZE, SIZE, SIZE);
         }
     }
