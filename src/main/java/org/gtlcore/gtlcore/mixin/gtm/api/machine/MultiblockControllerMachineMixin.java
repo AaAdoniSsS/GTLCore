@@ -68,12 +68,15 @@ public abstract class MultiblockControllerMachineMixin extends MetaMachine imple
             if (getLevel() instanceof ServerLevel serverLevel) {
                 serverLevel.getServer().execute(() -> {
                     getPatternLock().lock();
-                    setFlipped(getMultiblockState().isNeededFlip());
-                    onStructureFormed();
-                    var mwsd = MultiblockWorldSavedData.getOrCreate(serverLevel);
-                    mwsd.addMapping(getMultiblockState());
-                    mwsd.removeAsyncLogic(this);
-                    getPatternLock().unlock();
+                    try {
+                        setFlipped(getMultiblockState().isNeededFlip());
+                        onStructureFormed();
+                        var mwsd = MultiblockWorldSavedData.getOrCreate(serverLevel);
+                        mwsd.addMapping(getMultiblockState());
+                        mwsd.removeAsyncLogic(this);
+                    } finally {
+                        getPatternLock().unlock();
+                    }
                 });
             }
         }

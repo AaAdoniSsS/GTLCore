@@ -46,6 +46,10 @@ public interface IModularMachineModule<H extends IModularMachineHost<H>, M exten
     // ==================== Default Implementation ====================
 
     default void connectToHost(@NotNull H host) {
+        H previousHost = getHost();
+        if (previousHost != null && previousHost != host) {
+            removeFromHost(previousHost);
+        }
         setHost(host);
         setHostPosition(host.getPos());
         @SuppressWarnings("unchecked")

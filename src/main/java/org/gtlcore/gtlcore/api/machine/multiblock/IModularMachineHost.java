@@ -12,6 +12,7 @@ import net.minecraftforge.api.distmarker.OnlyIn;
 import com.google.common.primitives.Ints;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
@@ -56,9 +57,10 @@ public interface IModularMachineHost<H extends IModularMachineHost<H>> {
     }
 
     default void safeClearModules() {
-        for (IModularMachineModule<H, ?> module : getModules()) {
-            @SuppressWarnings("unchecked")
-            H self = (H) this;
+        @SuppressWarnings("unchecked")
+        H self = (H) this;
+        // removeFromHost mutates the backing set through removeModule, so iterate over a snapshot.
+        for (IModularMachineModule<H, ?> module : new ArrayList<>(getModuleSet())) {
             module.removeFromHost(self);
         }
         getModuleSet().clear();
