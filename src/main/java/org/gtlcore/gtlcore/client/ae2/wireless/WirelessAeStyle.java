@@ -36,8 +36,8 @@ final class WirelessAeStyle {
     private static final int BUTTON_TEXTURE_HEIGHT = 20;
     private static final int BUTTON_BORDER = 4;
     private static final int RIGHT_ICON_FRAME_RIGHT_BORDER = 3;
-    private static final int RIGHT_ICON_FRAME_CENTER_WIDTH = 64;
-    private static final int SELECTED_CHECK_X = 65;
+    private static final int SELECTED_CHECK_X = 64;
+    private static final int RIGHT_ICON_FRAME_CENTER_WIDTH = SELECTED_CHECK_X - BUTTON_BORDER;
     private static final int SELECTED_CHECK_Y = 5;
     private static final int SELECTED_CHECK_WIDTH = 10;
     private static final int SELECTED_CHECK_HEIGHT = 9;
