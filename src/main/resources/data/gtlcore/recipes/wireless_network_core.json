@@ -1,0 +1,62 @@
+﻿{
+  "type": "gtceu:assembler",
+  "inputs": {
+    "item": [
+      {
+        "content": {
+          "item": "gtceu:ev_machine_casing"
+        }
+      },
+      {
+        "content": {
+          "type": "gtceu:sized",
+          "count": 8,
+          "ingredient": {
+            "item": "ae2:quantum_link"
+          }
+        }
+      },
+      {
+        "content": {
+          "item": "ae2:quantum_entangled_singularity"
+        }
+      },
+      {
+        "content": {
+          "type": "gtceu:sized",
+          "count": 4,
+          "ingredient": {
+            "item": "gtceu:ev_sensor"
+          }
+        }
+      },
+      {
+        "content": {
+          "tag": "gtceu:circuits/luv"
+        }
+      },
+      {
+        "content": {
+          "item": "gtceu:ev_field_generator"
+        }
+      }
+    ]
+  },
+  "outputs": {
+    "item": [
+      {
+        "content": {
+          "item": "gtlcore:wireless_network_core"
+        }
+      }
+    ]
+  },
+  "tickInputs": {
+    "eu": [
+      {
+        "content": 2048
+      }
+    ]
+  },
+  "duration": 400
+}
