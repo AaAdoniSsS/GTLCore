@@ -1,0 +1,12 @@
+﻿{
+  "parent": "minecraft:block/cube",
+  "textures": {
+    "particle": "gtceu:block/casings/voltage/ev/side",
+    "down": "gtceu:block/casings/voltage/ev/bottom",
+    "up": "gtceu:block/casings/voltage/ev/top",
+    "north": "gtlcore:block/wireless_network_core_front",
+    "east": "gtceu:block/casings/voltage/ev/side",
+    "south": "gtceu:block/casings/voltage/ev/side",
+    "west": "gtceu:block/casings/voltage/ev/side"
+  }
+}
