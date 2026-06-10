@@ -41,6 +41,10 @@ public class DysonSphereMachine extends WorkableElectricMultiblockMachine {
     private int DysonSphereData;
     @Persisted
     private int DysonSpheredamageData;
+    @Persisted
+    private boolean upgradeTriggeredThisRecipe = false;
+    @Persisted
+    private boolean damageTriggeredThisRecipe = false;
 
     protected ConditionalSubscriptionHandler nightSubs;
 
@@ -74,6 +78,7 @@ public class DysonSphereMachine extends WorkableElectricMultiblockMachine {
     public void onStructureInvalid() {
         super.onStructureInvalid();
         cachedCheckPositions = null;
+        if (nightSubs != null) nightSubs.unsubscribe();
     }
 
     @Nullable
@@ -108,28 +113,42 @@ public class DysonSphereMachine extends WorkableElectricMultiblockMachine {
     @Override
     public boolean onWorking() {
         boolean value = super.onWorking();
-        if (getRecipeLogic().getProgress() == 199 && getDysonSphereData() < 10000 &&
-                getRecipeLogic().getDuration() == 200) {
+        GTRecipe currentRecipe = getRecipeLogic().getLastRecipe();
+        if (currentRecipe == null) return value;
+
+        int progress = getRecipeLogic().getProgress();
+        int duration = getRecipeLogic().getDuration();
+        if (duration <= 0) return value;
+
+        if (!upgradeTriggeredThisRecipe && progress + 1 >= duration && getDysonSphereData() < 10000 && isLaunch(currentRecipe)) {
+            upgradeTriggeredThisRecipe = true;
             if (getDysonSpheredamageData() > 60) {
                 this.DysonSpheredamageData = 0;
             } else {
                 this.DysonSphereData++;
             }
         }
-        if (getRecipeLogic().getDuration() == 20 && getRecipeLogic().getProgress() == 19 &&
-                Math.random() < 0.01 * (1 + (double) getDysonSphereData() / 128) && getDysonSphereData() > 0) {
-            if (getDysonSpheredamageData() > 99) {
-                this.DysonSphereData--;
-                this.DysonSpheredamageData = 0;
-            } else {
-                this.DysonSpheredamageData++;
+
+        int targetProgress = (int) (duration * 0.95);
+        if (!damageTriggeredThisRecipe && progress >= targetProgress && getDysonSphereData() > 0 && !isLaunch(currentRecipe)) {
+            damageTriggeredThisRecipe = true;
+            if (Math.random() < 0.01 * (1 + (double) getDysonSphereData() / 128)) {
+                if (getDysonSpheredamageData() > 99) {
+                    this.DysonSphereData--;
+                    this.DysonSpheredamageData = 0;
+                } else {
+                    this.DysonSpheredamageData++;
+                }
             }
         }
+
         return value;
     }
 
     @Override
     public boolean beforeWorking(@Nullable GTRecipe recipe) {
+        upgradeTriggeredThisRecipe = false;
+        damageTriggeredThisRecipe = false;
         if (cachedCheckPositions != null) {
             Level level = getLevel();
             if (level != null) {
@@ -153,7 +172,7 @@ public class DysonSphereMachine extends WorkableElectricMultiblockMachine {
     }
 
     private boolean isLaunch(GTRecipe recipe) {
-        return RecipeHelper.getOutputEUt(recipe) != GTValues.V[GTValues.MAX];
+        return RecipeHelper.getOutputEUt(recipe) < GTValues.V[GTValues.MAX];
     }
 
     private double getEfficiency() {

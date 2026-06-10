@@ -430,6 +430,6 @@
   "message.gtlcore.wireless_target.core_not_connected": "请先让无线 ME 网络核心贴着已有 ME 线缆或 ME 方块。",
   "message.gtlcore.wireless_target.missing_core": "这个无线 ME 网络核心已经不存在。",
   "message.gtlcore.wireless_target.invalid_target": "这个方块没有暴露可连接的 ME 网络节点。",
-  "message.gtlcore.wireless_target.linked_target": "已将 ME 方块接入无线 ME 网络（%s）。",
+  "message.gtlcore.wireless_target.linked_target": "已将 ME 仓室接入无线 ME 网络（%s）。",
   "message.gtlcore.wireless_target.linked_target_pending": "已记录这个 ME 方块，等待无线 ME 网络连接（%s）。"
 }

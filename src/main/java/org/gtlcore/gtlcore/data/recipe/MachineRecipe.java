@@ -36,6 +36,9 @@ import org.apache.commons.lang3.ArrayUtils;
 import java.util.List;
 import java.util.function.Consumer;
 
+import static appeng.core.definitions.AEBlocks.QUANTUM_LINK;
+import static appeng.core.definitions.AEBlocks.QUANTUM_RING;
+import static com.glodblock.github.extendedae.common.EPPItemAndBlock.WIRELESS_HUB;
 import static com.gregtechceu.gtceu.api.GTValues.*;
 import static com.gregtechceu.gtceu.api.data.tag.TagPrefix.*;
 import static com.gregtechceu.gtceu.common.data.GTItems.*;
@@ -48,6 +51,7 @@ import static org.gtlcore.gtlcore.common.data.GTLMachines.GTAEMachines.ME_EXTEND
 import static org.gtlcore.gtlcore.common.data.GTLMachines.TAG_FILTER_ME_STOCK_BUS_PART_MACHINE;
 import static org.gtlcore.gtlcore.common.data.GTLMaterials.*;
 import static org.gtlcore.gtlcore.common.data.GTLRecipeTypes.SPACE_COSMIC_PROBE_RECEIVERS_RECIPES;
+import static org.gtlcore.gtlcore.integration.ae2.wireless.GTLWirelessAeContent.WIRELESS_NETWORK_CORE;
 import static org.gtlcore.gtlcore.integration.wildcard.WildcardPatternCompatImpl.ME_WILDCARD_PATTERN_BUFFER;
 
 public class MachineRecipe {
@@ -810,6 +814,18 @@ public class MachineRecipe {
         space_probe(GTLMaterials.HeavyLeptonMixture, 2, 1000, 1, provider);
         space_probe(GTLMaterials.HeavyLeptonMixture, 3, 10000, 1, provider);
         space_probe(GTLMaterials.CosmicElement, 3, 10000, 3, provider);
+
+        ASSEMBLER_RECIPES.recipeBuilder("wireless_network_core")
+                .inputItems(GTMachines.HULL[4])
+                .inputItems(WIRELESS_HUB.asItem(), 4)
+                .inputItems(QUANTUM_LINK.asItem(), 4)
+                .inputItems(QUANTUM_RING.asItem(), 36)
+                .inputItems(wireGtHex, UraniumTriplatinum, 2)
+                .inputItems(CIRCUIT.getIngredient(LuV), 8)
+                .inputItems(FIELD_GENERATOR_EV)
+                .inputFluids(Radon.getFluid(1000))
+                .outputItems(WIRELESS_NETWORK_CORE)
+                .duration(400).EUt(VA[EV]).save(provider);
     }
 
     private static void space_probe(Material material, int grade, int amount, int circuit, Consumer<FinishedRecipe> provider) {

@@ -430,6 +430,6 @@
   "message.gtlcore.wireless_target.core_not_connected": "Place the Wireless ME Network Core against an existing ME cable or ME block first.",
   "message.gtlcore.wireless_target.missing_core": "That wireless ME network core no longer exists.",
   "message.gtlcore.wireless_target.invalid_target": "This block does not expose an ME network node.",
-  "message.gtlcore.wireless_target.linked_target": "Linked ME block to the wireless ME network (%s).",
+  "message.gtlcore.wireless_target.linked_target": "Linked ME hatch to the wireless ME network (%s).",
   "message.gtlcore.wireless_target.linked_target_pending": "Recorded this ME block and waiting for the wireless ME network connection (%s)."
 }
