@@ -779,7 +779,7 @@ public final class WirelessAeNetworkRuntime {
     }
 
     private static boolean isMeLikePath(String path) {
-        return path.startsWith("me_") || path.contains("_me_") || path.contains("appeng") || path.contains("ae2") || path.contains("interface") || path.contains("requester") || path.contains("provider") || path.contains("import_bus") || path.contains("export_bus") || path.contains("storage_bus");
+        return path.startsWith("me_") || path.contains("_me_") || path.contains("appeng") || path.contains("ae2") || path.contains("interface") || path.contains("requester") || path.contains("provider");
     }
 
     private static boolean connectionMatches(IGridConnection connection, IGridNode coreNode, IGridNode targetNode) {
