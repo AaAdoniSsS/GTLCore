@@ -43,10 +43,8 @@ public final class WirelessAeNetworkRuntime {
     private static final Set<UUID> REQUESTED_RECONNECTS = new HashSet<>();
     private static int tickCounter;
     private static final String GTCEU_ME_PART_PACKAGE = "com.gregtechceu.gtceu.integration.ae2.";
-    private static final String GTMTHINGS_ME_PART_PACKAGE =
-            "com.hepdd.gtmthings.common.block.machine.multiblock.part.appeng.";
-    private static final String GTL_ME_PART_PACKAGE =
-            "org.gtlcore.gtlcore.common.machine.multiblock.part.ae.";
+    private static final String GTMTHINGS_ME_PART_PACKAGE = "com.hepdd.gtmthings.common.block.machine.multiblock.part.appeng.";
+    private static final String GTL_ME_PART_PACKAGE = "org.gtlcore.gtlcore.common.machine.multiblock.part.ae.";
     private static final Set<String> GTL_ME_TARGET_CLASSES = Set.of(
             "org.gtlcore.gtlcore.common.machine.multiblock.part.MEDualHatchStockPartMachine",
             "org.gtlcore.gtlcore.common.machine.multiblock.part.TagFilterMEStockBusPartMachine",
@@ -767,12 +765,7 @@ public final class WirelessAeNetworkRuntime {
         }
 
         String className = target.getClass().getName();
-        return className.startsWith(GTCEU_ME_PART_PACKAGE)
-                || className.startsWith(GTMTHINGS_ME_PART_PACKAGE)
-                || className.startsWith(GTL_ME_PART_PACKAGE)
-                || className.startsWith("appeng.")
-                || className.startsWith("com.glodblock.github.extendedae.")
-                || GTL_ME_TARGET_CLASSES.contains(className);
+        return className.startsWith(GTCEU_ME_PART_PACKAGE) || className.startsWith(GTMTHINGS_ME_PART_PACKAGE) || className.startsWith(GTL_ME_PART_PACKAGE) || className.startsWith("appeng.") || className.startsWith("com.glodblock.github.extendedae.") || GTL_ME_TARGET_CLASSES.contains(className);
     }
 
     private static boolean isWirelessMeTargetId(ResourceLocation blockId) {
@@ -782,28 +775,11 @@ public final class WirelessAeNetworkRuntime {
 
         String namespace = blockId.getNamespace();
         String path = blockId.getPath();
-        return "ae2".equals(namespace)
-                || "appeng".equals(namespace)
-                || "expatternprovider".equals(namespace)
-                || "extendedae".equals(namespace)
-                || "megacells".equals(namespace)
-                || WIRELESS_ME_TARGET_IDS.contains(path)
-                || ("merequester".equals(namespace) && isMeLikePath(path))
-                || ("gtmthings".equals(namespace) && isMeLikePath(path))
-                || (namespace.contains("ae") && isMeLikePath(path));
+        return "ae2".equals(namespace) || "appeng".equals(namespace) || "expatternprovider".equals(namespace) || "extendedae".equals(namespace) || "megacells".equals(namespace) || WIRELESS_ME_TARGET_IDS.contains(path) || ("merequester".equals(namespace) && isMeLikePath(path)) || ("gtmthings".equals(namespace) && isMeLikePath(path)) || (namespace.contains("ae") && isMeLikePath(path));
     }
 
     private static boolean isMeLikePath(String path) {
-        return path.startsWith("me_")
-                || path.contains("_me_")
-                || path.contains("appeng")
-                || path.contains("ae2")
-                || path.contains("interface")
-                || path.contains("requester")
-                || path.contains("provider")
-                || path.contains("import_bus")
-                || path.contains("export_bus")
-                || path.contains("storage_bus");
+        return path.startsWith("me_") || path.contains("_me_") || path.contains("appeng") || path.contains("ae2") || path.contains("interface") || path.contains("requester") || path.contains("provider") || path.contains("import_bus") || path.contains("export_bus") || path.contains("storage_bus");
     }
 
     private static boolean connectionMatches(IGridConnection connection, IGridNode coreNode, IGridNode targetNode) {

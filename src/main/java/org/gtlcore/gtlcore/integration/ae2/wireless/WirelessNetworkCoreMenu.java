@@ -1,6 +1,5 @@
 package org.gtlcore.gtlcore.integration.ae2.wireless;
 
-import lombok.Getter;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
@@ -13,6 +12,8 @@ import net.minecraft.world.inventory.DataSlot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraftforge.network.NetworkHooks;
+
+import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.UUID;

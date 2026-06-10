@@ -8,6 +8,7 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
+
 import org.jetbrains.annotations.NotNull;
 
 public class WirelessNetworkCoreScreen extends AbstractContainerScreen<WirelessNetworkCoreMenu> {

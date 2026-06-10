@@ -24,6 +24,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.DirectionProperty;
 import net.minecraft.world.level.material.MapColor;
 import net.minecraft.world.phys.BlockHitResult;
+
 import org.jetbrains.annotations.NotNull;
 
 public class WirelessNetworkCoreBlock extends MetaMachineBlock {
