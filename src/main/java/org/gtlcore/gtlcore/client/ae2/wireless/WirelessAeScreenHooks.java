@@ -28,7 +28,6 @@ import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.client.event.ScreenEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
-import net.minecraftforge.registries.ForgeRegistries;
 import org.jetbrains.annotations.NotNull;
 
 import java.lang.reflect.Field;
@@ -561,35 +560,7 @@ final class WirelessAeScreenHooks {
     }
 
     private static boolean shouldOfferWirelessTab(Level level, BlockPos pos) {
-        if (WirelessAeNetworkRuntime.canOpenWirelessTargetMenu(level, pos)) {
-            return true;
-        }
-
-        BlockEntity blockEntity = level.getBlockEntity(pos);
-        return isLikelyAeTarget(blockEntity) || isLikelyAeTarget(invokeNoArg(blockEntity, "getMetaMachine")) || isLikelyAeBlockId(ForgeRegistries.BLOCKS.getKey(level.getBlockState(pos).getBlock()));
-    }
-
-    private static boolean isLikelyAeTarget(Object target) {
-        if (target == null) {
-            return false;
-        }
-
-        String className = target.getClass().getName().toLowerCase(java.util.Locale.ROOT);
-        return className.startsWith("appeng.") || className.startsWith("com.glodblock.github.") || className.startsWith("com.gregtechceu.gtceu.integration.ae2.") || className.startsWith("org.gtlcore.gtlcore.integration.ae2.") || className.startsWith("org.gtlcore.gtlcore.common.machine.multiblock.part.ae.") || className.startsWith("com.hepdd.gtmthings.common.block.machine.multiblock.part.appeng.") || className.contains(".ae2.") || className.contains(".ae.") || className.contains(".appeng.") || className.contains("extendedae") || className.contains("expattern") || className.contains("mepattern") || className.contains("me_pattern") || className.contains("patternbuffer") || className.contains("pattern_buffer") || className.contains("pattern_provider");
-    }
-
-    private static boolean isLikelyAeBlockId(ResourceLocation blockId) {
-        if (blockId == null) {
-            return false;
-        }
-
-        String namespace = blockId.getNamespace();
-        String path = blockId.getPath();
-        return "ae2".equals(namespace) || "appeng".equals(namespace) || "expatternprovider".equals(namespace) || "extendedae".equals(namespace) || "megacells".equals(namespace) || ("gtceu".equals(namespace) && isLikelyAePath(path)) || ("gtlcore".equals(namespace) && isLikelyAePath(path)) || ("gtmthings".equals(namespace) && isLikelyAePath(path)) || path.contains("me_") || path.contains("ae") || path.contains("pattern") || path.contains("interface") || path.contains("provider");
-    }
-
-    private static boolean isLikelyAePath(String path) {
-        return path.contains("me_") || path.contains("ae") || path.contains("pattern") || path.contains("interface") || path.contains("provider") || path.contains("stocking") || path.contains("import_bus") || path.contains("export_bus") || path.contains("storage_bus");
+        return WirelessAeNetworkRuntime.canOpenWirelessTargetMenu(level, pos);
     }
 
     private static List<BlockPos> findTargetPositions(Object target) {
