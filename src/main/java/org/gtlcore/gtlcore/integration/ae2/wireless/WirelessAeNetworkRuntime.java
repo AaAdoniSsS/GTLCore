@@ -42,6 +42,31 @@ public final class WirelessAeNetworkRuntime {
     private static final Map<UUID, Map<WirelessAeSavedData.MemberKey, IGridConnection>> CONNECTIONS = new HashMap<>();
     private static final Set<UUID> REQUESTED_RECONNECTS = new HashSet<>();
     private static int tickCounter;
+    private static final String GTCEU_ME_PART_PACKAGE = "com.gregtechceu.gtceu.integration.ae2.";
+    private static final String GTMTHINGS_ME_PART_PACKAGE = "com.hepdd.gtmthings.common.block.machine.multiblock.part.appeng.";
+    private static final String GTL_ME_PART_PACKAGE = "org.gtlcore.gtlcore.common.machine.multiblock.part.ae.";
+    private static final Set<String> GTL_ME_TARGET_CLASSES = Set.of(
+            "org.gtlcore.gtlcore.common.machine.multiblock.part.MEDualHatchStockPartMachine",
+            "org.gtlcore.gtlcore.common.machine.multiblock.part.TagFilterMEStockBusPartMachine",
+            "org.gtlcore.gtlcore.integration.wildcard.MEWildcardPatternBufferPartMachine");
+    private static final Set<String> WIRELESS_ME_TARGET_IDS = Set.of(
+            "me_input_bus",
+            "me_stocking_input_bus",
+            "me_output_bus",
+            "me_input_hatch",
+            "me_stocking_input_hatch",
+            "me_output_hatch",
+            "tag_filter_me_stock_bus_part_machine",
+            "me_dual_hatch_stock_part_machine",
+            "me_mini_pattern_buffer",
+            "me_extend_pattern_buffer",
+            "me_stocking_pattern_buffer",
+            "me_final_pattern_buffer",
+            "me_pattern_buffer_proxy",
+            "me_extended_export_buffer",
+            "me_extended_async_export_buffer",
+            "me_molecular_assembler_io",
+            "me_wildcard_pattern_buffer");
 
     public enum ConnectionResult {
         CONNECTED,
@@ -176,26 +201,44 @@ public final class WirelessAeNetworkRuntime {
     }
 
     public static boolean canUseAsWirelessTarget(ServerLevel level, BlockPos pos) {
-        return findTargetNode(level, pos) != null;
+        return isWirelessMeTarget(level, pos) && findTargetNode(level, pos) != null;
     }
 
     public static boolean canBindAsWirelessTarget(ServerLevel level, BlockPos pos) {
-        return findTargetNode(level, pos) != null || isKnownAeTarget(level, pos);
+        return isWirelessMeTarget(level, pos) && findTargetNode(level, pos) != null;
     }
 
     public static boolean canBindAsWirelessTarget(ServerLevel level, BlockPos pos, Direction side) {
+        if (!isWirelessMeTarget(level, pos)) {
+            return false;
+        }
         if (side != null && findTargetNode(level, pos, side) != null) {
             return true;
         }
-        return findTargetNode(level, pos) != null || isKnownAeTarget(level, pos);
+        return findTargetNode(level, pos) != null;
     }
 
     public static boolean canOpenWirelessTargetMenu(Level level, BlockPos pos) {
         pos = resolveWirelessTargetPos(level, pos);
-        if (level instanceof ServerLevel serverLevel) {
-            return canBindAsWirelessTarget(serverLevel, pos);
+        return isWirelessMeTarget(level, pos);
+    }
+
+    public static boolean isWirelessMeTarget(Level level, BlockPos pos) {
+        BlockEntity blockEntity = level.getBlockEntity(pos);
+        if (blockEntity instanceof WirelessNetworkCoreBlockEntity) {
+            return false;
         }
-        return isKnownAeTarget(level, pos);
+
+        if (isWirelessMeTargetObject(blockEntity)) {
+            return true;
+        }
+
+        Object metaMachine = invokeObject(blockEntity, "getMetaMachine");
+        if (isWirelessMeTargetObject(metaMachine)) {
+            return true;
+        }
+
+        return isWirelessMeTargetId(ForgeRegistries.BLOCKS.getKey(level.getBlockState(pos).getBlock()));
     }
 
     public static BlockPos resolveWirelessTargetPos(Level level, BlockPos pos) {
@@ -344,6 +387,12 @@ public final class WirelessAeNetworkRuntime {
                                                   WirelessAeSavedData.MemberKey member,
                                                   IGridNode bridgeNode,
                                                   Map<WirelessAeSavedData.MemberKey, IGridConnection> frequencyConnections) {
+        ServerLevel targetLevel = bridgeNode.getLevel().getServer().getLevel(member.pos().dimension());
+        if (targetLevel == null || !isWirelessMeTarget(targetLevel, member.blockPos())) {
+            destroyQuietly(frequencyConnections.remove(member));
+            return ConnectionResult.TARGET_MISSING;
+        }
+
         IGridNode targetNode = findTargetNode(bridgeNode.getLevel().getServer(), member);
         if (targetNode == null) {
             destroyQuietly(frequencyConnections.remove(member));
@@ -676,14 +725,14 @@ public final class WirelessAeNetworkRuntime {
             return null;
         }
 
-        for (String methodName : new String[] { "getBufferPos", "getMainPos", "getControllerPos", "getControllerBlockPos" }) {
+        for (String methodName : new String[] { "getBufferPos", "getMainPos" }) {
             BlockPos pos = invokeBlockPos(target, methodName);
             if (isResolvableTargetPos(level, pos)) {
                 return pos;
             }
         }
 
-        for (String methodName : new String[] { "getBuffer", "getController" }) {
+        for (String methodName : new String[] { "getBuffer" }) {
             Object referencedTarget = invokeObject(target, methodName);
             BlockPos pos = invokeBlockPos(referencedTarget, "getPos");
             if (isResolvableTargetPos(level, pos)) {
@@ -710,53 +759,27 @@ public final class WirelessAeNetworkRuntime {
         return pos != null && level.hasChunkAt(pos) && !(level.getBlockEntity(pos) instanceof WirelessNetworkCoreBlockEntity);
     }
 
-    private static boolean isKnownAeTarget(Level level, BlockPos pos) {
-        BlockEntity blockEntity = level.getBlockEntity(pos);
-        if (blockEntity instanceof WirelessNetworkCoreBlockEntity) {
+    private static boolean isWirelessMeTargetObject(Object target) {
+        if (target == null) {
             return false;
         }
 
-        ResourceLocation blockId = ForgeRegistries.BLOCKS.getKey(level.getBlockState(pos).getBlock());
-        if (isKnownAeTargetId(blockId)) {
-            return true;
-        }
-
-        if (blockEntity == null) {
-            return false;
-        }
-
-        String className = blockEntity.getClass().getName();
-        if (className.startsWith("appeng.") || className.startsWith("com.glodblock.github.extendedae.") || className.startsWith("com.gregtechceu.gtceu.integration.ae2.") || className.startsWith("com.hepdd.gtmthings.common.block.machine.multiblock.part.appeng.") || className.startsWith("org.gtlcore.gtlcore.integration.ae2.") || className.startsWith("org.gtlcore.gtlcore.common.machine.multiblock.part.ae.")) {
-            return true;
-        }
-
-        Object metaMachine = invokeObject(blockEntity, "getMetaMachine");
-        if (metaMachine != null) {
-            String metaMachineClassName = metaMachine.getClass().getName();
-            if (metaMachineClassName.startsWith("com.gregtechceu.gtceu.integration.ae2.") || metaMachineClassName.startsWith("com.hepdd.gtmthings.common.block.machine.multiblock.part.appeng.") || metaMachineClassName.startsWith("org.gtlcore.gtlcore.integration.ae2.") || metaMachineClassName.startsWith("org.gtlcore.gtlcore.common.machine.multiblock.part.ae.")) {
-                return true;
-            }
-        }
-
-        if (blockId == null) {
-            return false;
-        }
-
-        return isKnownAeTargetId(blockId);
+        String className = target.getClass().getName();
+        return className.startsWith(GTCEU_ME_PART_PACKAGE) || className.startsWith(GTMTHINGS_ME_PART_PACKAGE) || className.startsWith(GTL_ME_PART_PACKAGE) || className.startsWith("appeng.") || className.startsWith("com.glodblock.github.extendedae.") || GTL_ME_TARGET_CLASSES.contains(className);
     }
 
-    private static boolean isKnownAeTargetId(ResourceLocation blockId) {
+    private static boolean isWirelessMeTargetId(ResourceLocation blockId) {
         if (blockId == null) {
             return false;
         }
 
         String namespace = blockId.getNamespace();
         String path = blockId.getPath();
-        return "ae2".equals(namespace) || "appeng".equals(namespace) || "expatternprovider".equals(namespace) || "extendedae".equals(namespace) || "megacells".equals(namespace) || ("merequester".equals(namespace) && isAeLikePath(path)) || ("gtceu".equals(namespace) && (path.contains("me_") || path.contains("ae") || path.contains("pattern"))) || ("gtlcore".equals(namespace) && (path.contains("me_") || path.contains("ae") || path.contains("pattern"))) || ("gtmthings".equals(namespace) && isAeLikePath(path)) || (namespace.contains("ae") && isAeLikePath(path));
+        return "ae2".equals(namespace) || "appeng".equals(namespace) || "expatternprovider".equals(namespace) || "extendedae".equals(namespace) || "megacells".equals(namespace) || WIRELESS_ME_TARGET_IDS.contains(path) || ("merequester".equals(namespace) && isMeLikePath(path)) || ("gtmthings".equals(namespace) && isMeLikePath(path)) || (namespace.contains("ae") && isMeLikePath(path));
     }
 
-    private static boolean isAeLikePath(String path) {
-        return path.contains("me_") || path.contains("ae") || path.contains("pattern") || path.contains("interface") || path.contains("requester") || path.contains("provider") || path.contains("import_bus") || path.contains("export_bus") || path.contains("storage_bus");
+    private static boolean isMeLikePath(String path) {
+        return path.startsWith("me_") || path.contains("_me_") || path.contains("appeng") || path.contains("ae2") || path.contains("interface") || path.contains("requester") || path.contains("provider") || path.contains("import_bus") || path.contains("export_bus") || path.contains("storage_bus");
     }
 
     private static boolean connectionMatches(IGridConnection connection, IGridNode coreNode, IGridNode targetNode) {
