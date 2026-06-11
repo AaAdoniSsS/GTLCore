@@ -166,8 +166,9 @@ public final class WirelessAePackets {
                 GlobalPos targetGlobalPos = target.pos();
                 WirelessAeSavedData data = WirelessAeSavedData.get(level.getServer());
                 UUID currentNetwork = data.getMemberNetwork(target);
-                UUID connectedNetwork = WirelessAeNetworkRuntime.findConnectedNetworkFrequency(level.getServer(), target);
-                boolean canModifyCurrentConnection = connectedNetwork != null && connectedNetwork.equals(currentNetwork) && WirelessAeNetworkRuntime.hasWirelessConnection(connectedNetwork, target);
+                UUID wiredNetwork = WirelessAeNetworkRuntime.findWiredNetworkFrequency(level.getServer(), target);
+                UUID connectedNetwork = wiredNetwork == null ? WirelessAeNetworkRuntime.findConnectedNetworkFrequency(level.getServer(), target) : wiredNetwork;
+                boolean canModifyCurrentConnection = wiredNetwork == null && connectedNetwork != null && connectedNetwork.equals(currentNetwork) && WirelessAeNetworkRuntime.hasWirelessConnection(connectedNetwork, target);
 
                 if (packet.disconnect) {
                     if (!canModifyCurrentConnection || !packet.frequency.equals(currentNetwork)) {
@@ -401,11 +402,12 @@ public final class WirelessAePackets {
     private static List<TargetNetworkEntry> buildTargetEntries(ServerLevel level, WirelessAeSavedData.MemberKey target) {
         WirelessAeSavedData data = WirelessAeSavedData.get(level.getServer());
         UUID currentNetwork = data.getMemberNetwork(target);
-        UUID connectedNetwork = WirelessAeNetworkRuntime.findConnectedNetworkFrequency(level.getServer(), target);
+        UUID wiredNetwork = WirelessAeNetworkRuntime.findWiredNetworkFrequency(level.getServer(), target);
+        UUID connectedNetwork = wiredNetwork == null ? WirelessAeNetworkRuntime.findConnectedNetworkFrequency(level.getServer(), target) : wiredNetwork;
         List<TargetNetworkEntry> entries = new ArrayList<>();
         for (WirelessAeSavedData.NetworkInfo network : data.getNetworkInfo()) {
             boolean connected = network.frequency().equals(connectedNetwork);
-            boolean disconnectable = connected && network.frequency().equals(currentNetwork) && WirelessAeNetworkRuntime.hasWirelessConnection(network.frequency(), target);
+            boolean disconnectable = wiredNetwork == null && connected && network.frequency().equals(currentNetwork) && WirelessAeNetworkRuntime.hasWirelessConnection(network.frequency(), target);
             entries.add(new TargetNetworkEntry(
                     network.frequency(),
                     network.name(),
