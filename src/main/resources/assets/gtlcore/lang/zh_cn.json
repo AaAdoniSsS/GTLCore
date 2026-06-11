@@ -111,6 +111,7 @@
   "config.gtlcore.option.sendUpdateMessages": "是否启用更新提醒",
   "config.jade.plugin_gtlcore.tick_time_provider": "[GTLCore] Tick时间",
   "config.jade.plugin_gtlcore.wireless_data_hatch_provider": "无线数据仓",
+  "config.jade.plugin_gtlcore.wireless_ae_network_provider": "无线 ME 网络",
   "gtlcore.condition.gravity": "需要强重力环境",
   "gtlcore.condition.zero_gravity": "需要无重力环境",
   "gtlcore.gui.filter_config.title": "过滤设置",
@@ -431,5 +432,10 @@
   "message.gtlcore.wireless_target.missing_core": "这个无线 ME 网络核心已经不存在。",
   "message.gtlcore.wireless_target.invalid_target": "这个方块没有暴露可连接的 ME 网络节点。",
   "message.gtlcore.wireless_target.linked_target": "已将 ME 仓室接入无线 ME 网络（%s）。",
-  "message.gtlcore.wireless_target.linked_target_pending": "已记录这个 ME 方块，等待无线 ME 网络连接（%s）。"
+  "message.gtlcore.wireless_target.linked_target_pending": "已记录这个 ME 方块，等待无线 ME 网络连接（%s）。",
+  "tooltip.gtlcore.wireless_ae.core_connected": "无线 ME 网络：%s（已接入 ME 网络）",
+  "tooltip.gtlcore.wireless_ae.core_disconnected": "无线 ME 网络：%s（未接入 ME 网络）",
+  "tooltip.gtlcore.wireless_ae.target_unbound": "无线 ME 网络：未连接",
+  "tooltip.gtlcore.wireless_ae.target_connected": "无线 ME 网络：%s（已连接）",
+  "tooltip.gtlcore.wireless_ae.target_waiting": "无线 ME 网络：%s（等待连接）"
 }

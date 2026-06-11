@@ -111,6 +111,7 @@
   "config.gtlcore.option.sendUpdateMessages": "Enable Update Notifications",
   "config.jade.plugin_gtlcore.tick_time_provider": "[GTLCore] Tick Time",
   "config.jade.plugin_gtlcore.wireless_data_hatch_provider": "Wireless Data Hatch",
+  "config.jade.plugin_gtlcore.wireless_ae_network_provider": "Wireless ME Network",
   "gtlcore.condition.gravity": "Requires High Gravity Environment",
   "gtlcore.condition.zero_gravity": "Requires Zero Gravity Environment",
   "gtlcore.gui.filter_config.title": "Filter Configuration",
@@ -431,5 +432,10 @@
   "message.gtlcore.wireless_target.missing_core": "That wireless ME network core no longer exists.",
   "message.gtlcore.wireless_target.invalid_target": "This block does not expose an ME network node.",
   "message.gtlcore.wireless_target.linked_target": "Linked ME hatch to the wireless ME network (%s).",
-  "message.gtlcore.wireless_target.linked_target_pending": "Recorded this ME block and waiting for the wireless ME network connection (%s)."
+  "message.gtlcore.wireless_target.linked_target_pending": "Recorded this ME block and waiting for the wireless ME network connection (%s).",
+  "tooltip.gtlcore.wireless_ae.core_connected": "Wireless ME network: %s (attached to an ME network)",
+  "tooltip.gtlcore.wireless_ae.core_disconnected": "Wireless ME network: %s (not attached to an ME network)",
+  "tooltip.gtlcore.wireless_ae.target_unbound": "Wireless ME network: not connected",
+  "tooltip.gtlcore.wireless_ae.target_connected": "Wireless ME network: %s (connected)",
+  "tooltip.gtlcore.wireless_ae.target_waiting": "Wireless ME network: %s (waiting for connection)"
 }

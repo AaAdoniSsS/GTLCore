@@ -26,6 +26,7 @@ public class GTLJadePlugin implements IWailaPlugin {
         registration.registerBlockDataProvider(new MEPatternBufferProvider(), BlockEntity.class);
         registration.registerBlockDataProvider(new MEPatternBufferProxyProvider(), BlockEntity.class);
         registration.registerBlockDataProvider(new MEMAIOProvider(), BlockEntity.class);
+        registration.registerBlockDataProvider(new WirelessAeNetworkProvider(), BlockEntity.class);
     }
 
     @Override
@@ -35,5 +36,6 @@ public class GTLJadePlugin implements IWailaPlugin {
         registration.registerBlockComponent(new MEPatternBufferProvider(), Block.class);
         registration.registerBlockComponent(new MEPatternBufferProxyProvider(), Block.class);
         registration.registerBlockComponent(new MEMAIOProvider(), Block.class);
+        registration.registerBlockComponent(new WirelessAeNetworkProvider(), Block.class);
     }
 }

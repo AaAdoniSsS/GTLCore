@@ -306,6 +306,43 @@ public final class WirelessAeNetworkRuntime {
         return frequency.toString().substring(0, 8);
     }
 
+    public static boolean isMemberConnected(MinecraftServer server, UUID frequency, WirelessAeSavedData.MemberKey member) {
+        Map<WirelessAeSavedData.MemberKey, IGridConnection> frequencyConnections = CONNECTIONS.get(frequency);
+        if (hasStoredConnection(frequencyConnections, member)) {
+            return true;
+        }
+
+        WirelessNetworkCoreBlockEntity core = getLoadedCore(server, frequency);
+        if (core == null) {
+            return false;
+        }
+
+        IGridNode bridgeNode = findBridgeNode(core);
+        IGridNode targetNode = findTargetNode(server, member);
+        return bridgeNode != null && targetNode != null && (areConnected(bridgeNode, targetNode) || isSameGrid(bridgeNode, targetNode));
+    }
+
+    public static UUID findWiredNetworkFrequency(MinecraftServer server, WirelessAeSavedData.MemberKey member) {
+        IGridNode targetNode = findTargetNode(server, member);
+        if (targetNode == null) {
+            return null;
+        }
+
+        WirelessAeSavedData data = WirelessAeSavedData.get(server);
+        for (WirelessAeSavedData.NetworkInfo network : data.getNetworkInfo()) {
+            WirelessNetworkCoreBlockEntity core = getLoadedCore(server, network.frequency());
+            if (core == null) {
+                continue;
+            }
+
+            IGridNode bridgeNode = findBridgeNode(core);
+            if (bridgeNode != null && isSameGrid(bridgeNode, targetNode)) {
+                return network.frequency();
+            }
+        }
+        return null;
+    }
+
     private static void clearMemberBinding(ServerLevel level, BlockPos pos) {
         GlobalPos member = GlobalPos.of(level.dimension(), pos);
         WirelessAeSavedData data = WirelessAeSavedData.get(level.getServer());
@@ -427,6 +464,25 @@ public final class WirelessAeNetworkRuntime {
                     error);
             return ConnectionResult.FAILED;
         }
+    }
+
+    private static boolean hasStoredConnection(Map<WirelessAeSavedData.MemberKey, IGridConnection> frequencyConnections,
+                                               WirelessAeSavedData.MemberKey member) {
+        if (frequencyConnections == null) {
+            return false;
+        }
+        if (frequencyConnections.get(member) != null) {
+            return true;
+        }
+        if (member.side() != null) {
+            return frequencyConnections.get(new WirelessAeSavedData.MemberKey(member.pos(), null)) != null;
+        }
+        for (Map.Entry<WirelessAeSavedData.MemberKey, IGridConnection> entry : frequencyConnections.entrySet()) {
+            if (entry.getValue() != null && entry.getKey().pos().equals(member.pos())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean isUsableBridgeNode(IGridNode coreNode, IGridNode bridgeNode) {
