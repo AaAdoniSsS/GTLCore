@@ -24,7 +24,7 @@ public class WirelessAeTargetScreen extends AbstractContainerScreen<WirelessAeTa
         this.imageWidth = 248;
         int rows = Math.max(1, menu.getNetworks().size());
         this.imageHeight = Math.max(128,
-                LIST_Y + 8 + rows * ROW_HEIGHT + (getConnectedEntry() == null ? 0 : DISCONNECT_GAP + BUTTON_HEIGHT) + 14);
+                LIST_Y + 8 + rows * ROW_HEIGHT + (getDisconnectableEntry() == null ? 0 : DISCONNECT_GAP + BUTTON_HEIGHT) + 14);
     }
 
     @Override
@@ -38,8 +38,12 @@ public class WirelessAeTargetScreen extends AbstractContainerScreen<WirelessAeTa
                         new WirelessAePackets.OpenNormalTargetMenuPacket(this.menu.getOriginPos()))));
 
         int y = this.topPos + LIST_Y;
+        boolean lockedByCableConnection = isLockedByCableConnection();
         for (WirelessAeTargetMenu.Entry entry : this.menu.getNetworks()) {
             Button.OnPress onPress = button -> {
+                if (entry.connected() || lockedByCableConnection) {
+                    return;
+                }
                 WirelessAePackets.CHANNEL.sendToServer(
                         new WirelessAePackets.ConnectTargetPacket(
                                 this.menu.getTargetPos(),
@@ -60,8 +64,8 @@ public class WirelessAeTargetScreen extends AbstractContainerScreen<WirelessAeTa
             y += ROW_HEIGHT;
         }
 
-        WirelessAeTargetMenu.Entry connectedEntry = getConnectedEntry();
-        if (connectedEntry != null) {
+        WirelessAeTargetMenu.Entry disconnectableEntry = getDisconnectableEntry();
+        if (disconnectableEntry != null) {
             y += DISCONNECT_GAP;
             this.addRenderableWidget(WirelessAeStyle.warningButton(
                     this.leftPos + CONTENT_X,
@@ -75,7 +79,7 @@ public class WirelessAeTargetScreen extends AbstractContainerScreen<WirelessAeTa
                                         this.menu.getTargetPos(),
                                         this.menu.getTargetSide(),
                                         null,
-                                        connectedEntry.frequency(),
+                                        disconnectableEntry.frequency(),
                                         true));
                         this.onClose();
                     }));
@@ -98,7 +102,7 @@ public class WirelessAeTargetScreen extends AbstractContainerScreen<WirelessAeTa
                 this.topPos + 26,
                 this.imageWidth - 20,
                 this.imageHeight - 38);
-        if (getConnectedEntry() != null) {
+        if (getDisconnectableEntry() != null) {
             int rows = Math.max(1, this.menu.getNetworks().size());
             WirelessAeStyle.drawSeparator(
                     graphics,
@@ -141,5 +145,18 @@ public class WirelessAeTargetScreen extends AbstractContainerScreen<WirelessAeTa
             }
         }
         return null;
+    }
+
+    private WirelessAeTargetMenu.Entry getDisconnectableEntry() {
+        for (WirelessAeTargetMenu.Entry entry : this.menu.getNetworks()) {
+            if (entry.disconnectable()) {
+                return entry;
+            }
+        }
+        return null;
+    }
+
+    private boolean isLockedByCableConnection() {
+        return getConnectedEntry() != null && getDisconnectableEntry() == null;
     }
 }

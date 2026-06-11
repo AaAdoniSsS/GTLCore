@@ -350,6 +350,7 @@ final class WirelessAeScreenHooks {
         int contentY = y + FANCY_HEADER_HEIGHT + 8;
         int contentWidth = width - (PANEL_MARGIN + 6) * 2;
         WirelessAePackets.TargetNetworkEntry connected = getConnectedEntry();
+        WirelessAePackets.TargetNetworkEntry disconnectable = getDisconnectableEntry();
 
         WirelessAeStyle.drawStatusLight(graphics, contentX, contentY, connected != null);
         WirelessAeStyle.drawTrimmedString(
@@ -386,17 +387,18 @@ final class WirelessAeScreenHooks {
             return;
         }
 
-        int bottomReserve = connected == null ? 8 : 36;
+        int bottomReserve = disconnectable == null ? 8 : 36;
         int maxRows = Math.max(1, (y + height - bottomReserve - listY) / NETWORK_ROW_HEIGHT);
         int rows = Math.min(embeddedEntries.size(), maxRows);
+        boolean lockedByCableConnection = isLockedByCableConnection();
         for (int i = 0; i < rows; i++) {
             WirelessAePackets.TargetNetworkEntry entry = embeddedEntries.get(i);
             int rowY = listY + i * NETWORK_ROW_HEIGHT;
-            boolean hovered = isInsideRect(mouseX, mouseY, contentX, rowY, contentWidth, 20);
+            boolean hovered = !lockedByCableConnection && !entry.connected() && isInsideRect(mouseX, mouseY, contentX, rowY, contentWidth, 20);
             drawNetworkRow(graphics, contentX, rowY, contentWidth, entry, hovered);
         }
 
-        if (connected != null) {
+        if (disconnectable != null) {
             int disconnectY = y + height - 30;
             WirelessAeStyle.drawSeparator(graphics, contentX, disconnectY - 5, contentWidth);
             boolean hovered = isInsideRect(mouseX, mouseY, contentX, disconnectY, contentWidth, 20);
@@ -446,21 +448,26 @@ final class WirelessAeScreenHooks {
         int contentWidth = width - (PANEL_MARGIN + 6) * 2;
         int listY = contentY + 18;
         WirelessAePackets.TargetNetworkEntry connected = getConnectedEntry();
-        int bottomReserve = connected == null ? 8 : 36;
+        WirelessAePackets.TargetNetworkEntry disconnectable = getDisconnectableEntry();
+        int bottomReserve = disconnectable == null ? 8 : 36;
         int maxRows = Math.max(1, (y + height - bottomReserve - listY) / NETWORK_ROW_HEIGHT);
         int rows = Math.min(embeddedEntries.size(), maxRows);
+        boolean lockedByCableConnection = isLockedByCableConnection();
         for (int i = 0; i < rows; i++) {
             int rowY = listY + i * NETWORK_ROW_HEIGHT;
             if (isInsideRect(mouseX, mouseY, contentX, rowY, contentWidth, 20)) {
+                if (lockedByCableConnection) {
+                    return;
+                }
                 connectEmbeddedEntry(targetPos, embeddedEntries.get(i));
                 return;
             }
         }
 
-        if (connected != null) {
+        if (disconnectable != null) {
             int disconnectY = y + height - 30;
             if (isInsideRect(mouseX, mouseY, contentX, disconnectY, contentWidth, 20)) {
-                disconnectEmbeddedEntry(targetPos, connected);
+                disconnectEmbeddedEntry(targetPos, disconnectable);
             }
         }
     }
@@ -499,6 +506,7 @@ final class WirelessAeScreenHooks {
             updated.add(new WirelessAePackets.TargetNetworkEntry(
                     entry.frequency(),
                     entry.name(),
+                    entry.frequency().equals(frequency),
                     entry.frequency().equals(frequency)));
         }
         embeddedEntries = List.copyOf(updated);
@@ -517,6 +525,19 @@ final class WirelessAeScreenHooks {
             }
         }
         return null;
+    }
+
+    private static WirelessAePackets.TargetNetworkEntry getDisconnectableEntry() {
+        for (WirelessAePackets.TargetNetworkEntry entry : embeddedEntries) {
+            if (entry.disconnectable()) {
+                return entry;
+            }
+        }
+        return null;
+    }
+
+    private static boolean isLockedByCableConnection() {
+        return getConnectedEntry() != null && getDisconnectableEntry() == null;
     }
 
     private static boolean isInsideRect(double mouseX, double mouseY, int x, int y, int width, int height) {

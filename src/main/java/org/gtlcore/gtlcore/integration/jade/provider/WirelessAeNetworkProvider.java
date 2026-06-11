@@ -29,8 +29,6 @@ public class WirelessAeNetworkProvider implements IBlockComponentProvider, IServ
     private static final ResourceLocation UID = GTLCore.id("wireless_ae_network_provider");
     private static final String TAG_PRESENT = "gtlcore_wireless_ae";
     private static final String TAG_CORE = "wireless_ae_core";
-    private static final String TAG_BOUND = "wireless_ae_bound";
-    private static final String TAG_CONNECTED = "wireless_ae_connected";
     private static final String TAG_NETWORK_NAME = "wireless_ae_network_name";
 
     @Override
@@ -40,27 +38,18 @@ public class WirelessAeNetworkProvider implements IBlockComponentProvider, IServ
             return;
         }
 
-        boolean connected = serverData.getBoolean(TAG_CONNECTED);
         if (serverData.getBoolean(TAG_CORE)) {
-            tooltip.add(Component.translatable(connected ?
-                    "tooltip.gtlcore.wireless_ae.core_connected" :
-                    "tooltip.gtlcore.wireless_ae.core_disconnected",
+            tooltip.add(Component.translatable(
+                    "tooltip.gtlcore.wireless_ae.core_connected",
                     serverData.getString(TAG_NETWORK_NAME))
-                    .withStyle(connected ? ChatFormatting.GREEN : ChatFormatting.YELLOW));
+                    .withStyle(ChatFormatting.GREEN));
             return;
         }
 
-        if (!serverData.getBoolean(TAG_BOUND)) {
-            tooltip.add(Component.translatable("tooltip.gtlcore.wireless_ae.target_unbound")
-                    .withStyle(ChatFormatting.GRAY));
-            return;
-        }
-
-        tooltip.add(Component.translatable(connected ?
-                "tooltip.gtlcore.wireless_ae.target_connected" :
-                "tooltip.gtlcore.wireless_ae.target_waiting",
+        tooltip.add(Component.translatable(
+                "tooltip.gtlcore.wireless_ae.target_connected",
                 serverData.getString(TAG_NETWORK_NAME))
-                .withStyle(connected ? ChatFormatting.GREEN : ChatFormatting.YELLOW));
+                .withStyle(ChatFormatting.GREEN));
     }
 
     @Override
@@ -89,35 +78,25 @@ public class WirelessAeNetworkProvider implements IBlockComponentProvider, IServ
                 blockAccessor.getSide(),
                 hitLocation);
         WirelessAeSavedData savedData = WirelessAeSavedData.get(serverLevel.getServer());
-        UUID frequency = savedData.getMemberNetwork(target);
-        boolean connected = false;
-
-        if (frequency != null) {
-            connected = WirelessAeNetworkRuntime.isMemberConnected(serverLevel.getServer(), frequency, target);
-        } else {
-            frequency = WirelessAeNetworkRuntime.findWiredNetworkFrequency(serverLevel.getServer(), target);
-            connected = frequency != null;
+        UUID frequency = WirelessAeNetworkRuntime.findConnectedNetworkFrequency(serverLevel.getServer(), target);
+        if (frequency == null) {
+            return;
         }
 
         data.putBoolean(TAG_PRESENT, true);
         data.putBoolean(TAG_CORE, false);
-        data.putBoolean(TAG_BOUND, frequency != null);
-        if (frequency == null) {
-            data.putBoolean(TAG_CONNECTED, false);
-            return;
-        }
-
-        data.putBoolean(TAG_CONNECTED, connected);
         data.putString(TAG_NETWORK_NAME, savedData.getNetworkName(frequency));
     }
 
     private static void appendCoreData(CompoundTag data, ServerLevel level, WirelessNetworkCoreBlockEntity core) {
+        if (!core.isLinkedToAeNetwork()) {
+            return;
+        }
+
         WirelessAeSavedData savedData = WirelessAeSavedData.get(level.getServer());
         UUID frequency = core.getFrequency();
         data.putBoolean(TAG_PRESENT, true);
         data.putBoolean(TAG_CORE, true);
-        data.putBoolean(TAG_BOUND, true);
-        data.putBoolean(TAG_CONNECTED, core.isLinkedToAeNetwork());
         data.putString(TAG_NETWORK_NAME, savedData.getNetworkName(frequency));
     }
 

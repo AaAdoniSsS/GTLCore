@@ -434,8 +434,5 @@
   "message.gtlcore.wireless_target.linked_target": "已将 ME 仓室接入无线 ME 网络（%s）。",
   "message.gtlcore.wireless_target.linked_target_pending": "已记录这个 ME 方块，等待无线 ME 网络连接（%s）。",
   "tooltip.gtlcore.wireless_ae.core_connected": "无线 ME 网络：%s（已接入 ME 网络）",
-  "tooltip.gtlcore.wireless_ae.core_disconnected": "无线 ME 网络：%s（未接入 ME 网络）",
-  "tooltip.gtlcore.wireless_ae.target_unbound": "无线 ME 网络：未连接",
-  "tooltip.gtlcore.wireless_ae.target_connected": "无线 ME 网络：%s（已连接）",
-  "tooltip.gtlcore.wireless_ae.target_waiting": "无线 ME 网络：%s（等待连接）"
+  "tooltip.gtlcore.wireless_ae.target_connected": "无线 ME 网络：%s（已连接）"
 }

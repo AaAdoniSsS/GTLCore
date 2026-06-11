@@ -322,6 +322,20 @@ public final class WirelessAeNetworkRuntime {
         return bridgeNode != null && targetNode != null && (areConnected(bridgeNode, targetNode) || isSameGrid(bridgeNode, targetNode));
     }
 
+    public static boolean hasWirelessConnection(UUID frequency, WirelessAeSavedData.MemberKey member) {
+        return hasStoredConnection(CONNECTIONS.get(frequency), member);
+    }
+
+    public static UUID findConnectedNetworkFrequency(MinecraftServer server, WirelessAeSavedData.MemberKey member) {
+        WirelessAeSavedData data = WirelessAeSavedData.get(server);
+        UUID frequency = data.getMemberNetwork(member);
+        if (frequency != null && isMemberConnected(server, frequency, member)) {
+            return frequency;
+        }
+
+        return findWiredNetworkFrequency(server, member);
+    }
+
     public static UUID findWiredNetworkFrequency(MinecraftServer server, WirelessAeSavedData.MemberKey member) {
         IGridNode targetNode = findTargetNode(server, member);
         if (targetNode == null) {
@@ -821,7 +835,7 @@ public final class WirelessAeNetworkRuntime {
         }
 
         String className = target.getClass().getName();
-        return className.startsWith(GTCEU_ME_PART_PACKAGE) || className.startsWith(GTMTHINGS_ME_PART_PACKAGE) || className.startsWith(GTL_ME_PART_PACKAGE) || className.startsWith("appeng.") || className.startsWith("com.glodblock.github.extendedae.") || GTL_ME_TARGET_CLASSES.contains(className);
+        return className.startsWith(GTCEU_ME_PART_PACKAGE) || className.startsWith(GTMTHINGS_ME_PART_PACKAGE) || className.startsWith(GTL_ME_PART_PACKAGE) || GTL_ME_TARGET_CLASSES.contains(className);
     }
 
     private static boolean isWirelessMeTargetId(ResourceLocation blockId) {
@@ -831,7 +845,7 @@ public final class WirelessAeNetworkRuntime {
 
         String namespace = blockId.getNamespace();
         String path = blockId.getPath();
-        return "ae2".equals(namespace) || "appeng".equals(namespace) || "expatternprovider".equals(namespace) || "extendedae".equals(namespace) || "megacells".equals(namespace) || WIRELESS_ME_TARGET_IDS.contains(path) || ("merequester".equals(namespace) && isMeLikePath(path)) || ("gtmthings".equals(namespace) && isMeLikePath(path)) || (namespace.contains("ae") && isMeLikePath(path));
+        return WIRELESS_ME_TARGET_IDS.contains(path) || ("gtmthings".equals(namespace) && isMeLikePath(path));
     }
 
     private static boolean isMeLikePath(String path) {

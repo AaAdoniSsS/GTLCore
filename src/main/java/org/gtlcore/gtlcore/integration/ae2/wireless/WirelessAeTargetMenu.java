@@ -40,6 +40,7 @@ public class WirelessAeTargetMenu extends AbstractContainerMenu {
             this.networks.add(new Entry(
                     data.readUUID(),
                     data.readUtf(32),
+                    data.readBoolean(),
                     data.readBoolean()));
         }
     }
@@ -67,12 +68,16 @@ public class WirelessAeTargetMenu extends AbstractContainerMenu {
         BlockPos resolvedTargetPos = target.blockPos();
         WirelessAeSavedData data = WirelessAeSavedData.get(level.getServer());
         UUID currentNetwork = data.getMemberNetwork(target);
+        UUID connectedNetwork = WirelessAeNetworkRuntime.findConnectedNetworkFrequency(level.getServer(), target);
         List<Entry> entries = new ArrayList<>();
         for (WirelessAeSavedData.NetworkInfo network : data.getNetworkInfo()) {
+            boolean connected = network.frequency().equals(connectedNetwork);
+            boolean disconnectable = connected && network.frequency().equals(currentNetwork) && WirelessAeNetworkRuntime.hasWirelessConnection(network.frequency(), target);
             entries.add(new Entry(
                     network.frequency(),
                     network.name(),
-                    network.frequency().equals(currentNetwork)));
+                    connected,
+                    disconnectable));
         }
 
         NetworkHooks.openScreen(
@@ -108,6 +113,7 @@ public class WirelessAeTargetMenu extends AbstractContainerMenu {
             buffer.writeUUID(entry.frequency());
             buffer.writeUtf(entry.name());
             buffer.writeBoolean(entry.connected());
+            buffer.writeBoolean(entry.disconnectable());
         }
     }
 
@@ -124,7 +130,7 @@ public class WirelessAeTargetMenu extends AbstractContainerMenu {
                 this.targetPos.getZ() + 0.5D) <= 64.0D;
     }
 
-    public record Entry(UUID frequency, String name, boolean connected) {}
+    public record Entry(UUID frequency, String name, boolean connected, boolean disconnectable) {}
 
     private static void writeDirection(FriendlyByteBuf buffer, Direction direction) {
         buffer.writeBoolean(direction != null);

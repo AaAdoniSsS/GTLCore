@@ -165,14 +165,24 @@ public final class WirelessAePackets {
                 BlockPos targetPos = target.blockPos();
                 GlobalPos targetGlobalPos = target.pos();
                 WirelessAeSavedData data = WirelessAeSavedData.get(level.getServer());
-                for (UUID currentNetwork : data.removeMembersAt(targetGlobalPos)) {
-                    WirelessAeNetworkRuntime.disconnectMembersAt(currentNetwork, targetGlobalPos);
-                }
+                UUID currentNetwork = data.getMemberNetwork(target);
+                UUID connectedNetwork = WirelessAeNetworkRuntime.findConnectedNetworkFrequency(level.getServer(), target);
+                boolean canModifyCurrentConnection = connectedNetwork != null && connectedNetwork.equals(currentNetwork) && WirelessAeNetworkRuntime.hasWirelessConnection(connectedNetwork, target);
 
                 if (packet.disconnect) {
+                    if (!canModifyCurrentConnection || !packet.frequency.equals(currentNetwork)) {
+                        return;
+                    }
+                    for (UUID removedNetwork : data.removeMembersAt(targetGlobalPos)) {
+                        WirelessAeNetworkRuntime.disconnectMembersAt(removedNetwork, targetGlobalPos);
+                    }
                     player.displayClientMessage(
                             Component.translatable("message.gtlcore.wireless_target.disconnected"),
                             true);
+                    return;
+                }
+
+                if (connectedNetwork != null && !canModifyCurrentConnection) {
                     return;
                 }
 
@@ -197,6 +207,10 @@ public final class WirelessAePackets {
                             Component.translatable("message.gtlcore.wireless_target.core_not_connected"),
                             true);
                     return;
+                }
+
+                for (UUID removedNetwork : data.removeMembersAt(targetGlobalPos)) {
+                    WirelessAeNetworkRuntime.disconnectMembersAt(removedNetwork, targetGlobalPos);
                 }
 
                 WirelessAeNetworkRuntime.ConnectionResult result = WirelessAeNetworkRuntime.connectMemberNow(
@@ -349,6 +363,7 @@ public final class WirelessAePackets {
                 buffer.writeUUID(entry.frequency());
                 buffer.writeUtf(entry.name());
                 buffer.writeBoolean(entry.connected());
+                buffer.writeBoolean(entry.disconnectable());
             }
         }
 
@@ -360,6 +375,7 @@ public final class WirelessAePackets {
                 entries.add(new TargetNetworkEntry(
                         buffer.readUUID(),
                         buffer.readUtf(32),
+                        buffer.readBoolean(),
                         buffer.readBoolean()));
             }
             return new SyncTargetNetworksPacket(targetPos, entries);
@@ -380,17 +396,21 @@ public final class WirelessAePackets {
         }
     }
 
-    public record TargetNetworkEntry(UUID frequency, String name, boolean connected) {}
+    public record TargetNetworkEntry(UUID frequency, String name, boolean connected, boolean disconnectable) {}
 
     private static List<TargetNetworkEntry> buildTargetEntries(ServerLevel level, WirelessAeSavedData.MemberKey target) {
         WirelessAeSavedData data = WirelessAeSavedData.get(level.getServer());
         UUID currentNetwork = data.getMemberNetwork(target);
+        UUID connectedNetwork = WirelessAeNetworkRuntime.findConnectedNetworkFrequency(level.getServer(), target);
         List<TargetNetworkEntry> entries = new ArrayList<>();
         for (WirelessAeSavedData.NetworkInfo network : data.getNetworkInfo()) {
+            boolean connected = network.frequency().equals(connectedNetwork);
+            boolean disconnectable = connected && network.frequency().equals(currentNetwork) && WirelessAeNetworkRuntime.hasWirelessConnection(network.frequency(), target);
             entries.add(new TargetNetworkEntry(
                     network.frequency(),
                     network.name(),
-                    network.frequency().equals(currentNetwork)));
+                    connected,
+                    disconnectable));
         }
         return entries;
     }
