@@ -3,8 +3,11 @@ package org.gtlcore.gtlcore.common.machine.multiblock.generator;
 import org.gtlcore.gtlcore.utils.Registries;
 
 import com.gregtechceu.gtceu.api.GTValues;
+import com.gregtechceu.gtceu.api.capability.IEnergyContainer;
 import com.gregtechceu.gtceu.api.capability.recipe.CWURecipeCapability;
 import com.gregtechceu.gtceu.api.capability.recipe.EURecipeCapability;
+import com.gregtechceu.gtceu.api.capability.recipe.IO;
+import com.gregtechceu.gtceu.api.capability.recipe.IRecipeHandler;
 import com.gregtechceu.gtceu.api.machine.ConditionalSubscriptionHandler;
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
 import com.gregtechceu.gtceu.api.machine.MetaMachine;
@@ -28,6 +31,7 @@ import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -65,6 +69,45 @@ public class DysonSphereMachine extends WorkableElectricMultiblockMachine {
         if (getOffsetTimer() % 10 == 0 && getLevel() instanceof ServerLevel serverLevel) {
             serverLevel.setDayTime(18000L);
         }
+    }
+
+    @Override
+    public long getMaxVoltage() {
+        long totalPower = 0;
+        // 获取所有输出仓（动力仓）
+        List<IEnergyContainer> outputContainers = getOutputContainers();
+        for (IEnergyContainer container : outputContainers) {
+            totalPower += container.getOutputVoltage() * container.getOutputAmperage();
+        }
+        if (totalPower <= 0) {
+            // 没有输出仓时，回退到父类逻辑（避免 NPE）
+            return super.getMaxVoltage();
+        }
+        int equivalentTier = getEquivalentTier(totalPower);
+        return GTValues.V[equivalentTier];
+    }
+
+    private int getEquivalentTier(long totalPower) {
+        int maxTier = GTValues.V.length - 1;
+        for (int tier = maxTier; tier >= 0; tier--) {
+            if (GTValues.V[tier] <= totalPower) {
+                return tier;
+            }
+        }
+        return 0;
+    }
+
+    private List<IEnergyContainer> getOutputContainers() {
+        List<IEnergyContainer> outputContainers = new ArrayList<>();
+        List<IRecipeHandler<?>> capabilities = this.capabilitiesProxy.get(IO.OUT, EURecipeCapability.CAP);
+        if (capabilities != null) {
+            for (IRecipeHandler<?> handler : capabilities) {
+                if (handler instanceof IEnergyContainer container) {
+                    outputContainers.add(container);
+                }
+            }
+        }
+        return outputContainers;
     }
 
     @Override
@@ -132,7 +175,7 @@ public class DysonSphereMachine extends WorkableElectricMultiblockMachine {
         int targetProgress = (int) (duration * 0.95);
         if (!damageTriggeredThisRecipe && progress >= targetProgress && getDysonSphereData() > 0 && !isLaunch(currentRecipe)) {
             damageTriggeredThisRecipe = true;
-            if (Math.random() < 0.01 * (1 + (double) getDysonSphereData() / 128)) {
+            if (Math.random() < 0.01 * (1 + (double) getDysonSphereData() / 256)) {
                 if (getDysonSpheredamageData() > 99) {
                     this.DysonSphereData--;
                     this.DysonSpheredamageData = 0;
@@ -186,7 +229,7 @@ public class DysonSphereMachine extends WorkableElectricMultiblockMachine {
 
     @Override
     public long getOverclockVoltage() {
-        return (long) (GTValues.V[GTValues.MAX] * getDysonSphereData() * getEfficiency());
+        return (long) (2L * GTValues.V[GTValues.MAX] * getDysonSphereData() * getEfficiency());
     }
 
     @Nullable
