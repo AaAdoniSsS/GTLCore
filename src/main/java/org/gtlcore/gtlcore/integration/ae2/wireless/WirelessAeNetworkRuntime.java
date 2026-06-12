@@ -35,6 +35,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -51,6 +52,10 @@ public final class WirelessAeNetworkRuntime {
     private static final String GTCEU_ME_PART_PACKAGE = "com.gregtechceu.gtceu.integration.ae2.";
     private static final String GTMTHINGS_ME_PART_PACKAGE = "com.hepdd.gtmthings.common.block.machine.multiblock.part.appeng.";
     private static final String GTL_ME_PART_PACKAGE = "org.gtlcore.gtlcore.common.machine.multiblock.part.ae.";
+    private static final String GTCEU_META_MACHINE_CLASS = "com.gregtechceu.gtceu.api.machine.MetaMachine";
+    private static final String GTCEU_MULTIBLOCK_PART_CLASS = "com.gregtechceu.gtceu.api.machine.multiblock.part.MultiblockPartMachine";
+    private static final String GTCEU_GRID_CONNECTED_MACHINE_INTERFACE = "com.gregtechceu.gtceu.integration.ae2.machine.feature.IGridConnectedMachine";
+    private static final String GTL_ME_IO_PART_MACHINE_INTERFACE = "org.gtlcore.gtlcore.api.machine.trait.MEPart.IMEIOPartMachine";
     private static final Set<String> GTL_ME_TARGET_CLASSES = Set.of(
             "org.gtlcore.gtlcore.common.machine.multiblock.part.MEDualHatchStockPartMachine",
             "org.gtlcore.gtlcore.common.machine.multiblock.part.TagFilterMEStockBusPartMachine",
@@ -260,16 +265,17 @@ public final class WirelessAeNetworkRuntime {
             return false;
         }
 
-        if (isWirelessMeTargetObject(blockEntity)) {
+        ResourceLocation blockId = ForgeRegistries.BLOCKS.getKey(level.getBlockState(pos).getBlock());
+        if (isWirelessMeTargetObject(blockEntity, blockId)) {
             return true;
         }
 
         Object metaMachine = invokeObject(blockEntity, "getMetaMachine");
-        if (isWirelessMeTargetObject(metaMachine)) {
+        if (isWirelessMeTargetObject(metaMachine, blockId)) {
             return true;
         }
 
-        return isWirelessMeTargetId(ForgeRegistries.BLOCKS.getKey(level.getBlockState(pos).getBlock()));
+        return isWirelessMeTargetId(blockId);
     }
 
     public static BlockPos resolveWirelessTargetPos(Level level, BlockPos pos) {
@@ -996,13 +1002,91 @@ public final class WirelessAeNetworkRuntime {
         return pos != null && level.hasChunkAt(pos) && !(level.getBlockEntity(pos) instanceof WirelessNetworkCoreBlockEntity);
     }
 
-    private static boolean isWirelessMeTargetObject(Object target) {
+    private static boolean isWirelessMeTargetObject(Object target, ResourceLocation blockId) {
         if (target == null) {
             return false;
         }
 
         String className = target.getClass().getName();
-        return className.startsWith(GTCEU_ME_PART_PACKAGE) || className.startsWith(GTMTHINGS_ME_PART_PACKAGE) || className.startsWith(GTL_ME_PART_PACKAGE) || GTL_ME_TARGET_CLASSES.contains(className);
+        return className.startsWith(GTCEU_ME_PART_PACKAGE) ||
+                className.startsWith(GTMTHINGS_ME_PART_PACKAGE) ||
+                className.startsWith(GTL_ME_PART_PACKAGE) ||
+                GTL_ME_TARGET_CLASSES.contains(className) ||
+                isCompatibleGridConnectedMeTarget(target, className, blockId);
+    }
+
+    private static boolean isCompatibleGridConnectedMeTarget(Object target, String className,
+                                                             ResourceLocation blockId) {
+        if (!hasMachinePartMarker(target)) {
+            return false;
+        }
+        if (!hasGridNodeAccess(target)) {
+            return false;
+        }
+        return isMeLikeClassName(className) || isCompatibleExternalMeLikeId(blockId);
+    }
+
+    private static boolean hasMachinePartMarker(Object target) {
+        Class<?> type = target.getClass();
+        return hasTypeName(type, GTCEU_META_MACHINE_CLASS) ||
+                hasTypeName(type, GTCEU_MULTIBLOCK_PART_CLASS) ||
+                hasTypeName(type, GTCEU_GRID_CONNECTED_MACHINE_INTERFACE);
+    }
+
+    private static boolean hasGridNodeAccess(Object target) {
+        Class<?> type = target.getClass();
+        return target instanceof IManagedGridNode ||
+                target instanceof IActionHost ||
+                target instanceof IInWorldGridNodeHost ||
+                hasTypeName(type, GTCEU_GRID_CONNECTED_MACHINE_INTERFACE) ||
+                hasTypeName(type, GTL_ME_IO_PART_MACHINE_INTERFACE) ||
+                hasNoArgMethod(type, "getMainNode") ||
+                hasNoArgMethod(type, "getNodeHolder") ||
+                hasNoArgMethod(type, "getMETrait");
+    }
+
+    private static boolean hasTypeName(Class<?> type, String typeName) {
+        if (type == null) {
+            return false;
+        }
+        if (type.getName().equals(typeName)) {
+            return true;
+        }
+        for (Class<?> interfaceType : type.getInterfaces()) {
+            if (hasTypeName(interfaceType, typeName)) {
+                return true;
+            }
+        }
+        return hasTypeName(type.getSuperclass(), typeName);
+    }
+
+    private static boolean hasNoArgMethod(Class<?> type, String methodName) {
+        try {
+            type.getMethod(methodName);
+            return true;
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return false;
+        }
+    }
+
+    private static boolean isMeLikeClassName(String className) {
+        int simpleNameStart = className.lastIndexOf('.') + 1;
+        String simpleName = className.substring(simpleNameStart);
+        String lowerClassName = className.toLowerCase(Locale.ROOT);
+        String lowerSimpleName = simpleName.toLowerCase(Locale.ROOT);
+        return simpleName.startsWith("ME") ||
+                simpleName.startsWith("AE") ||
+                lowerClassName.contains(".appeng.") ||
+                lowerSimpleName.contains("appeng") ||
+                lowerSimpleName.contains("ae2") ||
+                lowerSimpleName.contains("patternbuffer");
+    }
+
+    private static boolean isCompatibleExternalMeLikeId(ResourceLocation blockId) {
+        if (blockId == null || "minecraft".equals(blockId.getNamespace())) {
+            return false;
+        }
+        return isMeLikePath(blockId.getPath());
     }
 
     public static boolean isWirelessMeTargetId(ResourceLocation blockId) {
@@ -1012,7 +1096,9 @@ public final class WirelessAeNetworkRuntime {
 
         String namespace = blockId.getNamespace();
         String path = blockId.getPath();
-        return WIRELESS_ME_TARGET_IDS.contains(path) || ("gtmthings".equals(namespace) && isGtmthingsMeLikePath(path));
+        return WIRELESS_ME_TARGET_IDS.contains(path) ||
+                isCompatibleExternalMeLikeId(blockId) ||
+                ("gtmthings".equals(namespace) && isGtmthingsMeLikePath(path));
     }
 
     public static boolean shouldShowQuickConnectTooltip(ResourceLocation itemId) {
@@ -1020,7 +1106,16 @@ public final class WirelessAeNetworkRuntime {
     }
 
     private static boolean isGtmthingsMeLikePath(String path) {
-        return path.startsWith("me_") || path.contains("_me_") || path.contains("appeng") || path.contains("ae2");
+        return isMeLikePath(path);
+    }
+
+    private static boolean isMeLikePath(String path) {
+        return path.startsWith("me_") ||
+                path.contains("_me_") ||
+                path.startsWith("ae_") ||
+                path.contains("_ae_") ||
+                path.contains("appeng") ||
+                path.contains("ae2");
     }
 
     private static boolean connectionMatches(IGridConnection connection, IGridNode coreNode, IGridNode targetNode) {
