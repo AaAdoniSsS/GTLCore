@@ -434,5 +434,13 @@
   "message.gtlcore.wireless_target.linked_target": "Linked ME hatch to the wireless ME network (%s).",
   "message.gtlcore.wireless_target.linked_target_pending": "Recorded this ME block and waiting for the wireless ME network connection (%s).",
   "tooltip.gtlcore.wireless_ae.core_connected": "Wireless ME network: %s (attached to an ME network)",
-  "tooltip.gtlcore.wireless_ae.target_connected": "Wireless ME network: %s (connected)"
+  "tooltip.gtlcore.wireless_ae.target_connected": "Wireless ME network: %s (connected)",
+  "block.gtlcore.wireless_network_bookmark": "Wireless ME Network Bookmark",
+  "screen.gtlcore.wireless_bookmark": "Wireless ME Network Bookmark",
+  "label.gtlcore.wireless_bookmark.favorite": "Favorite network: %s",
+  "label.gtlcore.wireless_bookmark.no_favorite": "Favorite network: not selected",
+  "label.gtlcore.wireless_bookmark.no_networks": "No wireless ME networks have been created.",
+  "message.gtlcore.wireless_bookmark.saved": "Favorite wireless ME network set to: %s",
+  "message.gtlcore.wireless_bookmark.favorite_unavailable": "The favorite wireless ME network is not available.",
+  "tooltip.gtlcore.wireless_bookmark.quick_connect": "Sneak while placing an ME hatch to quickly connect it to the favorite ME network"
 }

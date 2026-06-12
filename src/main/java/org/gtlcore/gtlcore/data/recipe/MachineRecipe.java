@@ -51,6 +51,7 @@ import static org.gtlcore.gtlcore.common.data.GTLMachines.GTAEMachines.ME_EXTEND
 import static org.gtlcore.gtlcore.common.data.GTLMachines.TAG_FILTER_ME_STOCK_BUS_PART_MACHINE;
 import static org.gtlcore.gtlcore.common.data.GTLMaterials.*;
 import static org.gtlcore.gtlcore.common.data.GTLRecipeTypes.SPACE_COSMIC_PROBE_RECEIVERS_RECIPES;
+import static org.gtlcore.gtlcore.integration.ae2.wireless.GTLWirelessAeContent.WIRELESS_NETWORK_BOOKMARK;
 import static org.gtlcore.gtlcore.integration.ae2.wireless.GTLWirelessAeContent.WIRELESS_NETWORK_CORE;
 import static org.gtlcore.gtlcore.integration.wildcard.WildcardPatternCompatImpl.ME_WILDCARD_PATTERN_BUFFER;
 
@@ -826,6 +827,15 @@ public class MachineRecipe {
                 .inputFluids(Radon.getFluid(1000))
                 .outputItems(WIRELESS_NETWORK_CORE)
                 .duration(400).EUt(VA[EV]).save(provider);
+
+        ASSEMBLER_RECIPES.recipeBuilder("wireless_network_bookmark")
+                .inputItems(GTMachines.HULL[3])
+                .inputItems(WIRELESS_HUB.asItem())
+                .inputItems(QUANTUM_LINK.asItem())
+                .inputItems(CIRCUIT.getIngredient(EV), 2)
+                .inputItems(wireGtQuadruple, Platinum, 2)
+                .outputItems(WIRELESS_NETWORK_BOOKMARK)
+                .duration(200).EUt(VA[EV]).save(provider);
     }
 
     private static void space_probe(Material material, int grade, int amount, int circuit, Consumer<FinishedRecipe> provider) {

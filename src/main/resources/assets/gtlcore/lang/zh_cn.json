@@ -434,5 +434,13 @@
   "message.gtlcore.wireless_target.linked_target": "已将 ME 仓室接入无线 ME 网络（%s）。",
   "message.gtlcore.wireless_target.linked_target_pending": "已记录这个 ME 方块，等待无线 ME 网络连接（%s）。",
   "tooltip.gtlcore.wireless_ae.core_connected": "无线 ME 网络：%s（已接入 ME 网络）",
-  "tooltip.gtlcore.wireless_ae.target_connected": "无线 ME 网络：%s（已连接）"
+  "tooltip.gtlcore.wireless_ae.target_connected": "无线 ME 网络：%s（已连接）",
+  "block.gtlcore.wireless_network_bookmark": "无线 ME 网络收藏器",
+  "screen.gtlcore.wireless_bookmark": "无线 ME 网络收藏器",
+  "label.gtlcore.wireless_bookmark.favorite": "收藏网络：%s",
+  "label.gtlcore.wireless_bookmark.no_favorite": "收藏网络：未选择",
+  "label.gtlcore.wireless_bookmark.no_networks": "当前存档还没有已创建的无线 ME 网络。",
+  "message.gtlcore.wireless_bookmark.saved": "已收藏无线 ME 网络：%s",
+  "message.gtlcore.wireless_bookmark.favorite_unavailable": "收藏的无线 ME 网络当前不可用。",
+  "tooltip.gtlcore.wireless_bookmark.quick_connect": "蹲下放置 ME 仓室可以快捷连接收藏的 ME 网络"
 }

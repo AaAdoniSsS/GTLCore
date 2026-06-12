@@ -30,6 +30,7 @@ public class WirelessAeSavedData extends SavedData {
 
     private static final String DATA_NAME = "gtlcore_wireless_ae_networks";
     private static final String TAG_NETWORKS = "networks";
+    private static final String TAG_FAVORITE_NETWORK = "favorite_network";
     private static final String TAG_FREQUENCY = "frequency";
     private static final String TAG_CORE = "core";
     private static final String TAG_NAME = "name";
@@ -41,6 +42,7 @@ public class WirelessAeSavedData extends SavedData {
     private static final String TAG_SIDE = "side";
 
     private final Map<UUID, NetworkRecord> networks = new HashMap<>();
+    private UUID favoriteNetwork;
 
     public static WirelessAeSavedData get(MinecraftServer server) {
         return server.overworld().getDataStorage().computeIfAbsent(
@@ -51,6 +53,10 @@ public class WirelessAeSavedData extends SavedData {
 
     public static WirelessAeSavedData load(CompoundTag tag) {
         WirelessAeSavedData data = new WirelessAeSavedData();
+        if (tag.hasUUID(TAG_FAVORITE_NETWORK)) {
+            data.favoriteNetwork = tag.getUUID(TAG_FAVORITE_NETWORK);
+        }
+
         ListTag networksTag = tag.getList(TAG_NETWORKS, Tag.TAG_COMPOUND);
         for (int i = 0; i < networksTag.size(); i++) {
             CompoundTag networkTag = networksTag.getCompound(i);
@@ -71,11 +77,18 @@ public class WirelessAeSavedData extends SavedData {
                 }
             }
         }
+        if (data.favoriteNetwork != null && !data.networks.containsKey(data.favoriteNetwork)) {
+            data.favoriteNetwork = null;
+        }
         return data;
     }
 
     @Override
     public @NotNull CompoundTag save(@NotNull CompoundTag tag) {
+        if (this.favoriteNetwork != null && this.networks.containsKey(this.favoriteNetwork)) {
+            tag.putUUID(TAG_FAVORITE_NETWORK, this.favoriteNetwork);
+        }
+
         ListTag networksTag = new ListTag();
         for (Map.Entry<UUID, NetworkRecord> entry : this.networks.entrySet()) {
             NetworkRecord record = entry.getValue();
@@ -136,6 +149,20 @@ public class WirelessAeSavedData extends SavedData {
         }
         networks.sort(Comparator.comparing(NetworkInfo::name, String.CASE_INSENSITIVE_ORDER));
         return networks;
+    }
+
+    public UUID getFavoriteNetwork() {
+        return this.favoriteNetwork != null && this.networks.containsKey(this.favoriteNetwork) ? this.favoriteNetwork : null;
+    }
+
+    public boolean setFavoriteNetwork(UUID frequency) {
+        UUID updated = frequency != null && this.networks.containsKey(frequency) ? frequency : null;
+        if (java.util.Objects.equals(this.favoriteNetwork, updated)) {
+            return false;
+        }
+        this.favoriteNetwork = updated;
+        setDirty();
+        return true;
     }
 
     public UUID getMemberNetwork(GlobalPos member) {
@@ -241,6 +268,9 @@ public class WirelessAeSavedData extends SavedData {
 
     public void removeNetwork(UUID frequency) {
         if (this.networks.remove(frequency) != null) {
+            if (frequency.equals(this.favoriteNetwork)) {
+                this.favoriteNetwork = null;
+            }
             setDirty();
         }
     }
