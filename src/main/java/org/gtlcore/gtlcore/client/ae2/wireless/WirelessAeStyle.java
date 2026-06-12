@@ -80,6 +80,41 @@ final class WirelessAeStyle {
         graphics.blit(online ? STATUS_ONLINE : STATUS_OFFLINE, x, y, 0.0F, 0.0F, 9, 9, 9, 9);
     }
 
+    static void drawScrollbar(GuiGraphics graphics, int x, int y, int height, int totalRows, int visibleRows,
+                              int scrollOffset) {
+        if (!needsScrollbar(totalRows, visibleRows) || height <= 0) {
+            return;
+        }
+
+        int thumbHeight = getScrollbarThumbHeight(height, totalRows, visibleRows);
+        int thumbY = getScrollbarThumbY(y, height, thumbHeight, totalRows, visibleRows, scrollOffset);
+        graphics.fill(x, y, x + 6, y + height, 0x33000000);
+        graphics.fill(x + 1, y + 1, x + 5, y + height - 1, 0x33FFFFFF);
+        graphics.fill(x, thumbY, x + 6, thumbY + thumbHeight, 0xFF5F6870);
+        graphics.fill(x + 1, thumbY + 1, x + 5, thumbY + thumbHeight - 1, 0xFF9AA5AD);
+    }
+
+    static boolean needsScrollbar(int totalRows, int visibleRows) {
+        return totalRows > Math.max(0, visibleRows);
+    }
+
+    static int clampScrollOffset(int scrollOffset, int totalRows, int visibleRows) {
+        int maxOffset = Math.max(0, totalRows - Math.max(1, visibleRows));
+        return Math.max(0, Math.min(scrollOffset, maxOffset));
+    }
+
+    static int scrollbarOffsetFromMouse(double mouseY, int y, int height, int totalRows, int visibleRows) {
+        if (!needsScrollbar(totalRows, visibleRows)) {
+            return 0;
+        }
+
+        int thumbHeight = getScrollbarThumbHeight(height, totalRows, visibleRows);
+        int trackRange = Math.max(1, height - thumbHeight);
+        int maxOffset = Math.max(1, totalRows - visibleRows);
+        double localY = Math.max(0.0D, Math.min(trackRange, mouseY - y - thumbHeight / 2.0D));
+        return clampScrollOffset((int) Math.round(localY * maxOffset / trackRange), totalRows, visibleRows);
+    }
+
     static void drawTrimmedString(GuiGraphics graphics, Font font, Component component, int x, int y, int width,
                                   int color) {
         String text = trimToWidth(font, component.getString(), width);
@@ -145,6 +180,18 @@ final class WirelessAeStyle {
             return font.plainSubstrByWidth(text, Math.max(0, width));
         }
         return font.plainSubstrByWidth(text, width - ellipsisWidth) + "...";
+    }
+
+    private static int getScrollbarThumbHeight(int height, int totalRows, int visibleRows) {
+        int thumbHeight = Math.max(12, height * Math.max(1, visibleRows) / Math.max(1, totalRows));
+        return Math.min(height, thumbHeight);
+    }
+
+    private static int getScrollbarThumbY(int y, int height, int thumbHeight, int totalRows, int visibleRows,
+                                          int scrollOffset) {
+        int maxOffset = Math.max(1, totalRows - visibleRows);
+        int trackRange = Math.max(0, height - thumbHeight);
+        return y + trackRange * clampScrollOffset(scrollOffset, totalRows, visibleRows) / maxOffset;
     }
 
     private static void drawNineSlice(GuiGraphics graphics, ResourceLocation texture, int x, int y,
