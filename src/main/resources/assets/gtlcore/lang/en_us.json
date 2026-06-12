@@ -434,8 +434,5 @@
   "message.gtlcore.wireless_target.linked_target": "Linked ME hatch to the wireless ME network (%s).",
   "message.gtlcore.wireless_target.linked_target_pending": "Recorded this ME block and waiting for the wireless ME network connection (%s).",
   "tooltip.gtlcore.wireless_ae.core_connected": "Wireless ME network: %s (attached to an ME network)",
-  "tooltip.gtlcore.wireless_ae.core_disconnected": "Wireless ME network: %s (not attached to an ME network)",
-  "tooltip.gtlcore.wireless_ae.target_unbound": "Wireless ME network: not connected",
-  "tooltip.gtlcore.wireless_ae.target_connected": "Wireless ME network: %s (connected)",
-  "tooltip.gtlcore.wireless_ae.target_waiting": "Wireless ME network: %s (waiting for connection)"
+  "tooltip.gtlcore.wireless_ae.target_connected": "Wireless ME network: %s (connected)"
 }

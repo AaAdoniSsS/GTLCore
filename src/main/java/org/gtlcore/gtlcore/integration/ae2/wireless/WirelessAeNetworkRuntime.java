@@ -26,6 +26,7 @@ import appeng.api.parts.IPart;
 import appeng.api.parts.IPartHost;
 
 import java.lang.reflect.Method;
+import java.util.ArrayDeque;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -322,6 +323,25 @@ public final class WirelessAeNetworkRuntime {
         return bridgeNode != null && targetNode != null && (areConnected(bridgeNode, targetNode) || isSameGrid(bridgeNode, targetNode));
     }
 
+    public static boolean hasWirelessConnection(UUID frequency, WirelessAeSavedData.MemberKey member) {
+        return hasStoredConnection(CONNECTIONS.get(frequency), member);
+    }
+
+    public static UUID findConnectedNetworkFrequency(MinecraftServer server, WirelessAeSavedData.MemberKey member) {
+        UUID wiredFrequency = findWiredNetworkFrequency(server, member);
+        if (wiredFrequency != null) {
+            return wiredFrequency;
+        }
+
+        WirelessAeSavedData data = WirelessAeSavedData.get(server);
+        UUID frequency = data.getMemberNetwork(member);
+        if (frequency != null && isMemberConnected(server, frequency, member)) {
+            return frequency;
+        }
+
+        return null;
+    }
+
     public static UUID findWiredNetworkFrequency(MinecraftServer server, WirelessAeSavedData.MemberKey member) {
         IGridNode targetNode = findTargetNode(server, member);
         if (targetNode == null) {
@@ -336,7 +356,7 @@ public final class WirelessAeNetworkRuntime {
             }
 
             IGridNode bridgeNode = findBridgeNode(core);
-            if (bridgeNode != null && isSameGrid(bridgeNode, targetNode)) {
+            if (areConnectedInWorld(bridgeNode, targetNode)) {
                 return network.frequency();
             }
         }
@@ -436,12 +456,18 @@ public final class WirelessAeNetworkRuntime {
             return ConnectionResult.TARGET_MISSING;
         }
 
+        IGridConnection currentConnection = frequencyConnections.get(member);
+        if (findWiredNetworkFrequency(bridgeNode.getLevel().getServer(), member) != null) {
+            destroyQuietly(currentConnection);
+            frequencyConnections.remove(member);
+            return ConnectionResult.ALREADY_CONNECTED;
+        }
+
         if (targetNode == bridgeNode) {
             destroyQuietly(frequencyConnections.remove(member));
             return ConnectionResult.ALREADY_CONNECTED;
         }
 
-        IGridConnection currentConnection = frequencyConnections.get(member);
         if (connectionMatches(currentConnection, bridgeNode, targetNode)) {
             return ConnectionResult.ALREADY_CONNECTED;
         }
@@ -821,7 +847,7 @@ public final class WirelessAeNetworkRuntime {
         }
 
         String className = target.getClass().getName();
-        return className.startsWith(GTCEU_ME_PART_PACKAGE) || className.startsWith(GTMTHINGS_ME_PART_PACKAGE) || className.startsWith(GTL_ME_PART_PACKAGE) || className.startsWith("appeng.") || className.startsWith("com.glodblock.github.extendedae.") || GTL_ME_TARGET_CLASSES.contains(className);
+        return className.startsWith(GTCEU_ME_PART_PACKAGE) || className.startsWith(GTMTHINGS_ME_PART_PACKAGE) || className.startsWith(GTL_ME_PART_PACKAGE) || GTL_ME_TARGET_CLASSES.contains(className);
     }
 
     private static boolean isWirelessMeTargetId(ResourceLocation blockId) {
@@ -831,7 +857,7 @@ public final class WirelessAeNetworkRuntime {
 
         String namespace = blockId.getNamespace();
         String path = blockId.getPath();
-        return "ae2".equals(namespace) || "appeng".equals(namespace) || "expatternprovider".equals(namespace) || "extendedae".equals(namespace) || "megacells".equals(namespace) || WIRELESS_ME_TARGET_IDS.contains(path) || ("merequester".equals(namespace) && isMeLikePath(path)) || ("gtmthings".equals(namespace) && isMeLikePath(path)) || (namespace.contains("ae") && isMeLikePath(path));
+        return WIRELESS_ME_TARGET_IDS.contains(path) || ("gtmthings".equals(namespace) && isMeLikePath(path));
     }
 
     private static boolean isMeLikePath(String path) {
@@ -860,6 +886,62 @@ public final class WirelessAeNetworkRuntime {
             return false;
         }
         return false;
+    }
+
+    private static boolean areConnectedInWorld(IGridNode coreNode, IGridNode targetNode) {
+        if (coreNode == null || targetNode == null) {
+            return false;
+        }
+        if (coreNode == targetNode) {
+            return true;
+        }
+
+        Set<IGridNode> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+        ArrayDeque<IGridNode> pending = new ArrayDeque<>();
+        visited.add(coreNode);
+        pending.add(coreNode);
+
+        while (!pending.isEmpty()) {
+            IGridNode node = pending.removeFirst();
+            Iterable<IGridConnection> connections;
+            try {
+                connections = node.getConnections();
+            } catch (RuntimeException ignored) {
+                continue;
+            }
+
+            for (IGridConnection connection : connections) {
+                if (!isInWorldConnection(connection)) {
+                    continue;
+                }
+
+                IGridNode otherNode;
+                try {
+                    otherNode = connection.getOtherSide(node);
+                } catch (RuntimeException ignored) {
+                    continue;
+                }
+
+                if (otherNode == targetNode) {
+                    return true;
+                }
+                if (otherNode != null && visited.add(otherNode)) {
+                    pending.add(otherNode);
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean isInWorldConnection(IGridConnection connection) {
+        if (connection == null) {
+            return false;
+        }
+        try {
+            return connection.isInWorld();
+        } catch (RuntimeException ignored) {
+            return false;
+        }
     }
 
     private static boolean isSameGrid(IGridNode coreNode, IGridNode targetNode) {
