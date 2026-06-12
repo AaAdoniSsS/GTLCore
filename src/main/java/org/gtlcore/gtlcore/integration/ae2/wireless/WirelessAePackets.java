@@ -51,6 +51,13 @@ public final class WirelessAePackets {
                 java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
         CHANNEL.registerMessage(
                 nextPacketId++,
+                SetFavoriteNetworkPacket.class,
+                SetFavoriteNetworkPacket::encode,
+                SetFavoriteNetworkPacket::decode,
+                SetFavoriteNetworkPacket::handle,
+                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
+        CHANNEL.registerMessage(
+                nextPacketId++,
                 ConnectTargetPacket.class,
                 ConnectTargetPacket::encode,
                 ConnectTargetPacket::decode,
@@ -118,6 +125,45 @@ public final class WirelessAePackets {
                 WirelessAeNetworkRuntime.requestReconnect(frequency);
                 player.displayClientMessage(
                         Component.translatable("message.gtlcore.wireless_core.name_saved", data.getNetworkName(frequency)),
+                        true);
+            });
+            context.setPacketHandled(true);
+        }
+    }
+
+    public record SetFavoriteNetworkPacket(BlockPos bookmarkPos, UUID frequency) {
+
+        private static void encode(SetFavoriteNetworkPacket packet, FriendlyByteBuf buffer) {
+            buffer.writeBlockPos(packet.bookmarkPos);
+            buffer.writeUUID(packet.frequency);
+        }
+
+        private static SetFavoriteNetworkPacket decode(FriendlyByteBuf buffer) {
+            return new SetFavoriteNetworkPacket(buffer.readBlockPos(), buffer.readUUID());
+        }
+
+        private static void handle(SetFavoriteNetworkPacket packet, Supplier<NetworkEvent.Context> contextSupplier) {
+            NetworkEvent.Context context = contextSupplier.get();
+            context.enqueueWork(() -> {
+                ServerPlayer player = context.getSender();
+                if (player == null || isCloseEnough(player, packet.bookmarkPos)) {
+                    return;
+                }
+
+                ServerLevel level = player.serverLevel();
+                if (!(level.getBlockEntity(packet.bookmarkPos) instanceof WirelessNetworkBookmarkBlockEntity)) {
+                    return;
+                }
+
+                WirelessAeSavedData data = WirelessAeSavedData.get(level.getServer());
+                if (!data.getFrequencies().contains(packet.frequency)) {
+                    return;
+                }
+                data.setFavoriteNetwork(packet.frequency);
+                player.displayClientMessage(
+                        Component.translatable(
+                                "message.gtlcore.wireless_bookmark.saved",
+                                data.getNetworkName(packet.frequency)),
                         true);
             });
             context.setPacketHandled(true);

@@ -211,22 +211,11 @@ final class WirelessAeScreenHooks {
             fancyProvider = new WirelessAeFancyPageProvider(
                     screen,
                     fancyTargetPos,
-                    mainPage,
-                    snapshotOriginalSubTabs(fancy.getSideTabsWidget()));
+                    mainPage);
         } else {
             fancyProvider.updateTarget(screen, targetPos);
         }
         return fancyProvider;
-    }
-
-    private static List<IFancyUIProvider> snapshotOriginalSubTabs(TabsWidget tabsWidget) {
-        List<IFancyUIProvider> original = new ArrayList<>();
-        for (IFancyUIProvider tab : tabsWidget.getSubTabs()) {
-            if (!(tab instanceof WirelessAeFancyPageProvider)) {
-                original.add(tab);
-            }
-        }
-        return List.copyOf(original);
     }
 
     private static void ensureFancyPageList(FancyMachineUIWidget fancy, WirelessAeFancyPageProvider provider) {
@@ -254,8 +243,7 @@ final class WirelessAeScreenHooks {
     private static void ensureWirelessSideTab(TabsWidget tabsWidget, WirelessAeFancyPageProvider provider) {
         List<IFancyUIProvider> subTabs = tabsWidget.getSubTabs();
         subTabs.removeIf(tab -> tab instanceof WirelessAeFancyPageProvider);
-        int insertIndex = Math.min(1, subTabs.size());
-        subTabs.add(insertIndex, provider);
+        subTabs.add(provider);
     }
 
     private static boolean isEmbeddedPanelActive(Screen screen, BlockPos targetPos) {
@@ -722,14 +710,12 @@ final class WirelessAeScreenHooks {
         private AbstractContainerScreen<?> screen;
         private BlockPos targetPos;
         private final IFancyUIProvider mainPage;
-        private final List<IFancyUIProvider> siblingTabs;
 
         private WirelessAeFancyPageProvider(AbstractContainerScreen<?> screen, BlockPos targetPos,
-                                            IFancyUIProvider mainPage, List<IFancyUIProvider> siblingTabs) {
+                                            IFancyUIProvider mainPage) {
             this.screen = screen;
             this.targetPos = targetPos.immutable();
             this.mainPage = mainPage;
-            this.siblingTabs = siblingTabs;
         }
 
         private void updateTarget(AbstractContainerScreen<?> screen, BlockPos targetPos) {
@@ -756,11 +742,7 @@ final class WirelessAeScreenHooks {
         @Override
         public void attachSideTabs(TabsWidget tabsWidget) {
             tabsWidget.setMainTab(mainPage);
-            for (IFancyUIProvider tab : siblingTabs) {
-                if (!(tab instanceof WirelessAeFancyPageProvider)) {
-                    tabsWidget.attachSubTab(tab);
-                }
-            }
+            mainPage.attachSideTabs(tabsWidget);
             ensureWirelessSideTab(tabsWidget, this);
         }
 

@@ -31,6 +31,14 @@ public final class GTLWirelessAeContent {
             "wireless_network_core",
             () -> new BlockItem(WIRELESS_NETWORK_CORE.get(), new Item.Properties()));
 
+    public static final RegistryObject<Block> WIRELESS_NETWORK_BOOKMARK = BLOCKS.register(
+            "wireless_network_bookmark",
+            WirelessNetworkBookmarkBlock::new);
+
+    public static final RegistryObject<Item> WIRELESS_NETWORK_BOOKMARK_ITEM = ITEMS.register(
+            "wireless_network_bookmark",
+            () -> new BlockItem(WIRELESS_NETWORK_BOOKMARK.get(), new Item.Properties()));
+
     public static final RegistryObject<BlockEntityType<WirelessNetworkCoreBlockEntity>> WIRELESS_NETWORK_CORE_BE = BLOCK_ENTITY_TYPES.register(
             "wireless_network_core",
             () -> BlockEntityType.Builder.of(
@@ -38,9 +46,20 @@ public final class GTLWirelessAeContent {
                     WIRELESS_NETWORK_CORE.get())
                     .build(null));
 
+    public static final RegistryObject<BlockEntityType<WirelessNetworkBookmarkBlockEntity>> WIRELESS_NETWORK_BOOKMARK_BE = BLOCK_ENTITY_TYPES.register(
+            "wireless_network_bookmark",
+            () -> BlockEntityType.Builder.of(
+                    WirelessNetworkBookmarkBlockEntity::new,
+                    WIRELESS_NETWORK_BOOKMARK.get())
+                    .build(null));
+
     public static final RegistryObject<MenuType<WirelessNetworkCoreMenu>> WIRELESS_NETWORK_CORE_MENU = MENU_TYPES.register(
             "wireless_network_core",
             () -> IForgeMenuType.create(WirelessNetworkCoreMenu::new));
+
+    public static final RegistryObject<MenuType<WirelessNetworkBookmarkMenu>> WIRELESS_NETWORK_BOOKMARK_MENU = MENU_TYPES.register(
+            "wireless_network_bookmark",
+            () -> IForgeMenuType.create(WirelessNetworkBookmarkMenu::new));
 
     public static final RegistryObject<MenuType<WirelessAeTargetMenu>> WIRELESS_AE_TARGET_MENU = MENU_TYPES.register(
             "wireless_ae_target",
@@ -59,6 +78,7 @@ public final class GTLWirelessAeContent {
     private static void addCreativeTabItems(BuildCreativeModeTabContentsEvent event) {
         if (CreativeModeTabs.FUNCTIONAL_BLOCKS.equals(event.getTabKey()) || GTLCreativeModeTabs.GTL_CORE.getKey().equals(event.getTabKey())) {
             event.accept(WIRELESS_NETWORK_CORE_ITEM);
+            event.accept(WIRELESS_NETWORK_BOOKMARK_ITEM);
         }
     }
 }

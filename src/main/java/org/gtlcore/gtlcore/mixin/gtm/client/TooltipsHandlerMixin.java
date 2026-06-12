@@ -1,13 +1,16 @@
 package org.gtlcore.gtlcore.mixin.gtm.client;
 
 import org.gtlcore.gtlcore.common.data.source_tooltip.SourceTooltip;
+import org.gtlcore.gtlcore.integration.ae2.wireless.WirelessAeNetworkRuntime;
 
 import com.gregtechceu.gtceu.client.TooltipsHandler;
 
+import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.level.material.Fluid;
+import net.minecraftforge.registries.ForgeRegistries;
 
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -25,6 +28,10 @@ public abstract class TooltipsHandlerMixin {
             remap = false)
     private static void appendCustomItemTooltips(ItemStack stack, TooltipFlag flag, List<Component> tooltips, CallbackInfo ci) {
         SourceTooltip.append(stack.getItem(), tooltips::add);
+        if (WirelessAeNetworkRuntime.isWirelessMeTargetId(ForgeRegistries.ITEMS.getKey(stack.getItem()))) {
+            tooltips.add(Component.translatable("tooltip.gtlcore.wireless_bookmark.quick_connect")
+                    .withStyle(ChatFormatting.GOLD));
+        }
     }
 
     @Inject(method = "appendFluidTooltips",
