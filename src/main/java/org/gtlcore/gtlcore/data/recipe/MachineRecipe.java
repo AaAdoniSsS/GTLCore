@@ -39,6 +39,7 @@ import java.util.function.Consumer;
 import static appeng.core.definitions.AEBlocks.QUANTUM_LINK;
 import static appeng.core.definitions.AEBlocks.QUANTUM_RING;
 import static com.glodblock.github.extendedae.common.EPPItemAndBlock.WIRELESS_HUB;
+import static com.glodblock.github.extendedae.common.EPPItemAndBlock.WIRELESS_TOOL;
 import static com.gregtechceu.gtceu.api.GTValues.*;
 import static com.gregtechceu.gtceu.api.data.tag.TagPrefix.*;
 import static com.gregtechceu.gtceu.common.data.GTItems.*;
@@ -829,13 +830,13 @@ public class MachineRecipe {
                 .duration(400).EUt(VA[EV]).save(provider);
 
         ASSEMBLER_RECIPES.recipeBuilder("wireless_network_bookmark")
-                .inputItems(GTMachines.HULL[3])
-                .inputItems(WIRELESS_HUB.asItem())
-                .inputItems(QUANTUM_LINK.asItem())
+                .inputItems(GTMachines.HULL[4])
+                .inputItems(WIRELESS_TOOL.asItem())
                 .inputItems(CIRCUIT.getIngredient(EV), 2)
-                .inputItems(wireGtQuadruple, Platinum, 2)
+                .inputItems(wireFine, TungstenSteel, 16)
+                .inputItems(EMITTER_EV, 4)
                 .outputItems(WIRELESS_NETWORK_BOOKMARK)
-                .duration(200).EUt(VA[EV]).save(provider);
+                .duration(400).EUt(VA[EV]).save(provider);
     }
 
     private static void space_probe(Material material, int grade, int amount, int circuit, Consumer<FinishedRecipe> provider) {
