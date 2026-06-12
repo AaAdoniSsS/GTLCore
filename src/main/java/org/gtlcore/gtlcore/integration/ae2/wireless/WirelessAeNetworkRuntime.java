@@ -37,18 +37,29 @@ import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class WirelessAeNetworkRuntime {
 
     private static final int CONNECT_INTERVAL_TICKS = 20;
     private static final int FAVORITE_BIND_RETRY_TICKS = 80;
+    private static final int WIRED_RECHECK_INTERVAL_TICKS = 100;
 
     private static final Map<UUID, Map<WirelessAeSavedData.MemberKey, IGridConnection>> CONNECTIONS = new HashMap<>();
     private static final Map<GlobalPos, PendingFavoriteBind> PENDING_FAVORITE_BINDS = new HashMap<>();
+    private static final Map<Class<?>, WirelessTargetClassInfo> WIRELESS_TARGET_CLASS_CACHE = new ConcurrentHashMap<>();
+    private static final Map<RuntimeReflectionKey, Optional<Method>> RUNTIME_METHOD_CACHE = new ConcurrentHashMap<>();
+    private static final Map<WirelessAeSavedData.MemberKey, Integer> NEXT_WIRED_RECHECK_TICKS = new HashMap<>();
+    private static final Map<WirelessAeSavedData.MemberKey, IGridNode> TICK_TARGET_NODE_CACHE = new HashMap<>();
+    private static final Map<UUID, WirelessNetworkCoreBlockEntity> TICK_CORE_CACHE = new HashMap<>();
+    private static final Map<UUID, IGridNode> TICK_BRIDGE_NODE_CACHE = new HashMap<>();
+    private static final Map<GridNodePair, Boolean> TICK_IN_WORLD_CONNECTION_CACHE = new HashMap<>();
     private static final Set<UUID> REQUESTED_RECONNECTS = new HashSet<>();
     private static int tickCounter;
+    private static boolean tickCacheActive;
     private static final String GTCEU_ME_PART_PACKAGE = "com.gregtechceu.gtceu.integration.ae2.";
     private static final String GTMTHINGS_ME_PART_PACKAGE = "com.hepdd.gtmthings.common.block.machine.multiblock.part.appeng.";
     private static final String GTL_ME_PART_PACKAGE = "org.gtlcore.gtlcore.common.machine.multiblock.part.ae.";
@@ -111,6 +122,32 @@ public final class WirelessAeNetworkRuntime {
         }
     }
 
+    private record WirelessTargetClassInfo(boolean knownTarget, boolean compatibleGridTarget,
+                                           boolean meLikeName) {}
+
+    private record RuntimeReflectionKey(Class<?> type, String methodName) {}
+
+    private static final class GridNodePair {
+
+        private final IGridNode first;
+        private final IGridNode second;
+
+        private GridNodePair(IGridNode first, IGridNode second) {
+            this.first = first;
+            this.second = second;
+        }
+
+        @Override
+        public boolean equals(Object object) {
+            return object instanceof GridNodePair other && this.first == other.first && this.second == other.second;
+        }
+
+        @Override
+        public int hashCode() {
+            return 31 * System.identityHashCode(this.first) + System.identityHashCode(this.second);
+        }
+    }
+
     private WirelessAeNetworkRuntime() {}
 
     public static void register(IEventBus forgeBus) {
@@ -138,18 +175,23 @@ public final class WirelessAeNetworkRuntime {
         }
 
         tickCounter++;
-        processPendingFavoriteBinds(event.getServer());
-        if (tickCounter % CONNECT_INTERVAL_TICKS == 0) {
-            connectAll(event.getServer());
-            return;
-        }
-
-        if (!REQUESTED_RECONNECTS.isEmpty()) {
-            Set<UUID> requested = new HashSet<>(REQUESTED_RECONNECTS);
-            REQUESTED_RECONNECTS.clear();
-            for (UUID frequency : requested) {
-                connectFrequency(event.getServer(), frequency);
+        beginTickCaches();
+        try {
+            processPendingFavoriteBinds(event.getServer());
+            if (tickCounter % CONNECT_INTERVAL_TICKS == 0) {
+                connectAll(event.getServer());
+                return;
             }
+
+            if (!REQUESTED_RECONNECTS.isEmpty()) {
+                Set<UUID> requested = new HashSet<>(REQUESTED_RECONNECTS);
+                REQUESTED_RECONNECTS.clear();
+                for (UUID frequency : requested) {
+                    connectFrequency(event.getServer(), frequency);
+                }
+            }
+        } finally {
+            endTickCaches();
         }
     }
 
@@ -176,13 +218,13 @@ public final class WirelessAeNetworkRuntime {
             return ConnectionResult.CORE_MISSING;
         }
 
-        BlockEntity coreBlockEntity = getLoadedBlockEntity(server, corePos);
-        if (!(coreBlockEntity instanceof WirelessNetworkCoreBlockEntity core)) {
+        WirelessNetworkCoreBlockEntity core = getLoadedCoreCached(server, frequency);
+        if (core == null) {
             disconnectFrequency(frequency);
             return ConnectionResult.CORE_MISSING;
         }
 
-        IGridNode bridgeNode = findBridgeNode(core);
+        IGridNode bridgeNode = findBridgeNodeCached(frequency, core);
         if (bridgeNode == null) {
             disconnectFrequency(frequency);
             return ConnectionResult.CORE_NOT_CONNECTED;
@@ -200,8 +242,9 @@ public final class WirelessAeNetworkRuntime {
             return;
         }
 
-        for (IGridConnection connection : frequencyConnections.values()) {
-            destroyQuietly(connection);
+        for (Map.Entry<WirelessAeSavedData.MemberKey, IGridConnection> entry : frequencyConnections.entrySet()) {
+            forgetWiredConnectionCheck(entry.getKey());
+            destroyQuietly(entry.getValue());
         }
     }
 
@@ -212,10 +255,12 @@ public final class WirelessAeNetworkRuntime {
     public static void disconnectMember(UUID frequency, WirelessAeSavedData.MemberKey member) {
         Map<WirelessAeSavedData.MemberKey, IGridConnection> frequencyConnections = CONNECTIONS.get(frequency);
         if (frequencyConnections == null) {
+            forgetWiredConnectionCheck(member);
             return;
         }
 
         IGridConnection connection = frequencyConnections.remove(member);
+        forgetWiredConnectionCheck(member);
         destroyQuietly(connection);
         if (frequencyConnections.isEmpty()) {
             CONNECTIONS.remove(frequency);
@@ -379,6 +424,11 @@ public final class WirelessAeNetworkRuntime {
     }
 
     public static UUID findWiredNetworkFrequency(MinecraftServer server, WirelessAeSavedData.MemberKey member) {
+        return findWiredNetworkFrequency(server, member, true);
+    }
+
+    private static UUID findWiredNetworkFrequency(MinecraftServer server, WirelessAeSavedData.MemberKey member,
+                                                  boolean includeWirelessBackedCable) {
         IGridNode targetNode = findTargetNode(server, member);
         if (targetNode == null) {
             return null;
@@ -386,16 +436,16 @@ public final class WirelessAeNetworkRuntime {
 
         WirelessAeSavedData data = WirelessAeSavedData.get(server);
         for (WirelessAeSavedData.NetworkInfo network : data.getNetworkInfo()) {
-            WirelessNetworkCoreBlockEntity core = getLoadedCore(server, network.frequency());
+            WirelessNetworkCoreBlockEntity core = getLoadedCoreCached(server, network.frequency());
             if (core == null) {
                 continue;
             }
 
-            IGridNode bridgeNode = findBridgeNode(core);
+            IGridNode bridgeNode = findBridgeNodeCached(network.frequency(), core);
             if (areConnectedInWorld(bridgeNode, targetNode)) {
                 return network.frequency();
             }
-            if (isConnectedThroughWirelessBackedCable(server, network.frequency(), bridgeNode, member, targetNode)) {
+            if (includeWirelessBackedCable && isConnectedThroughWirelessBackedCable(server, network.frequency(), bridgeNode, member, targetNode)) {
                 return network.frequency();
             }
         }
@@ -431,6 +481,7 @@ public final class WirelessAeNetworkRuntime {
 
     private static void clearMemberBinding(ServerLevel level, BlockPos pos) {
         GlobalPos member = GlobalPos.of(level.dimension(), pos);
+        forgetWiredConnectionChecksAt(member);
         WirelessAeSavedData data = WirelessAeSavedData.get(level.getServer());
         for (UUID frequency : data.removeMembersAt(member)) {
             disconnectMembersAt(frequency, member);
@@ -542,6 +593,7 @@ public final class WirelessAeNetworkRuntime {
         while (iterator.hasNext()) {
             Map.Entry<WirelessAeSavedData.MemberKey, IGridConnection> entry = iterator.next();
             if (entry.getKey().pos().equals(member)) {
+                forgetWiredConnectionCheck(entry.getKey());
                 destroyQuietly(entry.getValue());
                 iterator.remove();
             }
@@ -566,13 +618,13 @@ public final class WirelessAeNetworkRuntime {
             return;
         }
 
-        BlockEntity coreBlockEntity = getLoadedBlockEntity(server, corePos);
-        if (!(coreBlockEntity instanceof WirelessNetworkCoreBlockEntity core)) {
+        WirelessNetworkCoreBlockEntity core = getLoadedCoreCached(server, frequency);
+        if (core == null) {
             disconnectFrequency(frequency);
             return;
         }
 
-        IGridNode bridgeNode = findBridgeNode(core);
+        IGridNode bridgeNode = findBridgeNodeCached(frequency, core);
         if (bridgeNode == null) {
             disconnectFrequency(frequency);
             return;
@@ -585,6 +637,7 @@ public final class WirelessAeNetworkRuntime {
         while (existing.hasNext()) {
             Map.Entry<WirelessAeSavedData.MemberKey, IGridConnection> entry = existing.next();
             if (!members.contains(entry.getKey())) {
+                forgetWiredConnectionCheck(entry.getKey());
                 destroyQuietly(entry.getValue());
                 existing.remove();
             }
@@ -605,39 +658,60 @@ public final class WirelessAeNetworkRuntime {
                                                   WirelessAeSavedData.MemberKey member,
                                                   IGridNode bridgeNode,
                                                   Map<WirelessAeSavedData.MemberKey, IGridConnection> frequencyConnections) {
-        ServerLevel targetLevel = bridgeNode.getLevel().getServer().getLevel(member.pos().dimension());
+        MinecraftServer server = bridgeNode.getLevel().getServer();
+        ServerLevel targetLevel = server.getLevel(member.pos().dimension());
         if (targetLevel == null || !isWirelessMeTarget(targetLevel, member.blockPos())) {
+            forgetWiredConnectionCheck(member);
             destroyQuietly(frequencyConnections.remove(member));
             return ConnectionResult.TARGET_MISSING;
         }
 
-        IGridNode targetNode = findTargetNode(bridgeNode.getLevel().getServer(), member);
+        IGridNode targetNode = findTargetNode(server, member);
         if (targetNode == null) {
+            forgetWiredConnectionCheck(member);
             destroyQuietly(frequencyConnections.remove(member));
             return ConnectionResult.TARGET_MISSING;
         }
 
         IGridConnection currentConnection = frequencyConnections.get(member);
-        if (findWiredNetworkFrequency(bridgeNode.getLevel().getServer(), member) != null) {
-            destroyQuietly(currentConnection);
-            frequencyConnections.remove(member);
+        boolean currentConnectionMatches = connectionMatches(currentConnection, bridgeNode, targetNode);
+        if (currentConnectionMatches && !shouldRecheckWiredConnection(member)) {
+            return ConnectionResult.ALREADY_CONNECTED;
+        }
+
+        if (currentConnectionMatches) {
+            if (findWiredNetworkFrequency(server, member, false) != null) {
+                forgetWiredConnectionCheck(member);
+                destroyQuietly(currentConnection);
+                frequencyConnections.remove(member);
+                return ConnectionResult.ALREADY_CONNECTED;
+            }
+            markWiredConnectionChecked(member);
             return ConnectionResult.ALREADY_CONNECTED;
         }
 
         if (targetNode == bridgeNode) {
+            forgetWiredConnectionCheck(member);
             destroyQuietly(frequencyConnections.remove(member));
             return ConnectionResult.ALREADY_CONNECTED;
         }
 
-        if (connectionMatches(currentConnection, bridgeNode, targetNode)) {
+        if (areConnected(bridgeNode, targetNode) || isSameGrid(bridgeNode, targetNode)) {
+            forgetWiredConnectionCheck(member);
+            destroyQuietly(frequencyConnections.remove(member));
             return ConnectionResult.ALREADY_CONNECTED;
         }
+
+        if (findWiredNetworkFrequency(server, member, true) != null) {
+            forgetWiredConnectionCheck(member);
+            destroyQuietly(currentConnection);
+            frequencyConnections.remove(member);
+            return ConnectionResult.ALREADY_CONNECTED;
+        }
+        markWiredConnectionChecked(member);
+
         destroyQuietly(currentConnection);
         frequencyConnections.remove(member);
-
-        if (areConnected(bridgeNode, targetNode) || isSameGrid(bridgeNode, targetNode)) {
-            return ConnectionResult.ALREADY_CONNECTED;
-        }
 
         try {
             frequencyConnections.put(member, GridHelper.createConnection(bridgeNode, targetNode));
@@ -694,6 +768,65 @@ public final class WirelessAeNetworkRuntime {
         }
     }
 
+    private static void beginTickCaches() {
+        tickCacheActive = true;
+        TICK_TARGET_NODE_CACHE.clear();
+        TICK_CORE_CACHE.clear();
+        TICK_BRIDGE_NODE_CACHE.clear();
+        TICK_IN_WORLD_CONNECTION_CACHE.clear();
+    }
+
+    private static void endTickCaches() {
+        tickCacheActive = false;
+        TICK_TARGET_NODE_CACHE.clear();
+        TICK_CORE_CACHE.clear();
+        TICK_BRIDGE_NODE_CACHE.clear();
+        TICK_IN_WORLD_CONNECTION_CACHE.clear();
+    }
+
+    private static boolean shouldRecheckWiredConnection(WirelessAeSavedData.MemberKey member) {
+        Integer nextCheckTick = NEXT_WIRED_RECHECK_TICKS.get(member);
+        return nextCheckTick == null || tickCounter >= nextCheckTick;
+    }
+
+    private static void markWiredConnectionChecked(WirelessAeSavedData.MemberKey member) {
+        NEXT_WIRED_RECHECK_TICKS.put(member, tickCounter + WIRED_RECHECK_INTERVAL_TICKS);
+    }
+
+    private static void forgetWiredConnectionCheck(WirelessAeSavedData.MemberKey member) {
+        NEXT_WIRED_RECHECK_TICKS.remove(member);
+    }
+
+    private static void forgetWiredConnectionChecksAt(GlobalPos pos) {
+        NEXT_WIRED_RECHECK_TICKS.keySet().removeIf(member -> member.pos().equals(pos));
+    }
+
+    private static WirelessNetworkCoreBlockEntity getLoadedCoreCached(MinecraftServer server, UUID frequency) {
+        if (!tickCacheActive) {
+            return getLoadedCore(server, frequency);
+        }
+        if (TICK_CORE_CACHE.containsKey(frequency)) {
+            return TICK_CORE_CACHE.get(frequency);
+        }
+
+        WirelessNetworkCoreBlockEntity core = getLoadedCore(server, frequency);
+        TICK_CORE_CACHE.put(frequency, core);
+        return core;
+    }
+
+    private static IGridNode findBridgeNodeCached(UUID frequency, WirelessNetworkCoreBlockEntity core) {
+        if (!tickCacheActive) {
+            return findBridgeNode(core);
+        }
+        if (TICK_BRIDGE_NODE_CACHE.containsKey(frequency)) {
+            return TICK_BRIDGE_NODE_CACHE.get(frequency);
+        }
+
+        IGridNode bridgeNode = findBridgeNode(core);
+        TICK_BRIDGE_NODE_CACHE.put(frequency, bridgeNode);
+        return bridgeNode;
+    }
+
     private static BlockEntity getLoadedBlockEntity(MinecraftServer server, GlobalPos pos) {
         ServerLevel level = server.getLevel(pos.dimension());
         if (level == null || !level.hasChunkAt(pos.pos())) {
@@ -703,6 +836,18 @@ public final class WirelessAeNetworkRuntime {
     }
 
     private static IGridNode findTargetNode(MinecraftServer server, WirelessAeSavedData.MemberKey member) {
+        if (tickCacheActive && TICK_TARGET_NODE_CACHE.containsKey(member)) {
+            return TICK_TARGET_NODE_CACHE.get(member);
+        }
+
+        IGridNode node = findTargetNodeUncached(server, member);
+        if (tickCacheActive) {
+            TICK_TARGET_NODE_CACHE.put(member, node);
+        }
+        return node;
+    }
+
+    private static IGridNode findTargetNodeUncached(MinecraftServer server, WirelessAeSavedData.MemberKey member) {
         GlobalPos pos = member.pos();
         ServerLevel level = server.getLevel(pos.dimension());
         if (level == null || !level.hasChunkAt(pos.pos())) {
@@ -917,7 +1062,10 @@ public final class WirelessAeNetworkRuntime {
 
     private static IGridNode findClusterNode(Object target) {
         try {
-            Method getCluster = target.getClass().getMethod("getCluster");
+            Method getCluster = findPublicNoArgMethod(target.getClass(), "getCluster");
+            if (getCluster == null) {
+                return null;
+            }
             Object cluster = getCluster.invoke(target);
             if (cluster == null) {
                 return null;
@@ -930,7 +1078,10 @@ public final class WirelessAeNetworkRuntime {
 
     private static IGridNode invokeGridNode(Object target, String methodName) {
         try {
-            Method method = target.getClass().getMethod(methodName);
+            Method method = findPublicNoArgMethod(target.getClass(), methodName);
+            if (method == null) {
+                return null;
+            }
             Object result = method.invoke(target);
             if (result instanceof IGridNode node) {
                 return node;
@@ -943,7 +1094,10 @@ public final class WirelessAeNetworkRuntime {
 
     private static IGridNode invokeManagedGridNode(Object target) {
         try {
-            Method method = target.getClass().getMethod("getMainNode");
+            Method method = findPublicNoArgMethod(target.getClass(), "getMainNode");
+            if (method == null) {
+                return null;
+            }
             Object result = method.invoke(target);
             if (result instanceof IManagedGridNode managedGridNode) {
                 return managedGridNode.getNode();
@@ -956,7 +1110,10 @@ public final class WirelessAeNetworkRuntime {
 
     private static Object invokeObject(Object target, String methodName) {
         try {
-            Method method = target.getClass().getMethod(methodName);
+            Method method = findPublicNoArgMethod(target.getClass(), methodName);
+            if (method == null) {
+                return null;
+            }
             return method.invoke(target);
         } catch (ReflectiveOperationException | RuntimeException ignored) {
             return null;
@@ -987,7 +1144,10 @@ public final class WirelessAeNetworkRuntime {
 
     private static BlockPos invokeBlockPos(Object target, String methodName) {
         try {
-            Method method = target.getClass().getMethod(methodName);
+            Method method = findPublicNoArgMethod(target.getClass(), methodName);
+            if (method == null) {
+                return null;
+            }
             Object result = method.invoke(target);
             if (result instanceof BlockPos pos) {
                 return pos;
@@ -1007,37 +1167,34 @@ public final class WirelessAeNetworkRuntime {
             return false;
         }
 
-        String className = target.getClass().getName();
-        return className.startsWith(GTCEU_ME_PART_PACKAGE) ||
+        WirelessTargetClassInfo classInfo = WIRELESS_TARGET_CLASS_CACHE.computeIfAbsent(
+                target.getClass(),
+                WirelessAeNetworkRuntime::inspectWirelessTargetClass);
+        return classInfo.knownTarget() ||
+                (classInfo.compatibleGridTarget() &&
+                        (classInfo.meLikeName() || isCompatibleExternalMeLikeId(blockId)));
+    }
+
+    private static WirelessTargetClassInfo inspectWirelessTargetClass(Class<?> type) {
+        String className = type.getName();
+        boolean knownTarget = className.startsWith(GTCEU_ME_PART_PACKAGE) ||
                 className.startsWith(GTMTHINGS_ME_PART_PACKAGE) ||
                 className.startsWith(GTL_ME_PART_PACKAGE) ||
-                GTL_ME_TARGET_CLASSES.contains(className) ||
-                isCompatibleGridConnectedMeTarget(target, className, blockId);
+                GTL_ME_TARGET_CLASSES.contains(className);
+        boolean compatibleGridTarget = hasMachinePartMarker(type) && hasGridNodeAccess(type);
+        return new WirelessTargetClassInfo(knownTarget, compatibleGridTarget, isMeLikeClassName(className));
     }
 
-    private static boolean isCompatibleGridConnectedMeTarget(Object target, String className,
-                                                             ResourceLocation blockId) {
-        if (!hasMachinePartMarker(target)) {
-            return false;
-        }
-        if (!hasGridNodeAccess(target)) {
-            return false;
-        }
-        return isMeLikeClassName(className) || isCompatibleExternalMeLikeId(blockId);
-    }
-
-    private static boolean hasMachinePartMarker(Object target) {
-        Class<?> type = target.getClass();
+    private static boolean hasMachinePartMarker(Class<?> type) {
         return hasTypeName(type, GTCEU_META_MACHINE_CLASS) ||
                 hasTypeName(type, GTCEU_MULTIBLOCK_PART_CLASS) ||
                 hasTypeName(type, GTCEU_GRID_CONNECTED_MACHINE_INTERFACE);
     }
 
-    private static boolean hasGridNodeAccess(Object target) {
-        Class<?> type = target.getClass();
-        return target instanceof IManagedGridNode ||
-                target instanceof IActionHost ||
-                target instanceof IInWorldGridNodeHost ||
+    private static boolean hasGridNodeAccess(Class<?> type) {
+        return IManagedGridNode.class.isAssignableFrom(type) ||
+                IActionHost.class.isAssignableFrom(type) ||
+                IInWorldGridNodeHost.class.isAssignableFrom(type) ||
                 hasTypeName(type, GTCEU_GRID_CONNECTED_MACHINE_INTERFACE) ||
                 hasTypeName(type, GTL_ME_IO_PART_MACHINE_INTERFACE) ||
                 hasNoArgMethod(type, "getMainNode") ||
@@ -1061,11 +1218,26 @@ public final class WirelessAeNetworkRuntime {
     }
 
     private static boolean hasNoArgMethod(Class<?> type, String methodName) {
+        return findPublicNoArgMethod(type, methodName) != null;
+    }
+
+    private static Method findPublicNoArgMethod(Class<?> type, String methodName) {
+        if (type == null) {
+            return null;
+        }
+        return RUNTIME_METHOD_CACHE.computeIfAbsent(
+                new RuntimeReflectionKey(type, methodName),
+                WirelessAeNetworkRuntime::findPublicNoArgMethodUncached)
+                .orElse(null);
+    }
+
+    private static Optional<Method> findPublicNoArgMethodUncached(RuntimeReflectionKey key) {
         try {
-            type.getMethod(methodName);
-            return true;
+            Method method = key.type().getMethod(key.methodName());
+            method.setAccessible(true);
+            return Optional.of(method);
         } catch (ReflectiveOperationException | RuntimeException ignored) {
-            return false;
+            return Optional.empty();
         }
     }
 
@@ -1146,6 +1318,22 @@ public final class WirelessAeNetworkRuntime {
         if (coreNode == null || targetNode == null) {
             return false;
         }
+        if (tickCacheActive) {
+            GridNodePair pair = new GridNodePair(coreNode, targetNode);
+            Boolean cached = TICK_IN_WORLD_CONNECTION_CACHE.get(pair);
+            if (cached != null) {
+                return cached;
+            }
+
+            boolean connected = areConnectedInWorldUncached(coreNode, targetNode);
+            TICK_IN_WORLD_CONNECTION_CACHE.put(pair, connected);
+            return connected;
+        }
+
+        return areConnectedInWorldUncached(coreNode, targetNode);
+    }
+
+    private static boolean areConnectedInWorldUncached(IGridNode coreNode, IGridNode targetNode) {
         if (coreNode == targetNode) {
             return true;
         }
