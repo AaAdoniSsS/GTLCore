@@ -73,6 +73,15 @@ public final class WirelessAeNetworkRuntime {
             "me_extended_async_export_buffer",
             "me_molecular_assembler_io",
             "me_wildcard_pattern_buffer");
+    private static final Set<String> QUICK_CONNECT_TOOLTIP_TARGET_IDS = Set.of(
+            "me_input_bus",
+            "me_stocking_input_bus",
+            "me_output_bus",
+            "me_input_hatch",
+            "me_stocking_input_hatch",
+            "me_output_hatch",
+            "tag_filter_me_stock_bus_part_machine",
+            "me_dual_hatch_stock_part_machine");
 
     public enum ConnectionResult {
         CONNECTED,
@@ -1003,11 +1012,15 @@ public final class WirelessAeNetworkRuntime {
 
         String namespace = blockId.getNamespace();
         String path = blockId.getPath();
-        return WIRELESS_ME_TARGET_IDS.contains(path) || ("gtmthings".equals(namespace) && isMeLikePath(path));
+        return WIRELESS_ME_TARGET_IDS.contains(path) || ("gtmthings".equals(namespace) && isGtmthingsMeLikePath(path));
     }
 
-    private static boolean isMeLikePath(String path) {
-        return path.startsWith("me_") || path.contains("_me_") || path.contains("appeng") || path.contains("ae2") || path.contains("interface") || path.contains("requester") || path.contains("provider");
+    public static boolean shouldShowQuickConnectTooltip(ResourceLocation itemId) {
+        return itemId != null && QUICK_CONNECT_TOOLTIP_TARGET_IDS.contains(itemId.getPath());
+    }
+
+    private static boolean isGtmthingsMeLikePath(String path) {
+        return path.startsWith("me_") || path.contains("_me_") || path.contains("appeng") || path.contains("ae2");
     }
 
     private static boolean connectionMatches(IGridConnection connection, IGridNode coreNode, IGridNode targetNode) {

@@ -28,7 +28,7 @@ public abstract class TooltipsHandlerMixin {
             remap = false)
     private static void appendCustomItemTooltips(ItemStack stack, TooltipFlag flag, List<Component> tooltips, CallbackInfo ci) {
         SourceTooltip.append(stack.getItem(), tooltips::add);
-        if (WirelessAeNetworkRuntime.isWirelessMeTargetId(ForgeRegistries.ITEMS.getKey(stack.getItem()))) {
+        if (WirelessAeNetworkRuntime.shouldShowQuickConnectTooltip(ForgeRegistries.ITEMS.getKey(stack.getItem()))) {
             tooltips.add(Component.translatable("tooltip.gtlcore.wireless_bookmark.quick_connect")
                     .withStyle(ChatFormatting.GOLD));
         }
