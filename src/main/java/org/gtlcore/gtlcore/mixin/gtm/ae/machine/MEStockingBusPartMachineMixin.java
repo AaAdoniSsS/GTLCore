@@ -102,8 +102,6 @@ public abstract class MEStockingBusPartMachineMixin extends MEInputBusPartMachin
             }
 
             this.aeItemHandler.clearInventory(index);
-
-            ((IOptimizedMEList) this.aeItemHandler).onConfigChanged();
         }
     }
 

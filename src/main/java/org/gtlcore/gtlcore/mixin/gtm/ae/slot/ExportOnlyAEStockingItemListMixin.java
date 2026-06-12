@@ -77,6 +77,7 @@ public abstract class ExportOnlyAEStockingItemListMixin extends ExportOnlyAEItem
             ((IMESlot) slot).setConfigWithoutNotify(null);
             slot.setStock(null);
         }
+        onConfigChanged();
     }
 
     @Override
@@ -130,6 +131,7 @@ public abstract class ExportOnlyAEStockingItemListMixin extends ExportOnlyAEItem
             }
         }
         if (!simulate && changed) {
+            setChanged(true);
             this.onContentsChanged();
         }
 
@@ -139,6 +141,7 @@ public abstract class ExportOnlyAEStockingItemListMixin extends ExportOnlyAEItem
     @SuppressWarnings("AddedMixinMembersNamePattern")
     @Override
     public void onConfigChanged() {
+        setChanged(true);
         gTLCore$configList.clear();
         gTLCore$configIndexList.clear();
         for (int i = 0, inventoryLength = inventory.length; i < inventoryLength; i++) {

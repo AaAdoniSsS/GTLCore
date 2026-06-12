@@ -78,6 +78,7 @@ public abstract class ExportOnlyAEStockingFluidListMixin extends ExportOnlyAEFlu
             ((IMESlot) slot).setConfigWithoutNotify(null);
             slot.setStock(null);
         }
+        onConfigChanged();
     }
 
     @Override
@@ -137,6 +138,7 @@ public abstract class ExportOnlyAEStockingFluidListMixin extends ExportOnlyAEFlu
     @SuppressWarnings("AddedMixinMembersNamePattern")
     @Override
     public void onConfigChanged() {
+        setChanged(true);
         gTLCore$configList.clear();
         gTLCore$configIndexList.clear();
         for (int i = 0, inventoryLength = inventory.length; i < inventoryLength; i++) {

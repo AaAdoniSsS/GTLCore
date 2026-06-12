@@ -102,8 +102,6 @@ public abstract class MEStockingHatchPartMachineMixin extends MEInputHatchPartMa
             }
 
             this.aeFluidHandler.clearInventory(index);
-
-            ((IOptimizedMEList) this.aeFluidHandler).onConfigChanged();
         }
     }
 
