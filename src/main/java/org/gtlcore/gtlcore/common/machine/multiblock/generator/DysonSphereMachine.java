@@ -122,6 +122,7 @@ public class DysonSphereMachine extends WorkableElectricMultiblockMachine {
         super.onStructureInvalid();
         cachedCheckPositions = null;
         if (nightSubs != null) nightSubs.unsubscribe();
+        if (this.DysonSphereData > 0) DysonSphereData--;
     }
 
     @Nullable
