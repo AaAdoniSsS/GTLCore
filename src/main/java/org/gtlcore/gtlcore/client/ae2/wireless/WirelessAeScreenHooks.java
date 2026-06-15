@@ -2,6 +2,7 @@ package org.gtlcore.gtlcore.client.ae2.wireless;
 
 import org.gtlcore.gtlcore.integration.ae2.wireless.WirelessAeNetworkRuntime;
 import org.gtlcore.gtlcore.integration.ae2.wireless.WirelessAePackets;
+import org.gtlcore.gtlcore.integration.wildcard.WildcardPatternCompat;
 
 import com.gregtechceu.gtceu.api.gui.fancy.FancyMachineUIWidget;
 import com.gregtechceu.gtceu.api.gui.fancy.IFancyUIProvider;
@@ -55,6 +56,8 @@ final class WirelessAeScreenHooks {
     private static final int FANCY_SCROLLBAR_GAP = 4;
     private static final IGuiTexture WIRELESS_TAB_ICON = WirelessAeScreenHooks::drawWirelessTabIcon;
     private static final ResourceLocation WIRELESS_TAB_TEXTURE = new ResourceLocation("gtlcore", "textures/gui/wireless/tab_wireless_selected.png");
+    private static final String WILDCARD_HELD_ITEM_UI_CLASS = "org.leodreamer.wildcard_pattern.wildcard.gui.WildcardHeldItemUI";
+    private static final String WILDCARD_FANCY_PROVIDER_CLASS = "org.leodreamer.wildcard_pattern.wildcard.gui.WildcardFancyUIProvider";
 
     private static final String[] POSITION_METHODS = {
             "getBlockPos",
@@ -220,10 +223,33 @@ final class WirelessAeScreenHooks {
         if (fancy == null) {
             return;
         }
+        if (isWildcardPatternHeldItemUi(fancy)) {
+            return;
+        }
 
         WirelessAeFancyPageProvider provider = getOrCreateFancyProvider(screen, targetPos, fancy);
         ensureFancyPageList(fancy, provider);
         ensureWirelessSideTab(fancy.getSideTabsWidget(), provider);
+    }
+
+    private static boolean isWildcardPatternHeldItemUi(FancyMachineUIWidget fancy) {
+        if (!WildcardPatternCompat.isLoaded()) {
+            return false;
+        }
+        return hasTypeName(fancy, WILDCARD_HELD_ITEM_UI_CLASS) ||
+                hasTypeName(fancy.getMainPage(), WILDCARD_FANCY_PROVIDER_CLASS);
+    }
+
+    private static boolean hasTypeName(Object target, String typeName) {
+        if (target == null) {
+            return false;
+        }
+        for (Class<?> type = target.getClass(); type != null; type = type.getSuperclass()) {
+            if (type.getName().equals(typeName)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static FancyMachineUIWidget findFancyMachineUI(ModularUIGuiContainer screen) {
