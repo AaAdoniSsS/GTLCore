@@ -22,6 +22,8 @@
     "ldlib.WorldSceneRendererMixin",
     "mc.BufferBuilderAccessor",
     "mc.GuiGraphicsMixin",
+    "mc.SlotAccessor",
+    "extendedae.ExPatternProviderScreenMixin",
     "meRequester.NumberFieldMixin"
   ],
   "mixins": [
