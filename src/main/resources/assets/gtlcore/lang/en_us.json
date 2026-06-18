@@ -227,7 +227,7 @@
   "item.gtlcore.miracle_crystal": "§dMiracle Crystal",
   "item.gtlcore.pattern_modifier": "Pattern Provider Modifier",
   "item.gtlcore.pattern_box": "Pattern Box",
-  "tooltip.gtlcore.pattern_box_open": "Right-click in air to open. Stores up to 36 encoded patterns",
+  "tooltip.gtlcore.pattern_box_open": "Right-click in air to open. Stores up to 72 encoded patterns",
   "tooltip.gtlcore.pattern_box_extract": "Right-click a pattern provider / pattern buffer / assembler matrix: pull its patterns into the box",
   "tooltip.gtlcore.pattern_box_insert": "Sneak + right-click a pattern provider / pattern buffer / assembler matrix : push the box's patterns into it",
   "message.gtlcore.pattern_box_extracted": "Pulled patterns from the provider / the buffer / the assembler matrix",
