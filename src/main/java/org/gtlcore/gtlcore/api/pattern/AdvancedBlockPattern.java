@@ -35,6 +35,7 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.common.util.LazyOptional;
 import net.minecraftforge.fluids.FluidStack;
+import net.minecraftforge.fluids.FluidType;
 import net.minecraftforge.fluids.capability.IFluidHandler;
 import net.minecraftforge.fluids.capability.IFluidHandlerItem;
 import net.minecraftforge.items.IItemHandler;
@@ -48,6 +49,7 @@ import appeng.api.networking.IGridNode;
 import appeng.api.networking.security.IActionSource;
 import appeng.api.stacks.AEFluidKey;
 import appeng.api.stacks.AEItemKey;
+import appeng.api.storage.MEStorage;
 import it.unimi.dsi.fastutil.ints.IntObjectPair;
 import it.unimi.dsi.fastutil.objects.*;
 import org.apache.commons.lang3.ArrayUtils;
@@ -256,38 +258,29 @@ public class AdvancedBlockPattern extends BlockPattern {
 
                         ItemStack found = null;
                         net.minecraft.world.level.material.Fluid fluidToPlace = null;
-                        boolean fromAE = false;
                         IItemHandler handler = null;
                         int foundSlot = -1;
                         for (ItemStack candidate : candidates) {
                             net.minecraft.world.level.material.Fluid fluid = getFluid(candidate);
                             if (fluid != null) {
-                                // 1. Try AE Fluid
-                                if (aeInventory != null) {
-                                    if (aeInventory.extract(AEFluidKey.of(fluid), 1000, Actionable.MODULATE, source) >= 1000) {
+                                if (aeMode) {
+                                    if (aeInventory != null && aeInventory.extract(AEFluidKey.of(fluid), FluidType.BUCKET_VOLUME, Actionable.SIMULATE, source) >= FluidType.BUCKET_VOLUME) {
                                         fluidToPlace = fluid;
-                                        fromAE = true;
                                         break;
                                     }
-                                }
-                                // 2. Try Player Inv Fluid (Recursive)
-                                if (fluidToPlace == null) {
+                                } else {
                                     if (extractFluidFromPlayerRecursively(player, fluid)) {
                                         fluidToPlace = fluid;
                                         break;
                                     }
                                 }
                             } else {
-                                // 1. Try AE Item
-                                if (aeInventory != null) {
-                                    if (aeInventory.extract(AEItemKey.of(candidate), 1, Actionable.MODULATE, source) > 0) {
+                                if (aeMode) {
+                                    if (aeInventory != null && aeInventory.extract(AEItemKey.of(candidate), 1, Actionable.SIMULATE, source) > 0) {
                                         found = candidate.copy();
-                                        fromAE = true;
                                         break;
                                     }
-                                }
-                                // 2. Try Player Inv Item
-                                if (found == null) {
+                                } else {
                                     var result = foundItem(player, List.of(candidate), item -> true);
                                     if (result.getA() != null) {
                                         found = result.getA();
@@ -305,18 +298,26 @@ public class AdvancedBlockPattern extends BlockPattern {
                         IItemHandler holderHandler = null;
                         int holderSlot = -1;
                         if (autoBuildSetting.isReplaceMode() && itemStack != null) {
-                            var holderResult = foundHolderSlot(player, itemStack);
-                            holderHandler = holderResult.first();
-                            holderSlot = holderResult.rightInt();
+                            if (aeMode) {
+                                if (!canInsertItemIntoAE(aeInventory, itemStack, source)) {
+                                    continue;
+                                }
+                            } else {
+                                var holderResult = foundHolderSlot(player, itemStack);
+                                holderHandler = holderResult.first();
+                                holderSlot = holderResult.rightInt();
 
-                            if (holderHandler != null && holderSlot < 0) {
-                                continue;
+                                if (holderHandler != null && holderSlot < 0) {
+                                    continue;
+                                }
                             }
                         }
 
                         if (autoBuildSetting.isReplaceMode() && itemStack != null) {
                             world.removeBlock(pos, true);
-                            if (holderHandler != null) holderHandler.insertItem(holderSlot, itemStack, false);
+                            if (aeMode) {
+                                aeInventory.insert(AEItemKey.of(itemStack), itemStack.getCount(), Actionable.MODULATE, source);
+                            } else if (holderHandler != null) holderHandler.insertItem(holderSlot, itemStack, false);
                         }
 
                         if (fluidToPlace != null) {
@@ -325,6 +326,9 @@ public class AdvancedBlockPattern extends BlockPattern {
                                 world.setBlock(pos, state, 3);
                                 placeBlockPos.add(pos);
                                 blocks.put(pos, state);
+                                if (aeMode) {
+                                    aeInventory.extract(AEFluidKey.of(fluidToPlace), FluidType.BUCKET_VOLUME, Actionable.MODULATE, source);
+                                }
                             }
                         } else if (found != null && found.getItem() instanceof BlockItem itemBlock) {
                             BlockPlaceContext context = new BlockPlaceContext(world, player, InteractionHand.MAIN_HAND,
@@ -332,7 +336,9 @@ public class AdvancedBlockPattern extends BlockPattern {
                             InteractionResult interactionResult = itemBlock.place(context);
                             if (interactionResult != InteractionResult.FAIL) {
                                 placeBlockPos.add(pos);
-                                if (handler != null && !fromAE) handler.extractItem(foundSlot, 1, false);
+                                if (aeMode) {
+                                    aeInventory.extract(AEItemKey.of(found), 1, Actionable.MODULATE, source);
+                                } else if (handler != null) handler.extractItem(foundSlot, 1, false);
                             }
                             if (world.getBlockEntity(pos) instanceof IMachineBlockEntity machineBlockEntity) {
                                 blocks.put(pos, machineBlockEntity.getMetaMachine());
@@ -546,6 +552,10 @@ public class AdvancedBlockPattern extends BlockPattern {
             }
         }
         return null;
+    }
+
+    private boolean canInsertItemIntoAE(@Nullable MEStorage aeInventory, ItemStack stack, IActionSource source) {
+        return aeInventory != null && aeInventory.insert(AEItemKey.of(stack), stack.getCount(), Actionable.SIMULATE, source) >= stack.getCount();
     }
 
     public static IGridNode getGridNode(BlockEntity be) {
