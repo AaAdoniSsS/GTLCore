@@ -37,17 +37,17 @@ import appeng.helpers.patternprovider.PatternProviderLogicHost;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * 样板包装袋：仅可存储已编码样板，容量 36。
+ * 样板包装箱：仅可存储已编码样板，容量 72。
  * <p>
  * - 对空气右键（非潜行）：打开 UI。<br>
- * - 右键样板供应器（及实现 {@link PatternProviderLogicHost} 或 {@link MEPatternBufferPartMachine} 的方块）：取出其中的样板到包装袋。<br>
- * - 潜行右键对应方块：将包装袋内的样板放入供应器。
+ * - 右键样板供应器（及实现 {@link PatternProviderLogicHost} 或 {@link MEPatternBufferPartMachine} 的方块）：取出其中的样板到包装箱。<br>
+ * - 潜行右键对应方块：将包装箱内的样板放入供应器。
  */
-public class PatternPouchBehavior implements IItemUIFactory {
+public class PatternBoxBehavior implements IItemUIFactory {
 
-    public static final PatternPouchBehavior INSTANCE = new PatternPouchBehavior();
+    public static final PatternBoxBehavior INSTANCE = new PatternBoxBehavior();
 
-    public static final int SLOT_COUNT = 36;
+    public static final int SLOT_COUNT = 72;
     private static final String INV_TAG = "PatternInv";
 
     private static final int COLS = 9;
@@ -61,19 +61,19 @@ public class PatternPouchBehavior implements IItemUIFactory {
     private static final int HEIGHT = INV_TOP + 82;
 
     /**
-     * 读取包装袋内部库存。库存仅接受已编码样板。
+     * 读取包装箱内部库存。库存仅接受已编码样板。
      */
     public static ItemStackTransfer getInventory(ItemStack pouch) {
         ItemStackTransfer transfer = new ItemStackTransfer(SLOT_COUNT);
         transfer.setFilter(stack -> stack.isEmpty() || PatternDetailsHelper.isEncodedPattern(stack));
-        if (pouch.hasTag() && pouch.getTag().contains(INV_TAG)) {
+        if (pouch.getTag() != null && pouch.hasTag() && pouch.getTag().contains(INV_TAG)) {
             transfer.deserializeNBT(pouch.getTag().getCompound(INV_TAG));
         }
         return transfer;
     }
 
     /**
-     * 将库存写回包装袋 NBT。
+     * 将库存写回包装箱 NBT。
      */
     public static void saveInventory(ItemStack pouch, ItemStackTransfer transfer) {
         pouch.getOrCreateTag().put(INV_TAG, transfer.serializeNBT());
@@ -89,7 +89,7 @@ public class PatternPouchBehavior implements IItemUIFactory {
         });
 
         WidgetGroup group = new WidgetGroup(0, 0, WIDTH, HEIGHT);
-        group.addWidget(new LabelWidget(LEFT, 6, Component.translatable("item.gtlcore.pattern_pouch")));
+        group.addWidget(new LabelWidget(LEFT, 6, Component.translatable("item.gtlcore.pattern_box")));
 
         // 36 个样板槽：4 行 x 9 列
         for (int i = 0; i < SLOT_COUNT; i++) {
@@ -103,7 +103,7 @@ public class PatternPouchBehavior implements IItemUIFactory {
 
         // 手动构建玩家背包，与样板槽相同的对齐方式
         Inventory playerInv = player.getInventory();
-        // 锁定当前持有包装袋的槽位，避免 UI 打开期间被移走导致引用失效
+        // 锁定当前持有包装箱的槽位，避免 UI 打开期间被移走导致引用失效
         int heldSlot = holder.getHand() == InteractionHand.MAIN_HAND ? playerInv.selected : -1;
         // 主背包 3 行 x 9 列（槽位 9..35）
         for (int row = 0; row < 3; row++) {
@@ -155,22 +155,22 @@ public class PatternPouchBehavior implements IItemUIFactory {
         ItemStackTransfer pouchInv = getInventory(itemStack);
         boolean changed;
         if (serverPlayer.isShiftKeyDown()) {
-            // 潜行右键：包装袋 -> 供应器
+            // 潜行右键：包装箱 -> 供应器
             changed = movePouchToProvider(pouchInv, providerInv);
             if (changed) {
                 saveInventory(itemStack, pouchInv);
-                serverPlayer.displayClientMessage(Component.translatable("message.gtlcore.pattern_pouch_inserted"), true);
+                serverPlayer.displayClientMessage(Component.translatable("message.gtlcore.pattern_box_inserted"), true);
             } else {
-                serverPlayer.displayClientMessage(Component.translatable("message.gtlcore.pattern_pouch_insert_failed"), true);
+                serverPlayer.displayClientMessage(Component.translatable("message.gtlcore.pattern_box_insert_failed"), true);
             }
         } else {
-            // 右键：供应器 -> 包装袋
+            // 右键：供应器 -> 包装箱
             changed = moveProviderToPouch(providerInv, pouchInv);
             if (changed) {
                 saveInventory(itemStack, pouchInv);
-                serverPlayer.displayClientMessage(Component.translatable("message.gtlcore.pattern_pouch_extracted"), true);
+                serverPlayer.displayClientMessage(Component.translatable("message.gtlcore.pattern_box_extracted"), true);
             } else {
-                serverPlayer.displayClientMessage(Component.translatable("message.gtlcore.pattern_pouch_extract_failed"), true);
+                serverPlayer.displayClientMessage(Component.translatable("message.gtlcore.pattern_box_extract_failed"), true);
             }
         }
         return InteractionResult.SUCCESS;
@@ -179,9 +179,9 @@ public class PatternPouchBehavior implements IItemUIFactory {
     /**
      * 从点击的方块解析样板供应器库存，命中以下三类：
      * <ul>
-     *     <li>AE2 线缆总线上的样板供应器部件</li>
-     *     <li>实现 {@link PatternProviderLogicHost} 的方块（样板供应器方块）</li>
-     *     <li>GTLCore 的 {@link MEPatternBufferPartMachine}（样板总成）</li>
+     * <li>AE2 线缆总线上的样板供应器部件</li>
+     * <li>实现 {@link PatternProviderLogicHost} 的方块（样板供应器方块）</li>
+     * <li>GTLCore 的 {@link MEPatternBufferPartMachine}（样板总成）</li>
      * </ul>
      */
     @Nullable
@@ -210,7 +210,7 @@ public class PatternPouchBehavior implements IItemUIFactory {
     }
 
     /**
-     * 将供应器内的已编码样板转移到包装袋，直到包装袋装满或供应器取空。
+     * 将供应器内的已编码样板转移到包装箱，直到包装箱装满或供应器取空。
      */
     private static boolean moveProviderToPouch(InternalInventory providerInv, ItemStackTransfer pouchInv) {
         boolean changed = false;
@@ -221,7 +221,7 @@ public class PatternPouchBehavior implements IItemUIFactory {
             }
             int pouchSlot = findEmptyPouchSlot(pouchInv);
             if (pouchSlot < 0) {
-                break; // 包装袋已满
+                break; // 包装箱已满
             }
             ItemStack extracted = providerInv.extractItem(slot, stack.getCount(), false);
             if (extracted.isEmpty()) {
@@ -234,7 +234,7 @@ public class PatternPouchBehavior implements IItemUIFactory {
     }
 
     /**
-     * 将包装袋内的样板转移到供应器空槽，直到供应器装满或包装袋取空。
+     * 将包装箱内的样板转移到供应器空槽，直到供应器装满或包装箱取空。
      */
     private static boolean movePouchToProvider(ItemStackTransfer pouchInv, InternalInventory providerInv) {
         boolean changed = false;

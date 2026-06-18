@@ -309,13 +309,13 @@ public class GTLItems {
             .model(NonNullBiConsumer.noop())
             .register();
 
-    public static ItemEntry<ComponentItem> PATTERN_POUCH = REGISTRATE
-            .item("pattern_pouch", ComponentItem::create)
+    public static ItemEntry<ComponentItem> PATTERN_BOX = REGISTRATE
+            .item("pattern_box", ComponentItem::create)
             .properties(stack -> stack.stacksTo(1))
-            .onRegister(attach(PatternPouchBehavior.INSTANCE, new TooltipBehavior(lines -> {
-                lines.add(Component.translatable("tooltip.gtlcore.pattern_pouch_open").withStyle(ChatFormatting.GRAY));
-                lines.add(Component.translatable("tooltip.gtlcore.pattern_pouch_extract").withStyle(ChatFormatting.GRAY));
-                lines.add(Component.translatable("tooltip.gtlcore.pattern_pouch_insert").withStyle(ChatFormatting.GRAY));
+            .onRegister(attach(PatternBoxBehavior.INSTANCE, new TooltipBehavior(lines -> {
+                lines.add(Component.translatable("tooltip.gtlcore.pattern_box_open").withStyle(ChatFormatting.GRAY));
+                lines.add(Component.translatable("tooltip.gtlcore.pattern_box_extract").withStyle(ChatFormatting.GRAY));
+                lines.add(Component.translatable("tooltip.gtlcore.pattern_box_insert").withStyle(ChatFormatting.GRAY));
             })))
             .model(NonNullBiConsumer.noop())
             .register();
