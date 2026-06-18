@@ -21,6 +21,7 @@ import com.gregtechceu.gtceu.data.recipe.VanillaRecipeHelper;
 
 import net.minecraft.data.recipes.FinishedRecipe;
 import net.minecraft.tags.ItemTags;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 
@@ -55,6 +56,9 @@ public class Misc {
         VanillaRecipeHelper.addShapelessRecipe(provider, GTLCore.id("me_pattern_buffer_cut"),
                 GTLItems.ME_PATTERN_BUFFER_CUT.asStack(),
                 "A", GTLItems.ME_PATTERN_BUFFER_COPY.asStack());
+        VanillaRecipeHelper.addShapelessRecipe(provider, GTLCore.id("pattern_box"),
+                GTLItems.PATTERN_BOX.asStack(),
+                "A", new ItemStack(PACKING_TAPE));
         VanillaRecipeHelper.addShapedRecipe(provider, true, GTLCore.id("heat_sensor"),
                 GTLMachines.HEAT_SENSOR.asStack(),
                 "FDF", "BAB", "CEC",
