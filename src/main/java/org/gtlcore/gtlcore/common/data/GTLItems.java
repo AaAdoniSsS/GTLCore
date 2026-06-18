@@ -309,6 +309,17 @@ public class GTLItems {
             .model(NonNullBiConsumer.noop())
             .register();
 
+    public static ItemEntry<ComponentItem> PATTERN_POUCH = REGISTRATE
+            .item("pattern_pouch", ComponentItem::create)
+            .properties(stack -> stack.stacksTo(1))
+            .onRegister(attach(PatternPouchBehavior.INSTANCE, new TooltipBehavior(lines -> {
+                lines.add(Component.translatable("tooltip.gtlcore.pattern_pouch_open").withStyle(ChatFormatting.GRAY));
+                lines.add(Component.translatable("tooltip.gtlcore.pattern_pouch_extract").withStyle(ChatFormatting.GRAY));
+                lines.add(Component.translatable("tooltip.gtlcore.pattern_pouch_insert").withStyle(ChatFormatting.GRAY));
+            })))
+            .model(NonNullBiConsumer.noop())
+            .register();
+
     private static ItemEntry<Item> register(String id, boolean defaultModel) {
         return defaultModel ? REGISTRATE.item(id, Item::new).register() : REGISTRATE.item(id, Item::new).model(NonNullBiConsumer.noop()).register();
     }
