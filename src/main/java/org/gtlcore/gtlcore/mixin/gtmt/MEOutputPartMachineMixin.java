@@ -82,7 +82,6 @@ public abstract class MEOutputPartMachineMixin extends DualHatchPartMachine impl
 
     @Override
     public void attachConfigurators(@NotNull ConfiguratorPanel configuratorPanel) {
-        super.attachConfigurators(configuratorPanel);
         IMEOutputPart.attachRecipeLockable(configuratorPanel, this);
     }
 
