@@ -70,11 +70,14 @@ public class StructureDetectBehavior extends TooltipBehavior implements IToolBeh
                     ((ServerLevel) level).getServer().execute(() -> {
                         var pattern = controller.getPattern();
                         LOCK.lock();
-                        if (LOCK.tryLock()) {
+                        try {
                             var result = check(controller, pattern, isFlipped);
-                            for (var patternError : result) showError(player, patternError, isFlipped);
+                            for (var patternError : result) {
+                                showError(player, patternError, isFlipped);
+                            }
+                        } finally {
                             LOCK.unlock();
-                        } else LOCK.unlock();
+                        }
                     });
                     return InteractionResult.SUCCESS;
                 }
