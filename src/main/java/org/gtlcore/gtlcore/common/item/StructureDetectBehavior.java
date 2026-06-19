@@ -72,12 +72,18 @@ public class StructureDetectBehavior extends TooltipBehavior implements IToolBeh
                     boolean isFlipped = !tag.isEmpty() && tag.getBoolean("isFlipped");
                     ((ServerLevel) level).getServer().execute(() -> {
                         var pattern = controller.getPattern();
-                        LOCK.lock();
-                        if (LOCK.tryLock()) {
+                        if (!LOCK.tryLock()) {
+                            player.sendSystemMessage(Component.literal("Structure detection is already running."));
+                            return;
+                        }
+                        try {
                             var result = check(controller, pattern, isFlipped);
-                            for (var patternError : result) showError(player, patternError, isFlipped);
+                            for (var patternError : result) {
+                                showError(player, patternError, isFlipped);
+                            }
+                        } finally {
                             LOCK.unlock();
-                        } else LOCK.unlock();
+                        }
                     });
                     return InteractionResult.SUCCESS;
                 }
