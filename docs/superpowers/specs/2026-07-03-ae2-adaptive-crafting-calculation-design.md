@@ -1,216 +1,223 @@
-# AE2 Adaptive Crafting Calculation Design
+# AE2 自适应下单计算优化设计
 
-## Goal
+## 目标
 
-Improve AE2 crafting order calculation so large orders finish faster without causing server tick spikes, UI stalls, or long single-thread CPU bursts.
+优化 AE2 自动合成下单时的计算性能：大单要更快算出结果，同时不能造成服务器 tick 尖峰、确认界面卡住，或者让某个计算线程长时间满载。
 
-The design keeps GTLCore's existing fast crafting-tree algorithms and adds a cooperative, adaptive budget layer around them. Small jobs should still complete immediately. Large or complex jobs should make steady progress across ticks instead of running unbounded.
+这个方案不推翻 GTLCore 现有的快速合成树算法，而是在它外面加一层“自适应预算调度”。小单仍然尽量一次算完；大单或复杂单会分多次推进，每次只消耗一小段可控时间。
 
-## Current Context
+## 当前情况
 
-GTLCore targets AE2 15.4.10 on Minecraft 1.20.1. The relevant integration points are:
+GTLCore 当前使用 AE2 `15.4.10`，Minecraft `1.20.1`。相关代码位置：
 
-- `CraftingCalculationMixin`: redirects AE2 `CraftingTreeNode.request` to GTLCore `LEGACY`, `FAST`, or `ULTRA_FAST` request paths.
-- `CraftingTreeNodeMixin` and `CraftingTreeProcessMixin`: implement the fast request strategies.
-- `TickHandlerMixin`: currently disables AE2's original crafting simulation registration and tick-sliced simulation driver.
-- `CraftingCpuLogicMixin`: optimizes execution after a plan has been submitted to a CPU.
-- `ConfigHolder` and `AE2CalculationMode`: already provide user-facing AE2 calculation configuration.
+- `CraftingCalculationMixin`：把 AE2 原本的 `CraftingTreeNode.request` 重定向到 GTLCore 的 `LEGACY`、`FAST`、`ULTRA_FAST` 计算路径。
+- `CraftingTreeNodeMixin` 和 `CraftingTreeProcessMixin`：实现快速下单计算策略。
+- `TickHandlerMixin`：当前禁用了 AE2 原版的“下单计算注册”和“按 tick 分片模拟”机制。
+- `CraftingCpuLogicMixin`：优化的是计划提交到 CPU 之后的执行派发，不是确认界面前的计划计算。
+- `ConfigHolder` 和 `AE2CalculationMode`：已经有 AE2 下单计算相关配置入口。
 
-The main risk is concentrated work during the calculation phase. GTLCore can calculate aggressively, but large plans need a budgeted pause/resume mechanism so they do not monopolize CPU time.
+目前最大的风险是：计算阶段容易把工作集中在一次任务里做完。GTLCore 算法本身很快，但大单需要“预算 + 暂停/恢复”，否则会在某些复杂网络上抢占太多 CPU 时间。
 
-## Non-Goals
+## 不做什么
 
-- Do not rewrite AE2's crafting planner from scratch.
-- Do not replace GTLCore's existing `FAST` and `ULTRA_FAST` algorithms.
-- Do not optimize submitted-job execution first; that path is already customized in `CraftingCpuLogicMixin`.
-- Do not require users to tune JVM, OS, or external server settings to get safe behavior.
+- 不重写 AE2 的完整合成规划器。
+- 不删除 GTLCore 现有的 `FAST` 和 `ULTRA_FAST` 算法。
+- 不优先改 CPU 执行阶段，因为这部分已经由 `CraftingCpuLogicMixin` 做过定制。
+- 不要求用户靠 JVM 参数、系统设置、服务器外部配置来避免卡顿。
 
-## Recommended Approach
+## 推荐方案
 
-Add an `ADAPTIVE` calculation mode that combines GTLCore's fast tree traversal with cooperative scheduling.
+新增一个 `ADAPTIVE` 计算模式，把 GTLCore 的快速合成树计算和可暂停调度结合起来。
 
-`ADAPTIVE` should:
+`ADAPTIVE` 模式要做到：
 
-- Use the existing `FAST` or `ULTRA_FAST` request implementation as its inner algorithm.
-- Track elapsed calculation time and operation count at existing `handlePausing()` call sites.
-- Let small jobs bypass pausing and complete in one pass.
-- Pause large jobs when they exceed their current per-job budget.
-- Resume paused jobs from `TickHandler` on later server ticks.
-- Decrease the budget when many jobs are active or server tick time is high.
-- Increase the budget when there are few jobs and tick time is healthy.
-- Fall back to safer behavior on branch failure, cancellation, interruption, or suspected invalid plans.
+- 内部仍然使用现有 `FAST` 或 `ULTRA_FAST` 计算实现。
+- 在现有 `handlePausing()` 调用点检查耗时和操作次数。
+- 小单绕过暂停逻辑，尽快一次完成。
+- 大单超过当前预算后暂停计算线程。
+- 后续由 `TickHandler` 在服务器 tick 中继续唤醒推进。
+- 正在计算的任务多，或者服务器 tick 压力高时，自动降低单任务预算。
+- 任务少、服务器空闲时，自动提高预算，让大单更快算完。
+- 出现分支失败、取消、中断、可疑计划时，自动降级到更保守的算法。
 
-## Architecture
+## 架构设计
 
-### 1. Calculation Budget Controller
+### 1. 单个下单任务的预算控制器
 
-Add a small controller owned by each `CraftingCalculation` instance through mixin state.
+给每个 `CraftingCalculation` 实例增加一个控制器，可以通过 mixin 状态挂到原对象上。
 
-Responsibilities:
+它负责：
 
-- Store whether the job is done, running, paused, or canceled.
-- Store the current budget in microseconds.
-- Measure elapsed time with AE2's existing `Stopwatch` style.
-- Decide whether `handlePausing()` should continue or yield.
-- Support fast bypass for small jobs.
+- 记录任务状态：完成、运行、暂停、取消。
+- 保存当前这次任务能使用多少微秒预算。
+- 用 AE2 已有的 `Stopwatch` 风格记录耗时。
+- 在 `handlePausing()` 中判断继续计算还是让出时间。
+- 支持小单快速通道。
 
-This should reuse AE2's existing monitor/wait-notify pattern where practical, because AE2 already uses it to coordinate calculation threads with server ticks.
+实现上应尽量复用 AE2 原本的 `monitor` / `wait` / `notify` 协作方式，因为 AE2 原版就是用这套机制协调计算线程和服务器 tick。
 
-### 2. Global Adaptive Scheduler
+### 2. 全局自适应调度器
 
-Restore the concept of registered crafting simulations, but under GTLCore control.
+恢复“下单计算注册到 TickHandler”的概念，但由 GTLCore 管理预算。
 
-Responsibilities:
+它负责：
 
-- Keep a per-level collection of active crafting calculations.
-- On level end tick, distribute a total calculation budget across active jobs.
-- Remove finished jobs.
-- Never call into the planner unbounded from the server thread.
+- 按维度或 level 保存正在计算的下单任务。
+- 在每个 level end tick 给任务分配总预算。
+- 移除已经完成的任务。
+- 绝不在服务器主线程里无限制地直接跑完整个规划器。
 
-The scheduler should reuse `TickHandler` as the integration point because AE2 already expects crafting simulation to be driven there, and GTLCore already has a `TickHandlerMixin`.
+调度入口继续放在 `TickHandler`，因为 AE2 原本也在这里推进下单计算，而且 GTLCore 已经有 `TickHandlerMixin`。
 
-### 3. Complexity and Small-Job Bypass
+### 3. 小单快速通道
 
-Avoid slowing down normal usage.
+普通小单不能因为防卡顿而变慢。
 
-The initial version should use conservative signals that are already available:
+首版用这些已有信息判断是否可以快速完成：
 
-- Requested amount.
-- Whether the calculation has multiple paths.
-- Number of pause checks reached.
-- Elapsed time since the job began.
+- 请求数量。
+- 当前计算是否出现多路径。
+- 已经经过多少次暂停检查。
+- 从任务开始到现在的耗时。
 
-If a job completes before it reaches the small-job threshold, it should not pay the scheduling overhead.
+如果任务在达到阈值前就完成，就不进入分片调度，避免增加正常下单延迟。
 
-### 4. Branch Failure and Fallback
+### 4. 分支失败和算法降级
 
-`ULTRA_FAST` is intentionally aggressive. In `ADAPTIVE` mode:
+`ULTRA_FAST` 是激进算法，适合快，但不能让它在极端情况下产出错误计划。
 
-- Try the configured fast strategy first.
-- If multi-branch calculation fails or produces suspicious missing-output behavior, retry that calculation with `FAST`.
-- If `FAST` also fails unexpectedly, fall back to `LEGACY` for correctness.
-- Log the fallback at debug/info level with the requested key, amount, and mode transition.
+在 `ADAPTIVE` 模式中：
 
-This keeps the no-lag goal from turning into incorrect plans.
+- 单分支优先尝试 `ULTRA_FAST`。
+- 多分支优先使用 `FAST`，避免过度激进。
+- 如果 `ULTRA_FAST` 计算失败或出现可疑缺失输出，重试一次 `FAST`。
+- 如果 `FAST` 仍然异常，最后重试一次 `LEGACY`。
+- 每次降级都记录日志，包括请求物品、数量、原模式、新模式。
 
-### 5. Short-Lived Calculation Cache
+这样“不卡顿”和“算得快”不会牺牲正确性。
 
-Add a narrow cache only after the scheduler is in place.
+### 5. 单次计算内缓存
 
-Cache key:
+调度器稳定后，再加入很窄的缓存。
 
-- Requested `AEKey`.
-- Requested amount.
-- Calculation strategy.
-- Current calculation identity.
-- Pattern or branch identity.
+首版缓存只在同一次下单计算内部使用。
 
-Cache value:
+缓存 key：
 
-- Compact failed-branch marker.
-- Reusable input-template lookup result for the current calculation.
+- 当前计算实例。
+- 当前分支或样板身份。
+- 请求的 `AEKey` 和数量。
+- 当前计算策略。
 
-Cache policy:
+缓存 value：
 
-- Scope the cache to one calculation.
-- Clear it when the calculation finishes.
-- Do not share full `ICraftingPlan` objects between requests in the first implementation.
-- Do not cache partial or simulated missing-only plans.
+- 本次计算里已经失败过的分支标记。
+- 本次计算里可复用的输入模板查找结果。
 
-This avoids retrying known-bad branches while avoiding stale-plan bugs. A cross-request full-plan cache can be added later only if it has explicit grid, provider, and storage version invalidation.
+缓存规则：
 
-## Configuration
+- 任务结束就清空。
+- 不跨网络共享。
+- 不跨下单请求共享完整 `ICraftingPlan`。
+- 不缓存部分计划或只包含缺失项的模拟计划。
 
-Extend existing config instead of hardcoding behavior:
+首版不做跨请求完整计划缓存，因为 stale plan 的风险比慢一点更严重。后续如果要做，必须把 grid、样板版本、库存版本都纳入失效条件。
 
-- Add `ADAPTIVE` to `AE2CalculationMode`.
-- Add `ae2CraftingMinBudgetMicros`.
-- Add `ae2CraftingMaxBudgetMicros`.
-- Add `ae2CraftingSmallJobBypassChecks`.
-- Add `ae2CraftingFallbackOnFailure`.
+## 配置设计
 
-Suggested defaults:
+沿用现有配置系统，不把关键数值写死在代码里。
 
-- `ae2CalculationMode = ADAPTIVE`.
-- `ae2CraftingMinBudgetMicros = 500`.
-- `ae2CraftingMaxBudgetMicros = 5000`.
-- `ae2CraftingSmallJobBypassChecks = 256`.
-- Fallback enabled.
+新增或扩展这些配置：
 
-The maximum budget matches AE2's default 5 ms crafting calculation budget while allowing GTLCore to shrink work slices when the server is under load. The minimum budget keeps every active job moving without letting one job dominate a tick.
+- 给 `AE2CalculationMode` 增加 `ADAPTIVE`。
+- `ae2CraftingMinBudgetMicros`
+- `ae2CraftingMaxBudgetMicros`
+- `ae2CraftingSmallJobBypassChecks`
+- `ae2CraftingFallbackOnFailure`
 
-## Data Flow
+建议默认值：
 
-1. User opens the craft confirm flow.
-2. AE2 creates a `CraftingCalculation` through `CraftingService.beginCraftingCalculation`.
-3. GTLCore registers the calculation with the adaptive scheduler.
-4. The calculation starts on AE2's crafting pool.
-5. The request path uses GTLCore `FAST` or `ULTRA_FAST` tree logic.
-6. Existing `handlePausing()` call sites check the controller budget.
-7. If the budget is still available, calculation continues.
-8. If the budget is exhausted, the calculation yields.
-9. `TickHandler` gives the job another budget slice on a later tick.
-10. When the plan completes, `CraftConfirmMenu` receives the future result as it does today.
-11. Submission and CPU execution continue through existing GTLCore CPU logic.
+- `ae2CalculationMode = ADAPTIVE`
+- `ae2CraftingMinBudgetMicros = 500`
+- `ae2CraftingMaxBudgetMicros = 5000`
+- `ae2CraftingSmallJobBypassChecks = 256`
+- `ae2CraftingFallbackOnFailure = true`
 
-## Error Handling
+`5000` 微秒等于 AE2 原版默认的 5ms 下单计算预算。GTLCore 可以在服务器压力大时把预算缩小，在服务器空闲时接近这个上限，让大单更快完成。
 
-- Cancellation should wake paused calculation threads and allow the future to finish promptly.
-- Interrupted calculation should throw `InterruptedException` and clean itself out of the scheduler.
-- Scheduler exceptions should not crash every active calculation; remove only the failing job where possible.
-- Fallback retries should be limited to avoid repeated expensive retries.
-- If all modes fail, surface AE2's normal failure behavior rather than creating a partial plan.
+## 数据流
 
-## Performance Expectations
+1. 玩家打开自动合成确认界面。
+2. AE2 通过 `CraftingService.beginCraftingCalculation` 创建 `CraftingCalculation`。
+3. GTLCore 把这次计算注册到自适应调度器。
+4. 计算任务仍然跑在 AE2 的 crafting pool 线程里。
+5. 计算路径使用 GTLCore 现有 `FAST` 或 `ULTRA_FAST` 合成树逻辑。
+6. 合成树递归过程中，已有 `handlePausing()` 调用点检查预算。
+7. 预算没用完就继续算。
+8. 预算用完就暂停计算线程。
+9. 后续 `TickHandler` 在下一个或后几个 tick 给它新的预算并唤醒。
+10. 计划完成后，`CraftConfirmMenu` 像现在一样从 future 拿到结果。
+11. 玩家提交后，仍然走现有 GTLCore CPU 执行逻辑。
 
-Small orders:
+## 错误处理
 
-- Same or near-same latency as current `ULTRA_FAST`.
-- No extra server tick dependency unless the job crosses the bypass threshold.
+- 玩家关闭界面或取消下单时，必须唤醒暂停中的计算线程，让 future 尽快结束。
+- 线程中断时抛出 `InterruptedException`，并从调度器移除任务。
+- 某个任务异常时，不应该影响其他正在计算的任务。
+- 算法降级最多按 `ULTRA_FAST -> FAST -> LEGACY` 各试一次，避免无限重试。
+- 所有模式都失败时，使用 AE2 正常失败行为，不生成部分计划。
 
-Large orders:
+## 性能预期
 
-- Lower maximum tick spike than current unbounded calculation.
-- Faster completion than pure AE2 legacy slicing when the server has headroom.
-- Stable behavior with multiple simultaneous players ordering crafts.
+小单：
 
-## Testing Plan
+- 接近当前 `ULTRA_FAST` 的确认速度。
+- 不应该因为引入调度器就额外等一个 tick。
 
-Build-level checks:
+大单：
 
-- `compileJava`.
-- `spotlessCheck`.
+- 最大 tick 尖峰低于当前“直接算完”的模式。
+- 服务器空闲时比纯 AE2 原版分片更快完成。
+- 多个玩家同时下单时，每个任务都能推进，不会被某一个大单长期占住。
 
-Unit or harness-style checks where feasible:
+## 测试计划
 
-- Controller pauses after budget exhaustion.
-- Controller does not pause before small-job threshold.
-- Finished jobs are removed from the scheduler.
-- Cancellation wakes a paused job.
-- Fallback transitions from `ULTRA_FAST` to `FAST` to `LEGACY` no more than once per calculation.
+构建检查：
 
-Manual or integration checks:
+- `compileJava`
+- `spotlessCheck`
 
-- Small single-item craft confirmation remains fast.
-- Large recursive order does not create visible server tick spikes.
-- Multiple simultaneous craft confirmations each make progress.
-- Replanning the same request does not reuse stale full plans.
-- A single calculation does not repeatedly retry the same failed branch.
-- Submitted jobs still execute through existing CPU logic.
+单元或轻量 harness 测试：
 
-## Implementation Order
+- 预算耗尽后控制器会暂停。
+- 小单阈值前不会暂停。
+- 完成的任务会从调度器移除。
+- 取消任务会唤醒暂停线程。
+- 降级链路最多执行 `ULTRA_FAST -> FAST -> LEGACY` 一轮。
 
-1. Add config entries and `ADAPTIVE` mode.
-2. Add the calculation controller interface and mixin-backed state.
-3. Restore registration and scheduler-driven resume without changing tree algorithms.
-4. Wire `ADAPTIVE` mode to use fast tree logic with budget checks.
-5. Add fallback behavior.
-6. Add short-lived failed-branch cache.
-7. Leave cross-request full-plan caching out of the first implementation.
+手动或集成测试：
 
-## Final Design Decisions
+- 小单确认速度保持很快。
+- 大型递归订单不会出现明显服务器 tick 尖峰。
+- 多人同时确认下单时都能持续推进。
+- 同一次计算不会反复尝试已知失败分支。
+- 计划提交后仍然由现有 CPU 逻辑执行。
 
-- Inner strategy: use `ULTRA_FAST` for single-branch calculations and `FAST` for multi-branch calculations.
-- Fallback: retry once with `FAST` if `ULTRA_FAST` fails unexpectedly, then retry once with `LEGACY` if `FAST` fails unexpectedly.
-- First cache scope: failed-branch and input-template lookup cache within one calculation.
-- Full-plan cache: excluded from the first implementation to prioritize correctness.
+## 实现顺序
+
+1. 增加配置项和 `ADAPTIVE` 模式。
+2. 增加计算控制器接口和 mixin 状态。
+3. 恢复“注册计算任务 + TickHandler 唤醒推进”，先不改合成树算法。
+4. 让 `ADAPTIVE` 模式使用现有快速合成树，并在预算点暂停。
+5. 加入失败降级逻辑。
+6. 加入单次计算内的失败分支缓存和输入模板缓存。
+7. 暂不实现跨请求完整计划缓存。
+
+## 最终设计决策
+
+- 默认模式使用 `ADAPTIVE`。
+- 单分支计算优先 `ULTRA_FAST`。
+- 多分支计算优先 `FAST`。
+- `ULTRA_FAST` 异常时重试 `FAST`，`FAST` 异常时重试 `LEGACY`。
+- 首版缓存只限同一次计算内部。
+- 不做跨请求完整计划缓存，优先保证正确性和不卡顿。
