@@ -119,7 +119,7 @@ public class MEDualHatchStockPartMachine extends MEBusPartMachine implements IDa
     @Override
     public void onMainNodeStateChanged(IGridNodeListener.State reason) {
         super.onMainNodeStateChanged(reason);
-        if (getMainNode().isOnline()) aeItemHandler.notifyListeners();
+        if (getMainNode().isOnline()) markMEStockChanged();
     }
 
     @Override
@@ -224,8 +224,14 @@ public class MEDualHatchStockPartMachine extends MEBusPartMachine implements IDa
             }
             slot.setStock(null);
         }
+        markMEStockChanged();
+    }
+
+    private void markMEStockChanged() {
         ((IOptimizedMEList) aeItemHandler).setChanged(true);
         ((IOptimizedMEList) aeFluidHandler).setChanged(true);
+        aeItemHandler.notifyListeners();
+        aeFluidHandler.notifyListeners();
     }
 
     @Override
