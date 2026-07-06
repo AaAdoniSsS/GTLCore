@@ -1269,7 +1269,6 @@ public final class WirelessAeNetworkRuntime {
         String namespace = blockId.getNamespace();
         String path = blockId.getPath();
         return WIRELESS_ME_TARGET_IDS.contains(path) ||
-                isCompatibleExternalMeLikeId(blockId) ||
                 ("gtmthings".equals(namespace) && isGtmthingsMeLikePath(path));
     }
 

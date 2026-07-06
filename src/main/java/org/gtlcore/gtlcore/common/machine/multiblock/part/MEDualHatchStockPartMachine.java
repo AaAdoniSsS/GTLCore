@@ -139,15 +139,16 @@ public class MEDualHatchStockPartMachine extends MEBusPartMachine implements IDa
 
         if (autoPullMode != AUTO_PULL_OFF && getOffsetTimer() % (getOffset() == 0 ? 50 : getOffset()) == 0) {
             refreshList();
-            syncME();
         }
     }
 
     private void refreshList() {
+        AEKey[] previousConfig = createConfigSnapshot();
         IGrid grid = this.getMainNode().getGrid();
         if (grid == null) {
             aeItemHandler.clearInventory(0);
             aeFluidHandler.clearInventory(0);
+            finishRefreshList(previousConfig);
             return;
         }
         IStorageService storageService = grid.getStorageService();
@@ -155,7 +156,7 @@ public class MEDualHatchStockPartMachine extends MEBusPartMachine implements IDa
         final var inventory = this.aeItemHandler.getInventory();
         final var fluidInventory = this.aeFluidHandler.getInventory();
 
-        var counter = networkStorage.getAvailableStacks();
+        var counter = storageService.getCachedInventory();
         int index = 0;
         for (Object2LongMap.Entry<AEKey> entry : counter) {
             if (index >= CONFIG_SIZE) break;
@@ -194,8 +195,30 @@ public class MEDualHatchStockPartMachine extends MEBusPartMachine implements IDa
         aeItemHandler.clearInventory(index);
         aeFluidHandler.clearInventory(index);
 
-        ((IOptimizedMEList) aeItemHandler).onConfigChanged();
-        ((IOptimizedMEList) aeFluidHandler).onConfigChanged();
+        finishRefreshList(previousConfig);
+    }
+
+    private AEKey[] createConfigSnapshot() {
+        final var inventory = this.aeItemHandler.getInventory();
+        final var fluidInventory = this.aeFluidHandler.getInventory();
+        AEKey[] configuredKeys = new AEKey[inventory.length];
+        for (int i = 0; i < inventory.length; i++) {
+            GenericStack config = inventory[i].getConfig();
+            if (config == null) {
+                config = fluidInventory[i].getConfig();
+            }
+            configuredKeys[i] = config == null ? null : config.what();
+        }
+        return configuredKeys;
+    }
+
+    private void finishRefreshList(AEKey[] previousConfig) {
+        if (!Arrays.equals(previousConfig, createConfigSnapshot())) {
+            ((IOptimizedMEList) aeItemHandler).onConfigChanged();
+            ((IOptimizedMEList) aeFluidHandler).onConfigChanged();
+        }
+        ((IOptimizedMEList) aeItemHandler).setChanged(true);
+        ((IOptimizedMEList) aeFluidHandler).setChanged(true);
     }
 
     protected void syncME() {

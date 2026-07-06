@@ -101,7 +101,7 @@ public class MEPatternBufferPartMachine extends MEPatternBufferPartMachineBase {
 
         @Override
         public boolean isItemValid(int slot, ItemStack stack) {
-            return slot <= maxPatternCount && AEUtils.PROCESS_FILTER.apply(stack);
+            return slot >= 0 && slot < maxPatternCount && AEUtils.PROCESS_FILTER.apply(stack);
         }
     };
 

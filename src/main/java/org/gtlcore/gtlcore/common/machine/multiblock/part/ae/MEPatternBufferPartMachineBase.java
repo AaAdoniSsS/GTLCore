@@ -346,15 +346,16 @@ public abstract class MEPatternBufferPartMachineBase extends MEIOPartMachine
         Object2LongOpenHashMap<Fluid> fluids = new Object2LongOpenHashMap<>();
         for (InternalSlot slot : getActiveInternalSlots()) {
             if (!slot.isActive()) continue;
-            for (var it = Object2LongMaps.fastIterator(slot.getItemInventory()); it.hasNext();) {
-                var entry = it.next();
-                items.addTo(entry.getKey().getItem(), entry.getLongValue());
-            }
-            for (var it = Object2LongMaps.fastIterator(slot.getFluidInventory()); it.hasNext();) {
-                var entry = it.next();
-                fluids.addTo(entry.getKey().getFluid(), entry.getLongValue());
-            }
+            MEPatternBufferJadeMerger.mergeItemKeys(items, slot.getItemInventory());
+            MEPatternBufferJadeMerger.mergeFluidKeys(fluids, slot.getFluidInventory());
         }
+        for (int slotIndex = 0; slotIndex < getInternalSlotCount(); slotIndex++) {
+            InternalSlot slot = getInternalSlot(slotIndex);
+            MEPatternBufferJadeMerger.mergeItemKeys(items, slot.getItemCatalystInventory());
+            MEPatternBufferJadeMerger.mergeFluidKeys(fluids, slot.getFluidCatalystInventory());
+        }
+        MEPatternBufferJadeMerger.mergeItemStacks(items, sharedCatalystInventory.getContents());
+        MEPatternBufferJadeMerger.mergeFluidStacks(fluids, sharedCatalystTank.getContents());
         return Pair.of(items, fluids);
     }
 

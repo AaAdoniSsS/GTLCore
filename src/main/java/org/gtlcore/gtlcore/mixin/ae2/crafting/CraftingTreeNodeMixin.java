@@ -24,6 +24,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -31,6 +32,9 @@ import java.util.stream.Stream;
 @SuppressWarnings("AddedMixinMembersNamePattern")
 @Mixin(CraftingTreeNode.class)
 public abstract class CraftingTreeNodeMixin implements ICraftingTreeNode {
+
+    @Unique
+    private static final long GTLCORE_BRANCH_FAILED = Long.MIN_VALUE;
 
     @Unique
     private IPatternDetails patternDetails;
@@ -97,7 +101,12 @@ public abstract class CraftingTreeNodeMixin implements ICraftingTreeNode {
             GenericStack stack = this.parentInput.getPossibleInputs()[0];
             return List.of(new InputTemplate(stack.what(), stack.amount()));
         }
-        return CraftingCpuHelper.getValidItemTemplates(inv, this.parentInput, level);
+        return ((ICraftingCalculation) this.job).gtlcore$getCachedTemplates(
+                inv,
+                this.parentInput,
+                this.level,
+                this.what,
+                () -> CraftingCpuHelper.getValidItemTemplates(inv, this.parentInput, level));
     }
 
     @Override
@@ -109,9 +118,129 @@ public abstract class CraftingTreeNodeMixin implements ICraftingTreeNode {
 
     @Override
     @Unique
+    public void adaptiveRequest(CraftingSimulationState inv, long requestedAmount,
+                                @Nullable KeyCounter containerItems) throws CraftBranchFailure, InterruptedException {
+        ((ICraftingCalculation) this.job).gtlcore$handlePausing();
+
+        inv.addStackBytes(what, amount, requestedAmount);
+
+        for (var template : getValidItemTemplates(inv)) {
+            long extracted = CraftingCpuHelper.extractTemplates(inv, template, requestedAmount);
+
+            if (extracted > 0) {
+                requestedAmount -= extracted;
+                addContainerItems(template.key(), extracted, containerItems);
+                ((ICraftingCalculation) this.job).gtlcore$clearTemplateCache();
+
+                if (requestedAmount == 0) {
+                    return;
+                }
+            }
+        }
+
+        addContainerItems(what, requestedAmount, containerItems);
+
+        if (this.canEmit) {
+            inv.emitItems(this.what, this.amount * requestedAmount);
+            return;
+        }
+
+        buildChildPatterns();
+        long totalRequestedItems = requestedAmount * this.amount;
+        if (this.nodes.size() == 1) {
+            final ICraftingTreeProcess pro = (ICraftingTreeProcess) (this.nodes.get(0));
+            var craftedPerPattern = pro.getOutputCountTest(this.what);
+
+            while (pro.getPossible() && totalRequestedItems > 0) {
+                long times;
+                if (pro.limitsQuantityTest()) {
+                    times = 1;
+                } else {
+                    times = (totalRequestedItems + craftedPerPattern - 1) / craftedPerPattern;
+                }
+                pro.adaptiveRequest(inv, times);
+
+                var available = inv.extract(this.what, totalRequestedItems, Actionable.MODULATE);
+                if (available != 0) {
+                    ((ICraftingCalculation) this.job).gtlcore$recordBranchSuccess(this.what, pro.getDetails());
+                    totalRequestedItems -= available;
+
+                    if (totalRequestedItems <= 0) {
+                        return;
+                    }
+                } else {
+                    ((ICraftingCalculation) this.job).gtlcore$recordBranchFailure(this.what, pro.getDetails(), totalRequestedItems);
+                    var pattern = pro.getDetails().getDefinition();
+                    String outputs = Stream.of(pro.getDetails().getOutputs())
+                            .map(GenericStack::toString)
+                            .collect(Collectors.joining(", "));
+                    String errorMessage = """
+                            Unexpected error in the crafting calculation: can't find created items.
+                            This is an AE2 bug, please report it, with the following important information:
+
+                            - Found none of %s. Remaining request: %d of %d*%d.
+                            - Tried crafting %d times the pattern %s with tag %s.
+                            - Pattern outputs: %s.
+                            """.formatted(what, totalRequestedItems, requestedAmount, amount, times, pattern,
+                            pattern.getTag(), outputs);
+                    throw new UnsupportedOperationException(errorMessage);
+                }
+            }
+        } else if (this.nodes.size() > 1) {
+            while (totalRequestedItems > 0) {
+                var processes = gTLCore$getSortedProcesses(totalRequestedItems);
+                if (processes.isEmpty()) {
+                    break;
+                }
+
+                int processCount = processes.size();
+                long baseAmount = totalRequestedItems / processCount;
+                long remainder = totalRequestedItems % processCount;
+                boolean anySucceeded = false;
+
+                for (int i = 0; i < processes.size(); i++) {
+                    ICraftingTreeProcess pro = (ICraftingTreeProcess) processes.get(i);
+
+                    long fairTarget = baseAmount + (i < remainder ? 1 : 0);
+                    long targetAmount = i == 0 ? totalRequestedItems : fairTarget;
+                    if (targetAmount <= 0) continue;
+
+                    long available = gTLCore$tryAdaptiveProcessWithFallback(inv, pro, targetAmount, fairTarget);
+                    if (available > 0) {
+                        anySucceeded = true;
+                        totalRequestedItems -= available;
+
+                        if (totalRequestedItems <= 0) {
+                            return;
+                        }
+
+                        if (!pro.limitsQuantityTest()) {
+                            break;
+                        }
+                    } else if (available == 0) {
+                        pro.setPossible(false);
+                        ((ICraftingCalculation) this.job).gtlcore$recordBranchFailure(this.what, pro.getDetails(), targetAmount);
+                    }
+                }
+
+                if (!anySucceeded) {
+                    break;
+                }
+            }
+        }
+
+        if (this.job.isSimulation()) {
+            this.job.getMissingItems().add(this.what, totalRequestedItems);
+        } else {
+            throw new CraftBranchFailure(this.what, totalRequestedItems);
+        }
+    }
+
+    @Override
+    @Unique
     public void fastRequest(CraftingSimulationState inv, long requestedAmount,
                             @Nullable KeyCounter containerItems) throws CraftBranchFailure, InterruptedException {
-        ((ICraftingCalculation) this.job).handlePausing();
+        ((ICraftingCalculation) this.job).gtlcore$handlePausing();
 
         inv.addStackBytes(what, amount, requestedAmount);
 
@@ -240,7 +369,7 @@ public abstract class CraftingTreeNodeMixin implements ICraftingTreeNode {
     @Unique
     public void ultraFastRequest(CraftingSimulationState inv, long requestedAmount,
                                  @Nullable KeyCounter containerItems) throws CraftBranchFailure, InterruptedException {
-        ((ICraftingCalculation) this.job).handlePausing();
+        ((ICraftingCalculation) this.job).gtlcore$handlePausing();
 
         inv.addStackBytes(what, amount, requestedAmount);
 
@@ -341,5 +470,91 @@ public abstract class CraftingTreeNodeMixin implements ICraftingTreeNode {
         } else {
             throw new CraftBranchFailure(this.what, totalRequestedItems);
         }
+    }
+
+    @Override
+    @Unique
+    public void gtlcore$resetAdaptiveState() {
+        if (this.nodes == null) {
+            return;
+        }
+        for (CraftingTreeProcess node : this.nodes) {
+            ((ICraftingTreeProcess) node).gtlcore$resetAdaptiveState();
+        }
+    }
+
+    @Unique
+    private List<CraftingTreeProcess> gTLCore$getSortedProcesses(long totalRequestedItems) {
+        ICraftingCalculation calculation = (ICraftingCalculation) this.job;
+        List<CraftingTreeProcess> processes = new ArrayList<>();
+        for (CraftingTreeProcess node : this.nodes) {
+            ICraftingTreeProcess process = (ICraftingTreeProcess) node;
+            if (process.getPossible() &&
+                    !calculation.gtlcore$shouldSkipBranch(this.what, process.getDetails(), totalRequestedItems)) {
+                processes.add(node);
+            }
+        }
+
+        processes.sort(Comparator
+                .<CraftingTreeProcess>comparingInt(node -> calculation.gtlcore$getBranchSuccesses(
+                        this.what,
+                        ((ICraftingTreeProcess) node).getDetails()))
+                .reversed()
+                .thenComparing(node -> ((ICraftingTreeProcess) node).limitsQuantityTest())
+                .thenComparingLong(node -> gTLCore$outputDistance((ICraftingTreeProcess) node, totalRequestedItems)));
+        return processes;
+    }
+
+    @Unique
+    private long gTLCore$tryAdaptiveProcessWithFallback(CraftingSimulationState inv, ICraftingTreeProcess process,
+                                                        long targetAmount, long fallbackAmount)
+                                                                                                throws InterruptedException {
+        long available = GTLCORE_BRANCH_FAILED;
+        try {
+            available = gTLCore$tryAdaptiveProcess(inv, process, targetAmount);
+        } catch (CraftBranchFailure fail) {
+            ((ICraftingCalculation) this.job).gtlcore$recordBranchFailure(this.what, process.getDetails(), targetAmount);
+        }
+
+        if (available == 0 || available == GTLCORE_BRANCH_FAILED) {
+            if (fallbackAmount > 0 && fallbackAmount < targetAmount) {
+                try {
+                    available = gTLCore$tryAdaptiveProcess(inv, process, fallbackAmount);
+                } catch (CraftBranchFailure fail) {
+                    ((ICraftingCalculation) this.job).gtlcore$recordBranchFailure(this.what, process.getDetails(), fallbackAmount);
+                    return GTLCORE_BRANCH_FAILED;
+                }
+            }
+        }
+
+        return available;
+    }
+
+    @Unique
+    private long gTLCore$tryAdaptiveProcess(CraftingSimulationState inv, ICraftingTreeProcess process,
+                                            long targetAmount)
+                                                               throws CraftBranchFailure, InterruptedException {
+        var craftedPerPattern = process.getOutputCountTest(this.what);
+        long times = process.limitsQuantityTest() ? 1 : (targetAmount + craftedPerPattern - 1) / craftedPerPattern;
+        if (times <= 0) {
+            return 0;
+        }
+
+        final ChildCraftingSimulationState child = new ChildCraftingSimulationState(inv);
+        process.adaptiveRequest(child, times);
+
+        var available = child.extract(this.what, targetAmount, Actionable.MODULATE);
+        if (available != 0) {
+            child.applyDiff(inv);
+            ((ICraftingCalculation) this.job).gtlcore$recordBranchSuccess(this.what, process.getDetails());
+            ((ICraftingCalculation) this.job).gtlcore$clearTemplateCache();
+        }
+        return available;
+    }
+
+    @Unique
+    private long gTLCore$outputDistance(ICraftingTreeProcess process, long totalRequestedItems) {
+        long outputCount = Math.max(1, process.getOutputCountTest(this.what));
+        return outputCount > totalRequestedItems ? outputCount - totalRequestedItems : totalRequestedItems - outputCount;
     }
 }

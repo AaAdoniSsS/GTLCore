@@ -45,6 +45,7 @@ public class WildcardPatternCompatImpl {
                 .tooltips(
                         Component.translatable("block.gtceu.pattern_buffer.desc.0"),
                         Component.translatable("gtceu.machine.me_wildcard_pattern_buffer.desc.0"),
+                        Component.translatable("gtceu.machine.me_pattern_buffer.desc.3"),
                         Component.translatable("gtceu.machine.me_pattern_buffer.desc.5"),
                         Component.translatable("block.gtceu.pattern_buffer.desc.2"),
                         Component.translatable("gtceu.universal.enabled"))

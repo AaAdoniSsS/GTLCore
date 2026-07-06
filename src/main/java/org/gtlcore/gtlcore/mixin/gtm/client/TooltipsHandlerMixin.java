@@ -7,6 +7,7 @@ import com.gregtechceu.gtceu.client.TooltipsHandler;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.level.material.Fluid;
@@ -23,11 +24,16 @@ import java.util.function.Consumer;
 @Mixin(TooltipsHandler.class)
 public abstract class TooltipsHandlerMixin {
 
+    private static final ResourceLocation ME_PATTERN_BUFFER_ID = new ResourceLocation("gtceu", "me_pattern_buffer");
+
     @Inject(method = "appendTooltips",
             at = @At("HEAD"),
             remap = false)
     private static void appendCustomItemTooltips(ItemStack stack, TooltipFlag flag, List<Component> tooltips, CallbackInfo ci) {
         SourceTooltip.append(stack.getItem(), tooltips::add);
+        if (ME_PATTERN_BUFFER_ID.equals(ForgeRegistries.ITEMS.getKey(stack.getItem()))) {
+            tooltips.add(Component.translatable("gtlcore.machine.pattern_quick_upload.tooltip"));
+        }
         if (WirelessAeNetworkRuntime.shouldShowQuickConnectTooltip(ForgeRegistries.ITEMS.getKey(stack.getItem()))) {
             tooltips.add(Component.translatable("tooltip.gtlcore.wireless_bookmark.quick_connect")
                     .withStyle(ChatFormatting.GOLD));

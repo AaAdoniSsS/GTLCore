@@ -1,18 +1,23 @@
 package org.gtlcore.gtlcore.integration.ae2.wireless;
 
 import org.gtlcore.gtlcore.GTLCore;
+import org.gtlcore.gtlcore.client.gui.PatterEncodingTermMenuModify;
+import org.gtlcore.gtlcore.integration.ae2.pattern.PatternQuickUploadSelectionMenu;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.MenuProvider;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
@@ -91,6 +96,20 @@ public final class WirelessAePackets {
                 SyncTargetNetworksPacket::decode,
                 SyncTargetNetworksPacket::handle,
                 java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT));
+        CHANNEL.registerMessage(
+                nextPacketId++,
+                OpenPatternQuickUploadSelectionPacket.class,
+                OpenPatternQuickUploadSelectionPacket::encode,
+                OpenPatternQuickUploadSelectionPacket::decode,
+                OpenPatternQuickUploadSelectionPacket::handle,
+                java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT));
+        CHANNEL.registerMessage(
+                nextPacketId++,
+                SelectPatternQuickUploadTargetPacket.class,
+                SelectPatternQuickUploadTargetPacket::encode,
+                SelectPatternQuickUploadTargetPacket::decode,
+                SelectPatternQuickUploadTargetPacket::handle,
+                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
     }
 
     public record RenameNetworkPacket(BlockPos corePos, String name) {
@@ -444,6 +463,85 @@ public final class WirelessAePackets {
     }
 
     public record TargetNetworkEntry(UUID frequency, String name, boolean connected, boolean disconnectable) {}
+
+    public record OpenPatternQuickUploadSelectionPacket(ItemStack patternStack,
+                                                        List<PatternQuickUploadSelectionMenu.Entry> entries) {
+
+        private static void encode(OpenPatternQuickUploadSelectionPacket packet, FriendlyByteBuf buffer) {
+            buffer.writeItem(packet.patternStack);
+            writePatternQuickUploadEntries(buffer, packet.entries);
+        }
+
+        private static OpenPatternQuickUploadSelectionPacket decode(FriendlyByteBuf buffer) {
+            return new OpenPatternQuickUploadSelectionPacket(buffer.readItem(), readPatternQuickUploadEntries(buffer));
+        }
+
+        private static void handle(OpenPatternQuickUploadSelectionPacket packet,
+                                   Supplier<NetworkEvent.Context> contextSupplier) {
+            NetworkEvent.Context context = contextSupplier.get();
+            context.enqueueWork(() -> {
+                try {
+                    Class.forName("org.gtlcore.gtlcore.client.ae2.wireless.WirelessAeClientPacketHandler")
+                            .getMethod("handlePatternQuickUploadSelection", OpenPatternQuickUploadSelectionPacket.class)
+                            .invoke(null, packet);
+                } catch (ReflectiveOperationException | RuntimeException ignored) {
+                    // Client-only handler is not present on dedicated servers.
+                }
+            });
+            context.setPacketHandled(true);
+        }
+    }
+
+    public record SelectPatternQuickUploadTargetPacket(int index) {
+
+        private static void encode(SelectPatternQuickUploadTargetPacket packet, FriendlyByteBuf buffer) {
+            buffer.writeVarInt(packet.index);
+        }
+
+        private static SelectPatternQuickUploadTargetPacket decode(FriendlyByteBuf buffer) {
+            return new SelectPatternQuickUploadTargetPacket(buffer.readVarInt());
+        }
+
+        private static void handle(SelectPatternQuickUploadTargetPacket packet,
+                                   Supplier<NetworkEvent.Context> contextSupplier) {
+            NetworkEvent.Context context = contextSupplier.get();
+            context.enqueueWork(() -> {
+                ServerPlayer player = context.getSender();
+                if (player != null && player.containerMenu instanceof PatternQuickUploadSelectionMenu menu) {
+                    menu.select(player, packet.index);
+                } else if (player != null && player.containerMenu instanceof PatterEncodingTermMenuModify menuModify) {
+                    menuModify.gTLCore$selectQuickUploadTarget(packet.index);
+                }
+            });
+            context.setPacketHandled(true);
+        }
+    }
+
+    private static void writePatternQuickUploadEntries(FriendlyByteBuf buffer,
+                                                       List<PatternQuickUploadSelectionMenu.Entry> entries) {
+        buffer.writeVarInt(entries.size());
+        for (PatternQuickUploadSelectionMenu.Entry entry : entries) {
+            buffer.writeResourceLocation(entry.levelKey().location());
+            buffer.writeBlockPos(entry.bufferPos());
+            buffer.writeComponent(entry.targetName());
+            buffer.writeResourceLocation(entry.recipeTypeId());
+            buffer.writeComponent(entry.recipeTypeName());
+        }
+    }
+
+    private static List<PatternQuickUploadSelectionMenu.Entry> readPatternQuickUploadEntries(FriendlyByteBuf buffer) {
+        int size = buffer.readVarInt();
+        List<PatternQuickUploadSelectionMenu.Entry> entries = new ArrayList<>(size);
+        for (int i = 0; i < size; i++) {
+            entries.add(new PatternQuickUploadSelectionMenu.Entry(
+                    ResourceKey.create(Registries.DIMENSION, buffer.readResourceLocation()),
+                    buffer.readBlockPos(),
+                    buffer.readComponent(),
+                    buffer.readResourceLocation(),
+                    buffer.readComponent()));
+        }
+        return entries;
+    }
 
     private static List<TargetNetworkEntry> buildTargetEntries(ServerLevel level, WirelessAeSavedData.MemberKey target) {
         WirelessAeSavedData data = WirelessAeSavedData.get(level.getServer());

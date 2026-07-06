@@ -2,6 +2,7 @@ package org.gtlcore.gtlcore.integration.ae2.wireless;
 
 import org.gtlcore.gtlcore.GTLCore;
 import org.gtlcore.gtlcore.common.data.GTLCreativeModeTabs;
+import org.gtlcore.gtlcore.integration.ae2.pattern.PatternQuickUploadSelectionMenu;
 
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.BlockItem;
@@ -64,6 +65,10 @@ public final class GTLWirelessAeContent {
     public static final RegistryObject<MenuType<WirelessAeTargetMenu>> WIRELESS_AE_TARGET_MENU = MENU_TYPES.register(
             "wireless_ae_target",
             () -> IForgeMenuType.create(WirelessAeTargetMenu::new));
+
+    public static final RegistryObject<MenuType<PatternQuickUploadSelectionMenu>> PATTERN_QUICK_UPLOAD_SELECTION_MENU = MENU_TYPES.register(
+            "pattern_quick_upload_selection",
+            () -> IForgeMenuType.create(PatternQuickUploadSelectionMenu::new));
 
     private GTLWirelessAeContent() {}
 
