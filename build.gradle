@@ -17,12 +17,14 @@ java {
     sourceCompatibility = targetCompatibility = JavaVersion.VERSION_17
 }
 
+def mixinConfigNames = [
+        "gtlcore.mixin.json"
+]
+
 loom {
     silentMojangMappingsLicense()
     forge {
-        mixinConfigs = [
-                "gtlcore.mixin.json"
-        ]
+        mixinConfigs = mixinConfigNames
 
         dataGen {
             mod(mod_id)
@@ -266,4 +268,43 @@ spotless {
         endWithNewline()
         eclipse('4.31').configFile(formatFile)
     }
+}
+
+tasks.register("checkMixinPackageClasses") {
+    group = "verification"
+    description = "Fails when helper classes are placed in declared Mixin packages."
+
+    inputs.dir("src/main/java")
+    inputs.files(mixinConfigNames.collect { file("src/main/resources/$it") })
+
+    doLast {
+        def javaRoot = file("src/main/java")
+        def offenders = []
+
+        mixinConfigNames.each { mixinConfig ->
+            def configFile = file("src/main/resources/$mixinConfig")
+            def mixinPackage = new groovy.json.JsonSlurper().parse(configFile).package
+            def mixinRoot = new File(javaRoot, mixinPackage.replace('.', '/'))
+
+            if (!mixinRoot.exists()) {
+                return
+            }
+
+            fileTree(mixinRoot) {
+                include "**/*.java"
+            }.each { javaFile ->
+                if (!javaFile.getText("UTF-8").contains("@Mixin")) {
+                    offenders << javaRoot.toPath().relativize(javaFile.toPath()).toString()
+                }
+            }
+        }
+
+        if (!offenders.isEmpty()) {
+            throw new GradleException("Non-mixin classes found in Mixin package:\n - " + offenders.join("\n - "))
+        }
+    }
+}
+
+tasks.named("check") {
+    dependsOn(tasks.named("checkMixinPackageClasses"))
 }

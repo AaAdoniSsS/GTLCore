@@ -79,8 +79,9 @@ public abstract class MEStockingBusPartMachineMixin extends MEInputBusPartMachin
         if (grid == null) {
             this.aeItemHandler.clearInventory(0);
         } else {
-            MEStorage networkStorage = grid.getStorageService().getInventory();
-            var counter = networkStorage.getAvailableStacks();
+            var storageService = grid.getStorageService();
+            MEStorage networkStorage = storageService.getInventory();
+            var counter = storageService.getCachedInventory();
 
             int index = 0;
             for (Object2LongMap.Entry<AEKey> entry : counter) {

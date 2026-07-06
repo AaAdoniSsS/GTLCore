@@ -78,8 +78,9 @@ public abstract class MEStockingHatchPartMachineMixin extends MEInputHatchPartMa
         if (grid == null) {
             this.aeFluidHandler.clearInventory(0);
         } else {
-            MEStorage networkStorage = grid.getStorageService().getInventory();
-            var counter = networkStorage.getAvailableStacks();
+            var storageService = grid.getStorageService();
+            MEStorage networkStorage = storageService.getInventory();
+            var counter = storageService.getCachedInventory();
 
             int index = 0;
 

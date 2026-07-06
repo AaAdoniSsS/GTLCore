@@ -142,7 +142,7 @@ public class TagFilterMEStockBusPartMachine extends MEInputBusPartMachine implem
         List<GenericStack> order = new ObjectArrayList<>();
         final var inventory = this.aeItemHandler.getInventory();
 
-        var counter = networkStorage.getAvailableStacks();
+        var counter = storageService.getCachedInventory();
         int index = 0;
         for (Object2LongMap.Entry<AEKey> entry : counter) {
             if (!isCountSort && index >= CONFIG_SIZE) break;

@@ -44,8 +44,23 @@ public abstract class CraftingTreeProcessMixin implements ICraftingTreeProcess {
 
     @Override
     @Unique
+    public void adaptiveRequest(CraftingSimulationState inv, long times) throws CraftBranchFailure, InterruptedException {
+        ((ICraftingCalculation) this.job).gtlcore$handlePausing();
+
+        var containerItems = this.containerItems ? new KeyCounter() : null;
+
+        for (var entry : this.nodes.entrySet()) {
+            ((ICraftingTreeNode) entry.getKey()).adaptiveRequest(inv, entry.getValue() * times, containerItems);
+        }
+
+        onSucceed(inv, times, containerItems);
+        ((ICraftingCalculation) this.job).gtlcore$clearTemplateCache();
+    }
+
+    @Override
+    @Unique
     public void fastRequest(CraftingSimulationState inv, long times) throws CraftBranchFailure, InterruptedException {
-        ((ICraftingCalculation) this.job).handlePausing();
+        ((ICraftingCalculation) this.job).gtlcore$handlePausing();
 
         var containerItems = this.containerItems ? new KeyCounter() : null;
 
@@ -59,7 +74,7 @@ public abstract class CraftingTreeProcessMixin implements ICraftingTreeProcess {
     @Override
     @Unique
     public void ultraFastRequest(CraftingSimulationState inv, long times) throws CraftBranchFailure, InterruptedException {
-        ((ICraftingCalculation) this.job).handlePausing();
+        ((ICraftingCalculation) this.job).gtlcore$handlePausing();
 
         var containerItems = this.containerItems ? new KeyCounter() : null;
 
@@ -117,5 +132,14 @@ public abstract class CraftingTreeProcessMixin implements ICraftingTreeProcess {
     @Unique
     public boolean limitsQuantityTest() {
         return this.limitQty;
+    }
+
+    @Override
+    @Unique
+    public void gtlcore$resetAdaptiveState() {
+        this.possible = true;
+        for (var node : this.nodes.keySet()) {
+            ((ICraftingTreeNode) node).gtlcore$resetAdaptiveState();
+        }
     }
 }
