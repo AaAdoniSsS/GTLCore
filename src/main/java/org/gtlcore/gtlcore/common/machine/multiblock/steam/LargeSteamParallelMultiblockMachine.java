@@ -1,6 +1,7 @@
 package org.gtlcore.gtlcore.common.machine.multiblock.steam;
 
 import org.gtlcore.gtlcore.api.machine.ISteamMachine;
+import org.gtlcore.gtlcore.common.machine.multiblock.part.LargeSteamHatchPartMachine;
 
 import com.gregtechceu.gtceu.api.capability.recipe.EURecipeCapability;
 import com.gregtechceu.gtceu.api.capability.recipe.FluidRecipeCapability;
@@ -16,8 +17,8 @@ import com.gregtechceu.gtceu.api.machine.trait.NotifiableFluidTank;
 import com.gregtechceu.gtceu.api.pattern.MultiblockWorldSavedData;
 import com.gregtechceu.gtceu.api.recipe.GTRecipe;
 import com.gregtechceu.gtceu.api.recipe.RecipeHelper;
-import com.gregtechceu.gtceu.common.data.GTMaterials;
 import com.gregtechceu.gtceu.common.data.GTRecipeModifiers;
+import com.gregtechceu.gtceu.common.machine.multiblock.part.SteamHatchPartMachine;
 import com.gregtechceu.gtceu.config.ConfigHolder;
 
 import com.lowdragmc.lowdraglib.gui.modular.ModularUI;
@@ -85,8 +86,9 @@ public class LargeSteamParallelMultiblockMachine extends WorkableMultiblockMachi
         while (itr.hasNext()) {
             var handler = itr.next();
             if (handler instanceof NotifiableFluidTank tank) {
-                if (tank.getFluidInTank(0).isFluidEqual(GTMaterials.Steam.getFluid(1))) {
-                    this.isOC = tank.getMachine().getDefinition() == LARGE_STEAM_HATCH;
+                var machine = tank.getMachine();
+                if (machine instanceof SteamHatchPartMachine || machine instanceof LargeSteamHatchPartMachine) {
+                    this.isOC = machine.getDefinition() == LARGE_STEAM_HATCH;
                     itr.remove();
                     capabilitiesProxy.put(IO.IN, EURecipeCapability.CAP,
                             List.of(new SteamEnergyRecipeHandler(tank, CONVERSION_RATE * (this.isOC ? Math.pow(3, this.amountOC) : 1))));
