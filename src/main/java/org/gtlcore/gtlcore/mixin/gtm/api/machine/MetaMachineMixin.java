@@ -11,10 +11,13 @@ import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
 import com.gregtechceu.gtceu.api.machine.MetaMachine;
 import com.gregtechceu.gtceu.api.machine.TickableSubscription;
 import com.gregtechceu.gtceu.integration.ae2.machine.feature.IGridConnectedMachine;
+import com.lowdragmc.lowdraglib.async.AsyncThreadData;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -31,6 +34,7 @@ import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.*;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.EnumSet;
@@ -60,6 +64,9 @@ public abstract class MetaMachineMixin implements IPerformanceDisplayMachine, IS
 
     @Unique
     private boolean gtlcore$suspendAfterFinish;
+
+    @Unique
+    private volatile boolean gtlcore$queuedAsyncChanged;
 
     @Shadow(remap = false)
     public abstract boolean isRemote();
@@ -96,6 +103,24 @@ public abstract class MetaMachineMixin implements IPerformanceDisplayMachine, IS
 
     @Shadow(remap = false)
     public abstract void onChanged();
+
+    @Inject(method = "onChanged", at = @At("HEAD"), cancellable = true, remap = false)
+    private void gtlcore$moveAsyncOnChangedToServerThread(CallbackInfo ci) {
+        Level level = getLevel();
+        if (!(level instanceof ServerLevel serverLevel)) return;
+        MinecraftServer server = serverLevel.getServer();
+        if (server.isSameThread()) return;
+        if (!AsyncThreadData.isThreadService()) return;
+        ci.cancel();
+        if (gtlcore$queuedAsyncChanged || isInValid()) return;
+        gtlcore$queuedAsyncChanged = true;
+        server.execute(() -> {
+            gtlcore$queuedAsyncChanged = false;
+            if (!isInValid()) {
+                onChanged();
+            }
+        });
+    }
 
     @Override
     public int gtlcore$getTickTime() {
