@@ -17,6 +17,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.TickTask;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
@@ -114,12 +115,15 @@ public abstract class MetaMachineMixin implements IPerformanceDisplayMachine, IS
         ci.cancel();
         if (gtlcore$queuedAsyncChanged || isInValid()) return;
         gtlcore$queuedAsyncChanged = true;
-        server.execute(() -> {
-            gtlcore$queuedAsyncChanged = false;
-            if (!isInValid()) {
-                onChanged();
+        server.tell(new TickTask(server.getTickCount(), () -> {
+            try {
+                if (!isInValid()) {
+                    onChanged();
+                }
+            } finally {
+                gtlcore$queuedAsyncChanged = false;
             }
-        });
+        }));
     }
 
     @Override
