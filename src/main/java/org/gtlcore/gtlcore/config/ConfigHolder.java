@@ -41,7 +41,6 @@ public class ConfigHolder {
     @Configurable.Range(min = 1)
     public int travelStaffCD = 2;
     @Configurable
-    @Configurable.Comment({ "更大的数值会让界面显示有问题，推荐在样板管理终端管理" })
     @Configurable.Range(min = 36, max = 360)
     public int exPatternProvider = 36;
     @Configurable
@@ -76,27 +75,21 @@ public class ConfigHolder {
     @Configurable.Comment("AE2合成计算模式: ADAPTIVE(自适应), LEGACY(原版), FAST(快速), ULTRA_FAST(最快)")
     public AE2CalculationMode ae2CalculationMode = AE2CalculationMode.ADAPTIVE;
     @Configurable
-    @Configurable.Comment("AE2自适应合成计算单任务最小预算(微秒)")
     @Configurable.Range(min = 1)
     public int ae2CraftingMinBudgetMicros = 500;
     @Configurable
-    @Configurable.Comment("AE2自适应合成计算单任务最大预算(微秒)")
     @Configurable.Range(min = 1)
     public int ae2CraftingMaxBudgetMicros = 5000;
     @Configurable
-    @Configurable.Comment("AE2自适应合成计算空闲低延迟单任务预算(微秒)")
     @Configurable.Range(min = 1)
     public int ae2CraftingIdleBudgetMicros = 20000;
     @Configurable
-    @Configurable.Comment("AE2自适应合成计算首轮后台冲刺预算(微秒, 0表示使用空闲预算)")
     @Configurable.Range(min = 0)
     public int ae2CraftingInitialBurstMicros = 1000000;
     @Configurable
-    @Configurable.Comment("AE2自适应合成计算小任务绕过暂停检查次数")
     @Configurable.Range(min = 0)
     public int ae2CraftingSmallJobBypassChecks = 256;
     @Configurable
-    @Configurable.Comment("AE2自适应合成计算失败时是否降级到更保守算法")
     public boolean ae2CraftingFallbackOnFailure = true;
     @Configurable
     @Configurable.Comment("编写多方块结构样板过滤的仓室")
