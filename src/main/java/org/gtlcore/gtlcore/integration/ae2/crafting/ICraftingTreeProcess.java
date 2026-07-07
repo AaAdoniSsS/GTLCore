@@ -7,6 +7,8 @@ import appeng.crafting.inv.CraftingSimulationState;
 
 public interface ICraftingTreeProcess {
 
+    void adaptiveRequest(CraftingSimulationState inv, long times) throws CraftBranchFailure, InterruptedException;
+
     void fastRequest(CraftingSimulationState inv, long times) throws CraftBranchFailure, InterruptedException;
 
     void ultraFastRequest(CraftingSimulationState inv, long times) throws CraftBranchFailure, InterruptedException;
@@ -20,4 +22,6 @@ public interface ICraftingTreeProcess {
     long getOutputCountTest(AEKey what);
 
     boolean limitsQuantityTest();
+
+    void gtlcore$resetAdaptiveState();
 }

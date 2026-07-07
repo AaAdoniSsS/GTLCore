@@ -715,6 +715,7 @@ public class GTLMachines {
                         Component.translatable("gtceu.machine.me_pattern_buffer.desc.3"),
                         Component.translatable("gtceu.machine.me_pattern_buffer.desc.4"),
                         Component.translatable("gtceu.machine.me_mini_pattern_buffer.desc.0"),
+                        Component.translatable("gtlcore.machine.pattern_quick_upload.tooltip"),
                         Component.translatable("block.gtceu.pattern_buffer.desc.2"),
                         Component.translatable("gtceu.universal.enabled"))
                 .tooltipBuilder(GTL_ADD)
@@ -734,6 +735,7 @@ public class GTLMachines {
                         Component.translatable("gtceu.machine.me_pattern_buffer.desc.3"),
                         Component.translatable("gtceu.machine.me_pattern_buffer.desc.4"),
                         Component.translatable("gtceu.machine.me_pattern_buffer.desc.5"),
+                        Component.translatable("gtlcore.machine.pattern_quick_upload.tooltip"),
                         Component.translatable("block.gtceu.pattern_buffer.desc.2"),
                         Component.translatable("gtceu.universal.enabled"))
                 .tooltipBuilder(GTL_ADD)
@@ -755,6 +757,7 @@ public class GTLMachines {
                         Component.translatable("gtceu.machine.me_pattern_buffer.desc.5"),
                         Component.translatable("gtlcore.machine.me_stocking_pattern_buffer.desc.0"),
                         Component.translatable("gtlcore.machine.me_stocking_pattern_buffer.desc.1"),
+                        Component.translatable("gtlcore.machine.pattern_quick_upload.tooltip"),
                         Component.translatable("block.gtceu.pattern_buffer.desc.2"),
                         Component.translatable("gtceu.universal.enabled"))
                 .tooltipBuilder(GTL_ADD)
@@ -775,6 +778,7 @@ public class GTLMachines {
                         Component.translatable("gtceu.machine.me_pattern_buffer.desc.3"),
                         Component.translatable("gtceu.machine.me_pattern_buffer.desc.4"),
                         Component.translatable("gtceu.machine.me_pattern_buffer.desc.5"),
+                        Component.translatable("gtlcore.machine.pattern_quick_upload.tooltip"),
                         Component.translatable("block.gtceu.pattern_buffer.desc.2"),
                         Component.translatable("gtceu.universal.enabled"))
                 .tooltipBuilder(GTL_ADD)
@@ -861,6 +865,8 @@ public class GTLMachines {
                 .langValue("ME Molecular Assembler IO")
                 .tooltips(Component.translatable("gtceu.universal.disabled"),
                         Component.translatable("gtceu.machine.me_molecular_assembler_io.tooltip.0"),
+                        Component.translatable("gtceu.machine.me_pattern_buffer.desc.3"),
+                        Component.translatable("gtlcore.machine.pattern_quick_upload.tooltip"),
                         Component.translatable("gtceu.machine.me_molecular_assembler_io.tooltip.1"))
                 .tooltipBuilder(GTL_ADD)
                 .register();

@@ -263,7 +263,9 @@ public class AEUtils {
     // ME Processing Pattern Multiply
     // ========================================
 
-    public static final AE2CalculationMode CALCULATION_MODE = ConfigHolder.INSTANCE.ae2CalculationMode;
+    public static AE2CalculationMode getCalculationMode() {
+        return ConfigHolder.INSTANCE.ae2CalculationMode;
+    }
 
     public static void pushInputsToMEPatternBufferInventory(KeyCounter[] inputHolder, IPatternDetails.PatternInputSink inputSink) {
         for (var inputList : inputHolder) {

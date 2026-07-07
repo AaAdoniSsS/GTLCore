@@ -1,5 +1,7 @@
 package org.gtlcore.gtlcore.api.item.tool.ae2.patternTool;
 
+import org.gtlcore.gtlcore.integration.ae2.pattern.PatternQuickUploadMetadata;
+
 import com.gregtechceu.gtceu.api.recipe.GTRecipe;
 
 import com.lowdragmc.lowdraglib.side.fluid.FluidStack;
@@ -51,6 +53,9 @@ public class Ae2GtmProcessingPattern extends Ae2BaseProcessingPattern {
         }
 
         ItemStack patternStack = PatternDetailsHelper.encodeProcessingPattern(Inputs, Outputs);
+        if (recipe.recipeType != null && recipe.recipeType.registryName != null) {
+            PatternQuickUploadMetadata.writeRecipeTypeId(patternStack, recipe.recipeType.registryName);
+        }
         return new Ae2GtmProcessingPattern(patternStack, serverPlayer, recipe);
     }
     // 将模头，模具加入忽略名单

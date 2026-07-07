@@ -3,6 +3,7 @@ package org.gtlcore.gtlcore.mixin.ae2.logic;
 import org.gtlcore.gtlcore.api.machine.trait.AECraft.IMECraftIOPart;
 import org.gtlcore.gtlcore.api.machine.trait.MEPart.IMEPatternPartMachine;
 import org.gtlcore.gtlcore.integration.ae2.AEUtils;
+import org.gtlcore.gtlcore.integration.ae2.crafting.CraftingPatternPower;
 
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
@@ -152,7 +153,8 @@ public abstract class CraftingCpuLogicMixin {
 
                 if (provider.isBusy()) continue;
 
-                var patternPower = CraftingCpuHelper.calculatePatternPower(craftingContainer);
+                var patternPower = CraftingPatternPower.forCpu(CraftingCpuHelper.calculatePatternPower(craftingContainer),
+                        autoExpand, taskProgress.getValue());
                 if (energyService.extractAEPower(patternPower, Actionable.SIMULATE, PowerMultiplier.CONFIG) < patternPower - 0.01) {
                     break;
                 }

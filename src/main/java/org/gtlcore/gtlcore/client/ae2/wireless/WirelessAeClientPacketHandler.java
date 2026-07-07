@@ -9,4 +9,8 @@ public final class WirelessAeClientPacketHandler {
     public static void handleTargetNetworks(WirelessAePackets.SyncTargetNetworksPacket packet) {
         WirelessAeScreenHooks.receiveTargetNetworks(packet.targetPos(), packet.entries());
     }
+
+    public static void handlePatternQuickUploadSelection(WirelessAePackets.OpenPatternQuickUploadSelectionPacket packet) {
+        PatternQuickUploadSelectionOverlay.open(packet.patternStack(), packet.entries());
+    }
 }
