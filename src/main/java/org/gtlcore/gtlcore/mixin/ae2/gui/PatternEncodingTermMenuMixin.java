@@ -463,12 +463,12 @@ public abstract class PatternEncodingTermMenuMixin extends MEStorageMenu impleme
         if (!gTLCore$hasPatternSourceForQuickUpload(player)) {
             return;
         }
-        int uploadedSlot = PatternQuickUploadService.insertIntoTargetSlot(player, preparedPattern, target);
-        if (uploadedSlot >= 0) {
+        PatternQuickUploadService.UploadResult uploadResult = PatternQuickUploadService.insertIntoTargetSlotResult(player, preparedPattern, target);
+        if (uploadResult != null) {
             this.gTLCore$pendingQuickUploadRecipeTypeId = null;
-            this.gTLCore$lastQuickUploadTarget = target;
+            this.gTLCore$lastQuickUploadTarget = uploadResult.target();
             this.gTLCore$lastQuickUploadPattern = preparedPattern.copy();
-            this.gTLCore$lastQuickUploadSlot = uploadedSlot;
+            this.gTLCore$lastQuickUploadSlot = uploadResult.slot();
             gTLCore$consumePatternSourceAfterQuickUpload();
             player.displayClientMessage(Component.translatable("message.gtlcore.pattern_quick_upload_inserted", target.targetName()), true);
         } else {
@@ -485,7 +485,8 @@ public abstract class PatternEncodingTermMenuMixin extends MEStorageMenu impleme
                         target.bufferPos(),
                         target.targetName(),
                         target.recipeTypeId(),
-                        target.recipeTypeName()))
+                        target.recipeTypeName(),
+                        target.showsSinglePosition()))
                 .toList();
     }
 }

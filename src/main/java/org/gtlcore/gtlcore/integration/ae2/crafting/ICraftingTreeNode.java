@@ -7,11 +7,11 @@ import org.jetbrains.annotations.Nullable;
 
 public interface ICraftingTreeNode {
 
-    void adaptiveRequest(CraftingSimulationState inv, long requestedAmount,
-                         @Nullable KeyCounter containerItems) throws CraftBranchFailure, InterruptedException;
-
     void ultraFastRequest(CraftingSimulationState inv, long requestedAmount,
                           @Nullable KeyCounter containerItems) throws CraftBranchFailure, InterruptedException;
+
+    void maxFastRequest(CraftingSimulationState inv, long requestedAmount,
+                        @Nullable KeyCounter containerItems) throws CraftBranchFailure, InterruptedException;
 
     void fastRequest(CraftingSimulationState inv, long requestedAmount,
                      @Nullable KeyCounter containerItems) throws CraftBranchFailure, InterruptedException;
@@ -19,5 +19,7 @@ public interface ICraftingTreeNode {
     void legacyRequest(CraftingSimulationState inv, long requestedAmount,
                        @Nullable KeyCounter containerItems) throws CraftBranchFailure, InterruptedException;
 
-    void gtlcore$resetAdaptiveState();
+    void gtlcore$resetFastState();
+
+    Object gtlcore$getRequestMergeKey();
 }

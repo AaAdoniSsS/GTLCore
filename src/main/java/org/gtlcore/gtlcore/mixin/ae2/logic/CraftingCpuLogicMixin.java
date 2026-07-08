@@ -1,9 +1,9 @@
 package org.gtlcore.gtlcore.mixin.ae2.logic;
 
-import org.gtlcore.gtlcore.api.machine.trait.AECraft.IMECraftIOPart;
-import org.gtlcore.gtlcore.api.machine.trait.MEPart.IMEPatternPartMachine;
 import org.gtlcore.gtlcore.integration.ae2.AEUtils;
+import org.gtlcore.gtlcore.integration.ae2.crafting.CraftingPatternAutoExpand;
 import org.gtlcore.gtlcore.integration.ae2.crafting.CraftingPatternPower;
+import org.gtlcore.gtlcore.integration.ae2.crafting.ICraftingJobSuspension;
 
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
@@ -25,7 +25,7 @@ import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.*;
 
 @Mixin(value = CraftingCpuLogic.class, priority = 1100)
-public abstract class CraftingCpuLogicMixin {
+public abstract class CraftingCpuLogicMixin implements ICraftingJobSuspension {
 
     @Shadow(remap = false)
     private ExecutingCraftingJob job;
@@ -86,6 +86,10 @@ public abstract class CraftingCpuLogicMixin {
             return;
         }
 
+        if (gtlcore$isJobSuspended()) {
+            return;
+        }
+
         var remainingOperations = cluster.getCoProcessors() + 1 - (this.usedOps[0] + this.usedOps[1] + this.usedOps[2]);
         final var started = remainingOperations;
 
@@ -136,26 +140,21 @@ public abstract class CraftingCpuLogicMixin {
             var details = task.getKey();
             final boolean isProcessing = details instanceof AEProcessingPattern;
 
-            KeyCounter expectedOutputs = new KeyCounter(), expectedContainerItems = new KeyCounter();
-            KeyCounter[] craftingContainer = null;
-            boolean needExtract = true;
-
             for (var provider : craftingService.getProviders(details)) {
-                final boolean autoExpand = isProcessing && (provider instanceof IMEPatternPartMachine || provider instanceof IMECraftIOPart);
-
-                if (needExtract) {
-                    craftingContainer = isProcessing ? (autoExpand ? AEUtils.extractForProcessingPattern((AEProcessingPattern) details, inventory, expectedOutputs, taskProgress.getValue()) : AEUtils.extractForProcessingPattern((AEProcessingPattern) details, inventory, expectedOutputs)) : AEUtils.extractForCraftPattern(details, inventory, level, expectedOutputs, expectedContainerItems);
-                    needExtract = false;
-                    if (craftingContainer == null) {
-                        break;
-                    }
-                }
-
                 if (provider.isBusy()) continue;
+
+                final boolean autoExpand = CraftingPatternAutoExpand.canAutoExpand(isProcessing, provider);
+                KeyCounter expectedOutputs = new KeyCounter(), expectedContainerItems = new KeyCounter();
+                KeyCounter[] craftingContainer = isProcessing ? (autoExpand ? AEUtils.extractForProcessingPattern((AEProcessingPattern) details, inventory, expectedOutputs, taskProgress.getValue()) : AEUtils.extractForProcessingPattern((AEProcessingPattern) details, inventory, expectedOutputs)) : AEUtils.extractForCraftPattern(details, inventory, level, expectedOutputs, expectedContainerItems);
+
+                if (craftingContainer == null) {
+                    break;
+                }
 
                 var patternPower = CraftingPatternPower.forCpu(CraftingCpuHelper.calculatePatternPower(craftingContainer),
                         autoExpand, taskProgress.getValue());
                 if (energyService.extractAEPower(patternPower, Actionable.SIMULATE, PowerMultiplier.CONFIG) < patternPower - 0.01) {
+                    CraftingCpuHelper.reinjectPatternInputs(inventory, craftingContainer);
                     break;
                 }
 
@@ -193,19 +192,26 @@ public abstract class CraftingCpuLogicMixin {
                     if (pushedPatterns == maxPatterns) {
                         break taskLoop;
                     }
-
-                    expectedOutputs.reset();
-                    expectedContainerItems.reset();
-                    craftingContainer = null;
-                    needExtract = true;
+                } else {
+                    CraftingCpuHelper.reinjectPatternInputs(inventory, craftingContainer);
                 }
-            }
-
-            if (craftingContainer != null) {
-                CraftingCpuHelper.reinjectPatternInputs(inventory, craftingContainer);
             }
         }
 
         return pushedPatterns;
+    }
+
+    @Override
+    @Unique
+    public boolean gtlcore$isJobSuspended() {
+        return this.job != null && ((ICraftingJobSuspension) this.job).gtlcore$isJobSuspended();
+    }
+
+    @Override
+    @Unique
+    public void gtlcore$setJobSuspended(boolean suspended) {
+        if (this.job != null) {
+            ((ICraftingJobSuspension) this.job).gtlcore$setJobSuspended(suspended);
+        }
     }
 }

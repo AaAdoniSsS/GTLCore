@@ -526,6 +526,7 @@ public final class WirelessAePackets {
             buffer.writeComponent(entry.targetName());
             buffer.writeResourceLocation(entry.recipeTypeId());
             buffer.writeComponent(entry.recipeTypeName());
+            buffer.writeBoolean(entry.showPosition());
         }
     }
 
@@ -538,7 +539,8 @@ public final class WirelessAePackets {
                     buffer.readBlockPos(),
                     buffer.readComponent(),
                     buffer.readResourceLocation(),
-                    buffer.readComponent()));
+                    buffer.readComponent(),
+                    buffer.readBoolean()));
         }
         return entries;
     }

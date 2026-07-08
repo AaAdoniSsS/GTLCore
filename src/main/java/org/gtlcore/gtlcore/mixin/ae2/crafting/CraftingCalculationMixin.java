@@ -3,13 +3,20 @@ package org.gtlcore.gtlcore.mixin.ae2.crafting;
 import org.gtlcore.gtlcore.config.AE2CalculationMode;
 import org.gtlcore.gtlcore.config.ConfigHolder;
 import org.gtlcore.gtlcore.integration.ae2.AEUtils;
+import org.gtlcore.gtlcore.integration.ae2.crafting.AE2CraftingCalculationLogger;
+import org.gtlcore.gtlcore.integration.ae2.crafting.AE2CraftingPlanCache;
+import org.gtlcore.gtlcore.integration.ae2.crafting.FastCraftingCalculation;
 import org.gtlcore.gtlcore.integration.ae2.crafting.ICraftingCalculation;
+import org.gtlcore.gtlcore.integration.ae2.crafting.ICraftingStorageVersion;
 import org.gtlcore.gtlcore.integration.ae2.crafting.ICraftingTreeNode;
 
 import net.minecraft.world.level.Level;
 
 import appeng.api.crafting.IPatternDetails;
+import appeng.api.networking.IGrid;
+import appeng.api.networking.crafting.CalculationStrategy;
 import appeng.api.networking.crafting.ICraftingPlan;
+import appeng.api.networking.crafting.ICraftingSimulationRequester;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.KeyCounter;
 import appeng.core.AELog;
@@ -19,7 +26,6 @@ import appeng.crafting.CraftingTreeNode;
 import appeng.crafting.execution.InputTemplate;
 import appeng.crafting.inv.CraftingSimulationState;
 import appeng.crafting.inv.ICraftingInventory;
-import appeng.hooks.ticking.TickHandler;
 import com.google.common.base.Stopwatch;
 import org.spongepowered.asm.mixin.*;
 import org.spongepowered.asm.mixin.injection.At;
@@ -28,27 +34,33 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.*;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
 @Mixin(CraftingCalculation.class)
 public abstract class CraftingCalculationMixin implements ICraftingCalculation {
 
     @Unique
-    private static final int GTLCORE_PAUSE_CHECK_INTERVAL = 100;
-
-    @Unique
-    private AE2CalculationMode gTLCore$calculationMode = AE2CalculationMode.ULTRA_FAST;
-    @Unique
-    private boolean gTLCore$adaptiveRun;
-    @Unique
-    private int gTLCore$smallJobBypassChecks;
+    private AE2CalculationMode gTLCore$calculationMode = AE2CalculationMode.MAX_FAST;
     @Unique
     private final Map<TemplateCacheKey, List<InputTemplate>> gTLCore$templateCache = new HashMap<>();
     @Unique
-    private final Map<BranchKey, Long> gTLCore$failedBranches = new HashMap<>();
+    private final Map<BranchKey, Long> gTLCore$maxFastFailedBranches = new HashMap<>();
     @Unique
-    private final Map<BranchKey, Integer> gTLCore$branchSuccesses = new HashMap<>();
+    private final Map<AEKey, Object> gTLCore$maxFastPreferredBranches = new HashMap<>();
+    @Unique
+    private final AE2CraftingCalculationLogger.Counters gTLCore$craftingLogCounters = new AE2CraftingCalculationLogger.Counters();
+    @Unique
+    private boolean gTLCore$craftingCalculationLogEnabled;
+    @Unique
+    private long gTLCore$craftingLogId;
+    @Unique
+    private long gTLCore$craftingLogStartedNanos;
+    @Unique
+    private static final String gTLCore$LOG_SOURCE_CACHE = "cache";
+    @Unique
+    private static final String gTLCore$LOG_SOURCE_MAX_FAST = "max_fast";
+    @Unique
+    private static final String gTLCore$LOG_SOURCE_VANILLA = "vanilla";
 
     @Shadow(remap = false)
     @Final
@@ -64,21 +76,20 @@ public abstract class CraftingCalculationMixin implements ICraftingCalculation {
     private KeyCounter missing;
     @Shadow(remap = false)
     @Final
-    private CraftingTreeNode tree;
-    @Shadow(remap = false)
-    @Final
     private AEKey output;
     @Shadow(remap = false)
     @Final
     private long requestedAmount;
     @Shadow(remap = false)
+    @Final
+    private CalculationStrategy strategy;
+    @Shadow(remap = false)
+    @Final
+    private ICraftingSimulationRequester simRequester;
+    @Shadow(remap = false)
     private boolean running;
     @Shadow(remap = false)
     private boolean done;
-    @Shadow(remap = false)
-    private int time;
-    @Shadow(remap = false)
-    private int incTime;
 
     @Shadow(remap = false)
     private void logCraftingJob(ICraftingPlan plan) {
@@ -98,10 +109,27 @@ public abstract class CraftingCalculationMixin implements ICraftingCalculation {
     public ICraftingPlan run() {
         try {
             this.gTLCore$calculationMode = AEUtils.getCalculationMode();
-            var plan = this.gTLCore$calculationMode == AE2CalculationMode.ADAPTIVE ? gTLCore$computeAdaptivePlan() : computePlan();
+            this.gTLCore$startCraftingLog();
+            ICraftingPlan cachedPlan = this.gTLCore$getCachedPlan();
+            if (cachedPlan != null) {
+                this.logCraftingJob(cachedPlan);
+                this.gTLCore$finishCraftingLog(cachedPlan, gTLCore$LOG_SOURCE_CACHE);
+                return cachedPlan;
+            }
+            ICraftingPlan fastPlan = this.gTLCore$tryFastPlan();
+            if (fastPlan != null) {
+                this.gTLCore$cachePlan(fastPlan);
+                this.logCraftingJob(fastPlan);
+                this.gTLCore$finishCraftingLog(fastPlan, gTLCore$LOG_SOURCE_MAX_FAST);
+                return fastPlan;
+            }
+            var plan = computePlan();
+            this.gTLCore$cachePlan(plan);
             this.logCraftingJob(plan);
+            this.gTLCore$finishCraftingLog(plan, gTLCore$LOG_SOURCE_VANILLA);
             return plan;
         } catch (Exception ex) {
+            this.gTLCore$failCraftingLog(ex);
             AELog.info(ex, "Exception during async crafting calculation.");
             throw new RuntimeException(ex);
         } finally {
@@ -118,7 +146,6 @@ public abstract class CraftingCalculationMixin implements ICraftingCalculation {
         synchronized (this.monitor) {
             this.running = false;
             this.done = true;
-            this.gTLCore$adaptiveRun = false;
             if (this.watch.isRunning()) {
                 this.watch.stop();
             }
@@ -133,31 +160,7 @@ public abstract class CraftingCalculationMixin implements ICraftingCalculation {
      */
     @Overwrite(remap = false)
     public boolean simulateFor(int micros) {
-        if (!this.gTLCore$adaptiveRun) {
-            return !this.done;
-        }
-        synchronized (this.monitor) {
-            if (this.done) {
-                return false;
-            }
-            if (this.running) {
-                return true;
-            }
-
-            this.time = gTLCore$normalizeBudget(micros);
-            this.watch.reset();
-            this.watch.start();
-            this.running = true;
-            this.monitor.notifyAll();
-
-            while (this.running && !this.done) {
-                try {
-                    this.monitor.wait();
-                } catch (InterruptedException ignored) {}
-            }
-
-            return !this.done;
-        }
+        return !this.done;
     }
 
     @Inject(method = "handlePausing", at = @At("HEAD"), cancellable = true, remap = false)
@@ -171,34 +174,6 @@ public abstract class CraftingCalculationMixin implements ICraftingCalculation {
     public void gtlcore$handlePausing() throws InterruptedException {
         if (Thread.interrupted()) {
             throw new InterruptedException();
-        }
-        if (!this.gTLCore$adaptiveRun) {
-            return;
-        }
-        if (this.gTLCore$smallJobBypassChecks > 0) {
-            this.gTLCore$smallJobBypassChecks--;
-            if (this.watch.elapsed(TimeUnit.MICROSECONDS) <= this.time) {
-                return;
-            }
-            this.gTLCore$smallJobBypassChecks = 0;
-        } else if (this.incTime <= GTLCORE_PAUSE_CHECK_INTERVAL) {
-            this.incTime++;
-            return;
-        }
-
-        this.incTime = 0;
-        synchronized (this.monitor) {
-            if (this.watch.elapsed(TimeUnit.MICROSECONDS) > this.time) {
-                this.running = false;
-                if (this.watch.isRunning()) {
-                    this.watch.stop();
-                }
-                this.monitor.notifyAll();
-            }
-
-            while (!this.running && !this.done) {
-                this.monitor.wait();
-            }
         }
     }
 
@@ -215,69 +190,111 @@ public abstract class CraftingCalculationMixin implements ICraftingCalculation {
                                                               Level level,
                                                               AEKey what,
                                                               Supplier<Iterable<InputTemplate>> loader) {
-        if (!this.gTLCore$adaptiveRun) {
+        if (this.gTLCore$calculationMode == AE2CalculationMode.LEGACY) {
             return loader.get();
         }
 
         var key = new TemplateCacheKey(inv, input, level, what, this.gTLCore$calculationMode);
-        return this.gTLCore$templateCache.computeIfAbsent(key, ignored -> {
-            List<InputTemplate> templates = new ArrayList<>();
-            for (var template : loader.get()) {
-                templates.add(template);
+        var cached = this.gTLCore$templateCache.get(key);
+        if (cached != null) {
+            if (this.gTLCore$craftingCalculationLogEnabled) {
+                this.gTLCore$craftingLogCounters.recordTemplateCacheHit();
             }
-            return templates;
-        });
+            return cached;
+        }
+
+        if (this.gTLCore$craftingCalculationLogEnabled) {
+            this.gTLCore$craftingLogCounters.recordTemplateCacheMiss();
+        }
+
+        List<InputTemplate> templates = new ArrayList<>();
+        for (var template : loader.get()) {
+            templates.add(template);
+        }
+        this.gTLCore$templateCache.put(key, templates);
+        return templates;
     }
 
     @Override
     @Unique
     public boolean gtlcore$shouldSkipBranch(AEKey output, IPatternDetails details, long requestedAmount) {
-        if (!this.gTLCore$adaptiveRun) {
+        if (this.gTLCore$calculationMode != AE2CalculationMode.MAX_FAST) {
             return false;
         }
 
-        var failedAt = this.gTLCore$failedBranches.get(new BranchKey(output, details, this.gTLCore$calculationMode));
+        Long failedAt = this.gTLCore$maxFastFailedBranches.get(new BranchKey(output, details, this.gTLCore$calculationMode));
         return failedAt != null && requestedAmount >= failedAt;
     }
 
     @Override
     @Unique
     public void gtlcore$recordBranchFailure(AEKey output, IPatternDetails details, long requestedAmount) {
-        if (this.gTLCore$adaptiveRun) {
-            this.gTLCore$failedBranches.merge(
+        if (this.gTLCore$calculationMode == AE2CalculationMode.MAX_FAST) {
+            this.gTLCore$maxFastFailedBranches.merge(
                     new BranchKey(output, details, this.gTLCore$calculationMode),
                     requestedAmount,
                     Math::min);
         }
-    }
-
-    @Override
-    @Unique
-    public void gtlcore$recordBranchSuccess(AEKey output, IPatternDetails details) {
-        if (this.gTLCore$adaptiveRun) {
-            this.gTLCore$branchSuccesses.merge(new BranchKey(output, details, this.gTLCore$calculationMode), 1, Integer::sum);
+        if (this.gTLCore$craftingCalculationLogEnabled) {
+            this.gTLCore$craftingLogCounters.recordBranchFailure();
         }
     }
 
     @Override
     @Unique
-    public int gtlcore$getBranchSuccesses(AEKey output, IPatternDetails details) {
-        if (!this.gTLCore$adaptiveRun) {
-            return 0;
+    public void gtlcore$recordBranchSkip(AEKey output, IPatternDetails details, long requestedAmount) {
+        if (this.gTLCore$craftingCalculationLogEnabled) {
+            this.gTLCore$craftingLogCounters.recordBranchSkip();
         }
-        return this.gTLCore$branchSuccesses.getOrDefault(new BranchKey(output, details, this.gTLCore$calculationMode), 0);
+    }
+
+    @Override
+    @Unique
+    public void gtlcore$recordBranchSuccess(AEKey output, IPatternDetails details, long craftedAmount) {
+        if (this.gTLCore$calculationMode == AE2CalculationMode.MAX_FAST) {
+            var key = new BranchKey(output, details, this.gTLCore$calculationMode);
+            Long failedAt = this.gTLCore$maxFastFailedBranches.get(key);
+            if (failedAt != null && craftedAmount >= failedAt) {
+                this.gTLCore$maxFastFailedBranches.remove(key);
+            }
+            this.gTLCore$maxFastPreferredBranches.put(output, details.getDefinition());
+        }
+        if (this.gTLCore$craftingCalculationLogEnabled) {
+            this.gTLCore$craftingLogCounters.recordBranchSuccess();
+        }
+    }
+
+    @Override
+    @Unique
+    public Object gtlcore$getPreferredBranchDefinition(AEKey output) {
+        if (this.gTLCore$calculationMode != AE2CalculationMode.MAX_FAST) {
+            return null;
+        }
+        return this.gTLCore$maxFastPreferredBranches.get(output);
     }
 
     @Override
     @Unique
     public void gtlcore$clearTemplateCache() {
+        if (this.gTLCore$templateCache.isEmpty()) {
+            return;
+        }
+        if (this.gTLCore$craftingCalculationLogEnabled) {
+            this.gTLCore$craftingLogCounters.recordTemplateCacheClear();
+        }
         this.gTLCore$templateCache.clear();
     }
 
     @Override
     @Unique
-    public boolean gtlcore$isAdaptive() {
-        return this.gTLCore$adaptiveRun;
+    public boolean gtlcore$isCraftingCalculationLogEnabled() {
+        return this.gTLCore$craftingCalculationLogEnabled;
+    }
+
+    @Override
+    @Unique
+    public AE2CraftingCalculationLogger.Counters gtlcore$getCraftingCalculationLogCounters() {
+        return this.gTLCore$craftingLogCounters;
     }
 
     @Redirect(
@@ -292,7 +309,7 @@ public abstract class CraftingCalculationMixin implements ICraftingCalculation {
                                      long amount,
                                      KeyCounter containerItems) throws CraftBranchFailure, InterruptedException {
         switch (this.gTLCore$calculationMode) {
-            case ADAPTIVE -> ((ICraftingTreeNode) tree).adaptiveRequest(craftingInventory, amount, containerItems);
+            case MAX_FAST -> ((ICraftingTreeNode) tree).maxFastRequest(craftingInventory, amount, containerItems);
             case ULTRA_FAST -> ((ICraftingTreeNode) tree).ultraFastRequest(craftingInventory, amount, containerItems);
             case FAST -> ((ICraftingTreeNode) tree).fastRequest(craftingInventory, amount, containerItems);
             case LEGACY -> ((ICraftingTreeNode) tree).legacyRequest(craftingInventory, amount, containerItems);
@@ -300,98 +317,137 @@ public abstract class CraftingCalculationMixin implements ICraftingCalculation {
     }
 
     @Unique
-    private ICraftingPlan gTLCore$computeAdaptivePlan() throws InterruptedException {
-        this.gTLCore$adaptiveRun = true;
-        this.gTLCore$smallJobBypassChecks = ConfigHolder.INSTANCE.ae2CraftingSmallJobBypassChecks;
-        TickHandler.instance().registerCraftingSimulation(this.level, (CraftingCalculation) (Object) this);
-        this.gTLCore$startSlice(gTLCore$initialBurstBudget());
-
-        var modes = ConfigHolder.INSTANCE.ae2CraftingFallbackOnFailure ?
-                new AE2CalculationMode[] { AE2CalculationMode.ADAPTIVE, AE2CalculationMode.FAST, AE2CalculationMode.LEGACY } :
-                new AE2CalculationMode[] { AE2CalculationMode.ADAPTIVE };
-        RuntimeException lastFailure = null;
-
-        for (int i = 0; i < modes.length; i++) {
-            this.gTLCore$calculationMode = modes[i];
-            if (i > 0) {
-                this.gTLCore$resetForRetry();
-            }
-
-            try {
-                var plan = this.computePlan();
-                return plan;
-            } catch (RuntimeException ex) {
-                lastFailure = ex;
-                if (i == modes.length - 1) {
-                    throw ex;
-                }
-
-                AELog.warn(
-                        "AE2 adaptive crafting calculation for %s x%d failed in %s, retrying with %s.",
-                        this.output,
-                        this.requestedAmount,
-                        modes[i],
-                        modes[i + 1]);
-            }
-        }
-
-        throw lastFailure == null ? new IllegalStateException("Adaptive crafting calculation did not produce a plan.") : lastFailure;
-    }
-
-    @Unique
-    private void gTLCore$startSlice(int micros) {
-        synchronized (this.monitor) {
-            this.time = gTLCore$normalizeBudget(micros);
-            if (this.watch.isRunning()) {
-                this.watch.stop();
-            }
-            this.watch.reset();
-            this.watch.start();
-            this.running = true;
-            this.monitor.notifyAll();
-        }
-    }
-
-    @Unique
-    private void gTLCore$resetForRetry() {
-        this.missing.clear();
-        this.gTLCore$clearAttemptState();
-        ((ICraftingTreeNode) this.tree).gtlcore$resetAdaptiveState();
-        this.gTLCore$smallJobBypassChecks = ConfigHolder.INSTANCE.ae2CraftingSmallJobBypassChecks;
-        this.gTLCore$startSlice(gTLCore$latencyBudget());
-    }
-
-    @Unique
     private void gTLCore$clearAttemptState() {
         this.gTLCore$templateCache.clear();
-        this.gTLCore$failedBranches.clear();
-        this.gTLCore$branchSuccesses.clear();
+        this.gTLCore$maxFastFailedBranches.clear();
+        this.gTLCore$maxFastPreferredBranches.clear();
     }
 
     @Unique
-    private static int gTLCore$minBudget() {
-        return Math.max(1, ConfigHolder.INSTANCE.ae2CraftingMinBudgetMicros);
+    private void gTLCore$startCraftingLog() {
+        this.gTLCore$craftingLogCounters.reset();
+        this.gTLCore$craftingCalculationLogEnabled = ConfigHolder.INSTANCE.ae2CraftingCalculationLogEnabled;
+        if (!this.gTLCore$craftingCalculationLogEnabled) {
+            return;
+        }
+
+        this.gTLCore$craftingLogId = AE2CraftingCalculationLogger.nextId();
+        this.gTLCore$craftingLogStartedNanos = System.nanoTime();
+        AE2CraftingCalculationLogger.writeStart(
+                this.gTLCore$craftingLogId,
+                this.gTLCore$calculationMode,
+                this.output,
+                this.requestedAmount,
+                this.level);
     }
 
     @Unique
-    private static int gTLCore$maxBudget() {
-        return Math.max(gTLCore$minBudget(), ConfigHolder.INSTANCE.ae2CraftingMaxBudgetMicros);
+    private void gTLCore$finishCraftingLog(ICraftingPlan plan, String source) {
+        if (!this.gTLCore$craftingCalculationLogEnabled) {
+            return;
+        }
+
+        AE2CraftingCalculationLogger.writeSuccess(
+                this.gTLCore$craftingLogId,
+                this.gTLCore$craftingLogStartedNanos,
+                source,
+                this.gTLCore$calculationMode,
+                this.output,
+                this.requestedAmount,
+                this.level,
+                plan,
+                this.gTLCore$craftingLogCounters);
     }
 
     @Unique
-    private static int gTLCore$latencyBudget() {
-        return Math.max(gTLCore$maxBudget(), ConfigHolder.INSTANCE.ae2CraftingIdleBudgetMicros);
+    private void gTLCore$failCraftingLog(Throwable error) {
+        if (!this.gTLCore$craftingCalculationLogEnabled) {
+            return;
+        }
+
+        AE2CraftingCalculationLogger.writeFailure(
+                this.gTLCore$craftingLogId,
+                this.gTLCore$craftingLogStartedNanos,
+                this.gTLCore$calculationMode,
+                this.output,
+                this.requestedAmount,
+                this.level,
+                this.missing,
+                error,
+                this.gTLCore$craftingLogCounters);
     }
 
     @Unique
-    private static int gTLCore$initialBurstBudget() {
-        int burstBudget = ConfigHolder.INSTANCE.ae2CraftingInitialBurstMicros;
-        return burstBudget <= 0 ? gTLCore$latencyBudget() : Math.max(gTLCore$latencyBudget(), burstBudget);
+    private ICraftingPlan gTLCore$getCachedPlan() {
+        if (this.gTLCore$calculationMode != AE2CalculationMode.MAX_FAST) {
+            return null;
+        }
+
+        var gridNode = this.simRequester.getGridNode();
+        if (gridNode == null) {
+            return null;
+        }
+
+        IGrid grid = gridNode.getGrid();
+        return AE2CraftingPlanCache.get(
+                grid,
+                gTLCore$getStorageVersion(grid),
+                this.level.dimension().location(),
+                this.output,
+                this.requestedAmount,
+                this.strategy,
+                this.gTLCore$calculationMode);
     }
 
     @Unique
-    private static int gTLCore$normalizeBudget(int micros) {
-        return Math.max(gTLCore$minBudget(), Math.min(gTLCore$initialBurstBudget(), micros));
+    private void gTLCore$cachePlan(ICraftingPlan plan) {
+        if (this.gTLCore$calculationMode != AE2CalculationMode.MAX_FAST) {
+            return;
+        }
+
+        var gridNode = this.simRequester.getGridNode();
+        if (gridNode == null) {
+            return;
+        }
+
+        IGrid grid = gridNode.getGrid();
+        AE2CraftingPlanCache.put(
+                grid,
+                gTLCore$getStorageVersion(grid),
+                this.level.dimension().location(),
+                this.output,
+                this.requestedAmount,
+                this.strategy,
+                this.gTLCore$calculationMode,
+                plan);
+    }
+
+    @Unique
+    private ICraftingPlan gTLCore$tryFastPlan() {
+        if (this.gTLCore$calculationMode != AE2CalculationMode.MAX_FAST) {
+            return null;
+        }
+
+        var gridNode = this.simRequester.getGridNode();
+        if (gridNode == null) {
+            return null;
+        }
+
+        return FastCraftingCalculation.tryBuild(
+                this.level,
+                gridNode.getGrid(),
+                this.output,
+                this.requestedAmount,
+                this.strategy);
+    }
+
+    @Unique
+    private static long gTLCore$getStorageVersion(IGrid grid) {
+        var storageService = grid.getStorageService();
+        if (storageService instanceof ICraftingStorageVersion versionedStorage) {
+            return versionedStorage.gtlcore$getStorageVersion();
+        }
+        return 0;
     }
 
     @Unique
@@ -440,11 +496,13 @@ public abstract class CraftingCalculationMixin implements ICraftingCalculation {
         private final AEKey output;
         private final Object pattern;
         private final AE2CalculationMode mode;
+        private final int hash;
 
         private BranchKey(AEKey output, IPatternDetails details, AE2CalculationMode mode) {
             this.output = output;
             this.pattern = details.getDefinition();
             this.mode = mode;
+            this.hash = Objects.hash(this.output, this.pattern, this.mode);
         }
 
         @Override
@@ -457,7 +515,7 @@ public abstract class CraftingCalculationMixin implements ICraftingCalculation {
 
         @Override
         public int hashCode() {
-            return Objects.hash(this.output, this.pattern, this.mode);
+            return this.hash;
         }
     }
 }
