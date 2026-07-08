@@ -199,6 +199,36 @@ public class MEStockingPatternBufferPartMachine extends MEPatternBufferPartMachi
     }
 
     protected void syncStockInput() {
+        // No active pattern slots means no recipe can currently run here or in bound proxies.
+        // Sync stock for the UI, but skip the expensive before/after comparison and notification.
+        if (!hasActiveSlot()) {
+            performStockSync();
+            return;
+        }
+
+        var oldItemStock = new Object2LongOpenHashMap<>(stockItemHandler.stockMap);
+        var oldFluidStock = new Object2LongOpenHashMap<>(stockFluidHandler.stockMap);
+
+        performStockSync();
+
+        boolean changed = !oldItemStock.equals(stockItemHandler.stockMap) || !oldFluidStock.equals(stockFluidHandler.stockMap);
+        if (changed) {
+            recipeHandler.getMeItemHandler().notifyListeners();
+            recipeHandler.getMeFluidHandler().notifyListeners();
+        }
+    }
+
+    private boolean hasActiveSlot() {
+        int count = getInternalSlotCount();
+        for (int i = 0; i < count; i++) {
+            if (getInternalSlot(i).isActive()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void performStockSync() {
         IGrid grid = this.getMainNode().getGrid();
         if (grid == null) {
             stockItemHandler.clearStocks();
