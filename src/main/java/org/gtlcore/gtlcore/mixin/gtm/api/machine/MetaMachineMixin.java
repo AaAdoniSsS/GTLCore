@@ -97,6 +97,21 @@ public abstract class MetaMachineMixin implements IPerformanceDisplayMachine, IS
     @Shadow(remap = false)
     public abstract void onChanged();
 
+    @Inject(method = "onChanged", at = @At("HEAD"), cancellable = true, remap = false)
+    private void gtlcore$moveAsyncOnChangedToServerThread(CallbackInfo ci) {
+        Level level = getLevel();
+        if (!(level instanceof ServerLevel serverLevel)) return;
+        MinecraftServer server = serverLevel.getServer();
+        if (server.isSameThread()) return;
+        if (!AsyncThreadData.isThreadService()) return;
+        ci.cancel();
+        server.tell(new TickTask(server.getTickCount(), () -> {
+            if (!isInValid()) {
+                onChanged();
+            }
+        }));
+    }
+
     @Override
     public int gtlcore$getTickTime() {
         return gtlcore$averageTickTime;
