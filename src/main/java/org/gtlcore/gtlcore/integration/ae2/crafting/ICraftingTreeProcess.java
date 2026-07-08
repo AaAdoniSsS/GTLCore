@@ -7,11 +7,11 @@ import appeng.crafting.inv.CraftingSimulationState;
 
 public interface ICraftingTreeProcess {
 
-    void adaptiveRequest(CraftingSimulationState inv, long times) throws CraftBranchFailure, InterruptedException;
-
     void fastRequest(CraftingSimulationState inv, long times) throws CraftBranchFailure, InterruptedException;
 
     void ultraFastRequest(CraftingSimulationState inv, long times) throws CraftBranchFailure, InterruptedException;
+
+    void maxFastRequest(CraftingSimulationState inv, long times) throws CraftBranchFailure, InterruptedException;
 
     IPatternDetails getDetails();
 
@@ -23,5 +23,5 @@ public interface ICraftingTreeProcess {
 
     boolean limitsQuantityTest();
 
-    void gtlcore$resetAdaptiveState();
+    void gtlcore$resetFastState();
 }

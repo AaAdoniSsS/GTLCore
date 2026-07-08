@@ -31,6 +31,7 @@ import appeng.api.crafting.PatternDetailsHelper;
 import appeng.api.inventories.InternalInventory;
 import appeng.api.networking.IGrid;
 import appeng.api.networking.IGridNode;
+import appeng.api.stacks.AEItemKey;
 import appeng.blockentity.crafting.IMolecularAssemblerSupportedPattern;
 import appeng.crafting.pattern.AEProcessingPattern;
 import appeng.helpers.patternprovider.PatternContainer;
@@ -77,7 +78,7 @@ public final class PatternQuickUploadService {
         if (targets.isEmpty()) {
             return SearchResult.fail(Component.translatable("message.gtlcore.pattern_quick_upload_no_target"));
         }
-        return SearchResult.success(PatternQuickUploadMatch.select(targets));
+        return SearchResult.success(selectTargets(targets));
     }
 
     public static boolean insertIntoTarget(ServerPlayer player, ItemStack patternStack, BlockPos targetPos) {
@@ -89,15 +90,37 @@ public final class PatternQuickUploadService {
     }
 
     public static int insertIntoTargetSlot(ServerPlayer player, ItemStack patternStack, Target target) {
-        return insertIntoTargetSlot(player, patternStack, target.levelKey(), target.bufferPos());
+        UploadResult result = insertIntoTargetSlotResult(player, patternStack, target);
+        return result == null ? -1 : result.slot();
+    }
+
+    @Nullable
+    public static UploadResult insertIntoTargetSlotResult(ServerPlayer player, ItemStack patternStack, Target target) {
+        for (BlockPos bufferPos : target.bufferPositions()) {
+            int slot = insertIntoTargetSlot(player, patternStack, target.levelKey(), bufferPos);
+            if (slot >= 0) {
+                return new UploadResult(target.withSingleBufferPos(bufferPos), slot);
+            }
+        }
+        return null;
     }
 
     public static boolean removeFromTarget(ServerPlayer player, ItemStack patternStack, Target target) {
-        return removeFromTarget(player, patternStack, target.levelKey(), target.bufferPos());
+        for (BlockPos bufferPos : target.bufferPositions()) {
+            if (removeFromTarget(player, patternStack, target.levelKey(), bufferPos)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static boolean removeFromTarget(ServerPlayer player, ItemStack patternStack, Target target, int slot) {
-        return removeFromTarget(player, patternStack, target.levelKey(), target.bufferPos(), slot);
+        for (BlockPos bufferPos : target.bufferPositions()) {
+            if (removeFromTarget(player, patternStack, target.levelKey(), bufferPos, slot)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static int insertIntoTargetSlot(ServerPlayer player, ItemStack patternStack,
@@ -184,6 +207,77 @@ public final class PatternQuickUploadService {
         collectTargetsFromLoadedMultiblocks(player.serverLevel(), grid, patternStack, patternDetails, recipeTypeIds,
                 targets, seen);
         return targets;
+    }
+
+    private static PatternQuickUploadMatch<Target> selectTargets(List<Target> targets) {
+        return PatternQuickUploadMatch.select(collapseEquivalentAssemblyTargetsByGroup(targets));
+    }
+
+    private static List<Target> collapseEquivalentAssemblyTargetsByGroup(List<Target> targets) {
+        if (targets.size() <= 1) {
+            return targets;
+        }
+
+        Map<TargetGroupKey, List<Target>> targetsByGroup = new LinkedHashMap<>();
+        List<List<Target>> orderedGroups = new ArrayList<>();
+        for (Target target : targets) {
+            TargetGroupKey groupKey = groupKey(target);
+            if (groupKey == null) {
+                orderedGroups.add(new ArrayList<>(List.of(target)));
+                continue;
+            }
+            List<Target> groupTargets = targetsByGroup.get(groupKey);
+            if (groupTargets == null) {
+                groupTargets = new ArrayList<>();
+                targetsByGroup.put(groupKey, groupTargets);
+                orderedGroups.add(groupTargets);
+            }
+            groupTargets.add(target);
+        }
+
+        List<Target> collapsedTargets = new ArrayList<>(orderedGroups.size());
+        for (List<Target> groupTargets : orderedGroups) {
+            Target collapsedTarget = groupTargets.size() == 1 ? groupTargets.get(0) : mergeTargets(groupTargets);
+            if (groupTargets.size() > 1) {
+                GTLCore.LOGGER.debug("{} collapsed {} equivalent targets into {} buffer positions for recipeType={} name={}",
+                        LOG_PREFIX,
+                        groupTargets.size(),
+                        collapsedTarget.bufferPositions().size(),
+                        collapsedTarget.recipeTypeId(),
+                        collapsedTarget.targetName().getString());
+            }
+            collapsedTargets.add(collapsedTarget);
+        }
+        return collapsedTargets;
+    }
+
+    @Nullable
+    private static TargetGroupKey groupKey(Target target) {
+        if (target.targetMachineId() == null) {
+            return null;
+        }
+        return new TargetGroupKey(
+                target.levelKey(),
+                target.recipeTypeId(),
+                target.targetName().getString(),
+                target.targetMachineId());
+    }
+
+    private static Target mergeTargets(List<Target> targets) {
+        Target firstTarget = targets.get(0);
+        LinkedHashSet<BlockPos> bufferPositions = new LinkedHashSet<>();
+        for (Target target : targets) {
+            bufferPositions.addAll(target.bufferPositions());
+        }
+        return new Target(
+                firstTarget.levelKey(),
+                firstTarget.bufferPos(),
+                firstTarget.targetName(),
+                firstTarget.recipeTypeId(),
+                firstTarget.recipeTypeName(),
+                firstTarget.targetIcon(),
+                firstTarget.targetMachineId(),
+                List.copyOf(bufferPositions));
     }
 
     private static void collectTargetsFromGrid(IGrid grid, ItemStack patternStack, IPatternDetails patternDetails,
@@ -380,18 +474,22 @@ public final class PatternQuickUploadService {
             }
             TargetKey key = new TargetKey(levelKey, buffer.getPos(), recipeType.registryName);
             if (seen.add(key)) {
+                var terminalGroup = buffer.getTerminalGroup();
+                ResourceLocation targetMachineId = targetMachineId(controllers, terminalGroup.icon());
                 targets.add(new Target(
                         levelKey,
                         buffer.getPos(),
-                        buffer.getTerminalGroup().name(),
+                        terminalGroup.name(),
                         recipeType.registryName,
-                        recipeTypeName(recipeType)));
+                        recipeTypeName(recipeType),
+                        terminalGroup.icon(),
+                        targetMachineId));
                 GTLCore.LOGGER.debug("{} accepted target {} {} recipeType={} name={}",
                         LOG_PREFIX,
                         levelKey.location(),
                         buffer.getPos(),
                         recipeType.registryName,
-                        buffer.getTerminalGroup().name().getString());
+                        terminalGroup.name().getString());
             }
         }
     }
@@ -412,7 +510,8 @@ public final class PatternQuickUploadService {
                     molecularAssembler.getPos());
             return;
         }
-        if (!hasFormedController(molecularAssembler.getControllers())) {
+        List<IMultiController> controllers = molecularAssembler.getControllers();
+        if (!hasFormedController(controllers)) {
             GTLCore.LOGGER.debug("{} skipped molecular assembler {} {}: no formed controller",
                     LOG_PREFIX,
                     levelKey.location(),
@@ -432,18 +531,22 @@ public final class PatternQuickUploadService {
             }
             TargetKey key = new TargetKey(levelKey, molecularAssembler.getPos(), recipeTypeId);
             if (seen.add(key)) {
+                var terminalGroup = molecularAssembler.getTerminalGroup();
+                ResourceLocation targetMachineId = targetMachineId(controllers, terminalGroup.icon());
                 targets.add(new Target(
                         levelKey,
                         molecularAssembler.getPos(),
-                        molecularAssembler.getTerminalGroup().name(),
+                        terminalGroup.name(),
                         recipeTypeId,
-                        PatternQuickUploadMetadata.recipeTypeName(recipeTypeId)));
+                        PatternQuickUploadMetadata.recipeTypeName(recipeTypeId),
+                        terminalGroup.icon(),
+                        targetMachineId));
                 GTLCore.LOGGER.debug("{} accepted molecular assembler target {} {} recipeType={} name={}",
                         LOG_PREFIX,
                         levelKey.location(),
                         molecularAssembler.getPos(),
                         recipeTypeId,
-                        molecularAssembler.getTerminalGroup().name().getString());
+                        terminalGroup.name().getString());
             }
         }
     }
@@ -455,6 +558,17 @@ public final class PatternQuickUploadService {
             }
         }
         return false;
+    }
+
+    @Nullable
+    private static ResourceLocation targetMachineId(Iterable<IMultiController> controllers,
+                                                    @Nullable AEItemKey fallbackIcon) {
+        for (IMultiController controller : controllers) {
+            if (controller != null && controller.isFormed()) {
+                return controller.self().getDefinition().getId();
+            }
+        }
+        return fallbackIcon == null ? null : fallbackIcon.getId();
     }
 
     private static boolean isOnCurrentGrid(IGrid grid, ResourceKey<Level> levelKey, MEIOPartMachine machine) {
@@ -635,8 +749,54 @@ public final class PatternQuickUploadService {
         }
     }
 
+    public record UploadResult(Target target, int slot) {}
+
     public record Target(ResourceKey<Level> levelKey, BlockPos bufferPos, Component targetName, ResourceLocation recipeTypeId,
-                         Component recipeTypeName) {}
+                         Component recipeTypeName, @Nullable AEItemKey targetIcon,
+                         @Nullable ResourceLocation targetMachineId, List<BlockPos> bufferPositions) {
+
+        public Target {
+            Objects.requireNonNull(levelKey, "levelKey");
+            Objects.requireNonNull(bufferPos, "bufferPos");
+            Objects.requireNonNull(targetName, "targetName");
+            Objects.requireNonNull(recipeTypeId, "recipeTypeId");
+            Objects.requireNonNull(recipeTypeName, "recipeTypeName");
+            List<BlockPos> safeBufferPositions = bufferPositions == null || bufferPositions.isEmpty() ?
+                    List.of(bufferPos) :
+                    bufferPositions;
+            bufferPositions = List.copyOf(safeBufferPositions);
+        }
+
+        public Target(ResourceKey<Level> levelKey, BlockPos bufferPos, Component targetName,
+                      ResourceLocation recipeTypeId, Component recipeTypeName) {
+            this(levelKey, bufferPos, targetName, recipeTypeId, recipeTypeName, null, null, List.of(bufferPos));
+        }
+
+        public Target(ResourceKey<Level> levelKey, BlockPos bufferPos, Component targetName,
+                      ResourceLocation recipeTypeId, Component recipeTypeName, AEItemKey targetIcon) {
+            this(levelKey, bufferPos, targetName, recipeTypeId, recipeTypeName, targetIcon,
+                    targetIcon == null ? null : targetIcon.getId(), List.of(bufferPos));
+        }
+
+        public Target(ResourceKey<Level> levelKey, BlockPos bufferPos, Component targetName,
+                      ResourceLocation recipeTypeId, Component recipeTypeName, AEItemKey targetIcon,
+                      @Nullable ResourceLocation targetMachineId) {
+            this(levelKey, bufferPos, targetName, recipeTypeId, recipeTypeName, targetIcon, targetMachineId,
+                    List.of(bufferPos));
+        }
+
+        private Target withSingleBufferPos(BlockPos bufferPos) {
+            return new Target(levelKey, bufferPos, targetName, recipeTypeId, recipeTypeName, targetIcon, targetMachineId,
+                    List.of(bufferPos));
+        }
+
+        public boolean showsSinglePosition() {
+            return bufferPositions.size() == 1;
+        }
+    }
 
     private record TargetKey(ResourceKey<Level> levelKey, BlockPos bufferPos, ResourceLocation recipeTypeId) {}
+
+    private record TargetGroupKey(ResourceKey<Level> levelKey, ResourceLocation recipeTypeId, String targetName,
+                                  ResourceLocation targetMachineId) {}
 }

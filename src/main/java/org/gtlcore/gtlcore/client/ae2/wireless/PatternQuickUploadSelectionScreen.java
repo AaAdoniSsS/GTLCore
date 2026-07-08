@@ -258,6 +258,12 @@ public class PatternQuickUploadSelectionScreen extends AbstractContainerScreen<P
     }
 
     private static Component targetLine(PatternQuickUploadSelectionMenu.Entry entry) {
+        if (!entry.showPosition()) {
+            return Component.translatable(
+                    "label.gtlcore.pattern_quick_upload_target_without_position",
+                    entry.targetName(),
+                    Component.literal(entry.levelKey().location().toString()));
+        }
         return Component.translatable(
                 "label.gtlcore.pattern_quick_upload_target",
                 entry.targetName(),

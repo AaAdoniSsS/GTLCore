@@ -42,7 +42,8 @@ public class PatternQuickUploadSelectionMenu extends AbstractContainerMenu {
                     data.readBlockPos(),
                     data.readComponent(),
                     data.readResourceLocation(),
-                    data.readComponent()));
+                    data.readComponent(),
+                    data.readBoolean()));
         }
     }
 
@@ -62,7 +63,8 @@ public class PatternQuickUploadSelectionMenu extends AbstractContainerMenu {
                         target.bufferPos(),
                         target.targetName(),
                         target.recipeTypeId(),
-                        target.recipeTypeName()))
+                        target.recipeTypeName(),
+                        target.showsSinglePosition()))
                 .toList();
 
         NetworkHooks.openScreen(
@@ -144,9 +146,16 @@ public class PatternQuickUploadSelectionMenu extends AbstractContainerMenu {
             buffer.writeComponent(entry.targetName());
             buffer.writeResourceLocation(entry.recipeTypeId());
             buffer.writeComponent(entry.recipeTypeName());
+            buffer.writeBoolean(entry.showPosition());
         }
     }
 
     public record Entry(ResourceKey<Level> levelKey, BlockPos bufferPos, Component targetName, ResourceLocation recipeTypeId,
-                        Component recipeTypeName) {}
+                        Component recipeTypeName, boolean showPosition) {
+
+        public Entry(ResourceKey<Level> levelKey, BlockPos bufferPos, Component targetName, ResourceLocation recipeTypeId,
+                     Component recipeTypeName) {
+            this(levelKey, bufferPos, targetName, recipeTypeId, recipeTypeName, true);
+        }
+    }
 }

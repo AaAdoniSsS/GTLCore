@@ -41,6 +41,7 @@ public class ConfigHolder {
     @Configurable.Range(min = 1)
     public int travelStaffCD = 2;
     @Configurable
+    @Configurable.Comment({ "更大的数值会让界面显示有问题，推荐在样板管理终端管理" })
     @Configurable.Range(min = 36, max = 360)
     public int exPatternProvider = 36;
     @Configurable
@@ -72,25 +73,14 @@ public class ConfigHolder {
     @Configurable.Range(min = 1, max = 16)
     public int ae2StorageServiceUpdateInterval = 8;
     @Configurable
-    @Configurable.Comment("AE2合成计算模式: ADAPTIVE(自适应), LEGACY(原版), FAST(快速), ULTRA_FAST(最快)")
-    public AE2CalculationMode ae2CalculationMode = AE2CalculationMode.ADAPTIVE;
+    @Configurable.Comment("AE2合成计算模式: LEGACY(原版), FAST(快速), ULTRA_FAST(极快), MAX_FAST(最快)")
+    public AE2CalculationMode ae2CalculationMode = AE2CalculationMode.MAX_FAST;
     @Configurable
-    @Configurable.Range(min = 1)
-    public int ae2CraftingMinBudgetMicros = 500;
+    @Configurable.Comment("Write AE2 crafting calculation diagnostics to logs/gtlcore-ae2-crafting-<timestamp>.log")
+    public boolean ae2CraftingCalculationLogEnabled = false;
     @Configurable
-    @Configurable.Range(min = 1)
-    public int ae2CraftingMaxBudgetMicros = 5000;
-    @Configurable
-    @Configurable.Range(min = 1)
-    public int ae2CraftingIdleBudgetMicros = 20000;
-    @Configurable
-    @Configurable.Range(min = 0)
-    public int ae2CraftingInitialBurstMicros = 1000000;
-    @Configurable
-    @Configurable.Range(min = 0)
-    public int ae2CraftingSmallJobBypassChecks = 256;
-    @Configurable
-    public boolean ae2CraftingFallbackOnFailure = true;
+    @Configurable.Comment("允许普通AE2/扩展样板供应器使用智能翻倍")
+    public boolean enableAe2PatternProviderAutoExpand = true;
     @Configurable
     @Configurable.Comment("编写多方块结构样板过滤的仓室")
     public String[] filterHatch = new String[] { "input_bus", "output_bus", "item_import_bus", "item_export_bus", "input_hatch", "output_hatch", "energy_input_hatch", "energy_output_hatch", "laser_target_hatch", "laser_source_hatch", "computation_transmitter_hatch", "computation_receiver_hatch", "data_transmitter_hatch", "data_receiver_hatch", "maintenance", "muffler", "rotor_holder" };

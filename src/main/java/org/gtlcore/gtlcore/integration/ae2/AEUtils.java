@@ -4,6 +4,7 @@ import org.gtlcore.gtlcore.api.recipe.ingredient.CacheHashStrategies;
 import org.gtlcore.gtlcore.api.recipe.ingredient.LongIngredient;
 import org.gtlcore.gtlcore.config.AE2CalculationMode;
 import org.gtlcore.gtlcore.config.ConfigHolder;
+import org.gtlcore.gtlcore.utils.NumberUtils;
 
 import com.gregtechceu.gtceu.api.recipe.ingredient.FluidIngredient;
 import com.gregtechceu.gtceu.common.data.GTItems;
@@ -267,6 +268,10 @@ public class AEUtils {
         return ConfigHolder.INSTANCE.ae2CalculationMode;
     }
 
+    public static boolean isIntegratedCircuit(AEKey key) {
+        return key instanceof AEItemKey itemKey && GTItems.INTEGRATED_CIRCUIT.is(itemKey.getItem());
+    }
+
     public static void pushInputsToMEPatternBufferInventory(KeyCounter[] inputHolder, IPatternDetails.PatternInputSink inputSink) {
         for (var inputList : inputHolder) {
             for (var input : inputList) {
@@ -292,7 +297,7 @@ public class AEUtils {
         for (int x = 0; x < inputs.length; x++) {
             var list = inputHolder[x] = new KeyCounter();
             AEKey key = inputs[x].getPossibleInputs()[0].what();
-            long amount = inputs[x].getMultiplier() * multiplier;
+            long amount = NumberUtils.saturatedMultiply(inputs[x].getMultiplier(), multiplier);
             long extracted = AEUtils.extractTemplates(sourceInv, key, amount);
             list.add(key, extracted);
             if (extracted < amount) {
@@ -306,7 +311,7 @@ public class AEUtils {
             return null;
         } else {
             for (GenericStack output : originDetail.getOutputs()) {
-                expectedOutputs.add(output.what(), output.amount() * multiplier);
+                expectedOutputs.add(output.what(), NumberUtils.saturatedMultiply(output.amount(), multiplier));
             }
             return inputHolder;
         }

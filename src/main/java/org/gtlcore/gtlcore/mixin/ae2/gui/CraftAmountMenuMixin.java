@@ -10,12 +10,14 @@ import net.minecraft.world.inventory.MenuType;
 
 import appeng.api.networking.crafting.CalculationStrategy;
 import appeng.api.stacks.AEKey;
+import appeng.api.stacks.GenericStack;
 import appeng.api.storage.ISubMenuHost;
 import appeng.menu.AEBaseMenu;
 import appeng.menu.ISubMenu;
 import appeng.menu.MenuOpener;
 import appeng.menu.me.crafting.CraftAmountMenu;
 import appeng.menu.me.crafting.CraftConfirmMenu;
+import appeng.menu.slot.AppEngSlot;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -24,11 +26,17 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import java.util.Objects;
+
 @Mixin(CraftAmountMenu.class)
 public abstract class CraftAmountMenuMixin extends AEBaseMenu implements ILongCraftAmountMenu {
 
     @Shadow(remap = false)
     private AEKey whatToCraft;
+
+    @Shadow(remap = false)
+    @Final
+    private AppEngSlot craftingItem;
 
     @Shadow(remap = false)
     @Final
@@ -74,6 +82,12 @@ public abstract class CraftAmountMenuMixin extends AEBaseMenu implements ILongCr
         } else {
             this.host.returnToMainMenu(player, (ISubMenu) (Object) this);
         }
+    }
+
+    @Override
+    public void gtlcore$setLongWhatToCraft(AEKey whatToCraft, long amount) {
+        this.whatToCraft = Objects.requireNonNull(whatToCraft, "whatToCraft");
+        this.craftingItem.set(GenericStack.wrapInItemStack(whatToCraft, amount));
     }
 
     @Unique
