@@ -486,5 +486,11 @@
   "message.gtlcore.wireless_bookmark.saved": "Favorite wireless ME network set to: %s",
   "message.gtlcore.wireless_bookmark.favorite_unavailable": "The favorite wireless ME network is not available.",
   "tooltip.gtlcore.wireless_bookmark.quick_connect": "Sneak while placing an ME hatch to quickly connect it to the favorite ME network",
+  "item.gtlcore.throughput_monitor": "ME Throughput Monitor",
+  "item.gtlcore.throughput_monitor_configurator": "Throughput Monitor Configurator",
+  "gui.gtlcore.throughput_monitor_value": "%s%s/s",
+  "gui.gtlcore.throughput_monitor_value_tick": "%s%s/t",
+  "gui.gtlcore.throughput_monitor_value_minute": "%s%s/m",
+  "gui.gtlcore.throughput_monitor_value_ten_minutes": "%s%s/10m",
   "gtlcore.machine.wireless_energy_monitor.tooltip.hidden_entries": "%s more wireless energy entries hidden"
 }

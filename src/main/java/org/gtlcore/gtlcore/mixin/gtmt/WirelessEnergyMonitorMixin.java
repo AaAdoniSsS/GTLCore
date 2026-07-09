@@ -1,6 +1,7 @@
 package org.gtlcore.gtlcore.mixin.gtmt;
 
 import org.gtlcore.gtlcore.integration.gtmt.WirelessEnergyDisplayTextLimiter;
+import org.gtlcore.gtlcore.integration.gtmt.WirelessEnergyMonitorSnapshot;
 
 import com.gregtechceu.gtceu.api.GTValues;
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
@@ -184,12 +185,13 @@ public abstract class WirelessEnergyMonitorMixin extends MetaMachine {
     @Unique
     private List<Map.Entry<Pair<UUID, MetaMachine>, Long>> gtlcore$getVisibleEnergyEntries() {
         int maxVisibleEntries = WirelessEnergyDisplayTextLimiter.DEFAULT_MAX_VISIBLE_ENTRIES;
+        WirelessEnergyMonitorSnapshot.Snapshot snapshot = WirelessEnergyMonitorSnapshot.drain();
         Comparator<Map.Entry<Pair<UUID, MetaMachine>, Long>> byValue = Map.Entry.comparingByValue();
         PriorityQueue<Map.Entry<Pair<UUID, MetaMachine>, Long>> visibleEntries = new PriorityQueue<>(
                 Math.max(1, maxVisibleEntries), byValue.reversed());
 
         int matchingEntryCount = 0;
-        for (Map.Entry<Pair<UUID, MetaMachine>, Long> entry : WirelessEnergyManager.MachineData.entrySet()) {
+        for (Map.Entry<Pair<UUID, MetaMachine>, Long> entry : snapshot.entries()) {
             if (!gtlcore$shouldShowEnergyEntry(entry.getKey().getFirst())) {
                 continue;
             }
@@ -207,13 +209,13 @@ public abstract class WirelessEnergyMonitorMixin extends MetaMachine {
                 visibleEntries.offer(entryCopy);
             }
         }
-        WirelessEnergyManager.MachineData.clear();
 
         List<Map.Entry<Pair<UUID, MetaMachine>, Long>> orderedEntries = new ArrayList<>(visibleEntries);
         orderedEntries.sort(byValue);
         List<Map.Entry<Pair<UUID, MetaMachine>, Long>> limitedEntries = WirelessEnergyDisplayTextLimiter
                 .limit(orderedEntries, maxVisibleEntries);
-        gtlcore$hiddenEnergyEntryCount = WirelessEnergyDisplayTextLimiter.hiddenEntryCount(matchingEntryCount,
+        int trackedEntryCount = matchingEntryCount + (all ? snapshot.overflowEntryCount() : 0);
+        gtlcore$hiddenEnergyEntryCount = WirelessEnergyDisplayTextLimiter.hiddenEntryCount(trackedEntryCount,
                 limitedEntries.size());
         return List.copyOf(limitedEntries);
     }

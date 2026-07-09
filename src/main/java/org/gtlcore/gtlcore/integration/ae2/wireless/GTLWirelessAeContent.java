@@ -3,6 +3,7 @@ package org.gtlcore.gtlcore.integration.ae2.wireless;
 import org.gtlcore.gtlcore.GTLCore;
 import org.gtlcore.gtlcore.common.data.GTLCreativeModeTabs;
 import org.gtlcore.gtlcore.integration.ae2.pattern.PatternQuickUploadSelectionMenu;
+import org.gtlcore.gtlcore.integration.ae2.throughput.METhroughputMonitorPart;
 
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.BlockItem;
@@ -16,6 +17,8 @@ import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.registries.DeferredRegister;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.registries.RegistryObject;
+
+import appeng.items.parts.PartItem;
 
 public final class GTLWirelessAeContent {
 
@@ -39,6 +42,17 @@ public final class GTLWirelessAeContent {
     public static final RegistryObject<Item> WIRELESS_NETWORK_BOOKMARK_ITEM = ITEMS.register(
             "wireless_network_bookmark",
             () -> new BlockItem(WIRELESS_NETWORK_BOOKMARK.get(), new Item.Properties()));
+
+    public static final RegistryObject<PartItem<METhroughputMonitorPart>> THROUGHPUT_MONITOR = ITEMS.register(
+            "throughput_monitor",
+            () -> new PartItem<>(
+                    new Item.Properties(),
+                    METhroughputMonitorPart.class,
+                    METhroughputMonitorPart::new));
+
+    public static final RegistryObject<Item> THROUGHPUT_MONITOR_CONFIGURATOR = ITEMS.register(
+            "throughput_monitor_configurator",
+            () -> new Item(new Item.Properties()));
 
     public static final RegistryObject<BlockEntityType<WirelessNetworkCoreBlockEntity>> WIRELESS_NETWORK_CORE_BE = BLOCK_ENTITY_TYPES.register(
             "wireless_network_core",
@@ -84,6 +98,8 @@ public final class GTLWirelessAeContent {
         if (CreativeModeTabs.FUNCTIONAL_BLOCKS.equals(event.getTabKey()) || GTLCreativeModeTabs.GTL_CORE.getKey().equals(event.getTabKey())) {
             event.accept(WIRELESS_NETWORK_CORE_ITEM);
             event.accept(WIRELESS_NETWORK_BOOKMARK_ITEM);
+            event.accept(THROUGHPUT_MONITOR);
+            event.accept(THROUGHPUT_MONITOR_CONFIGURATOR);
         }
     }
 }

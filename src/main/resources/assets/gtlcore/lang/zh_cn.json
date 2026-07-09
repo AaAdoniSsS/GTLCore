@@ -486,5 +486,11 @@
   "message.gtlcore.wireless_bookmark.saved": "已收藏无线 ME 网络：%s",
   "message.gtlcore.wireless_bookmark.favorite_unavailable": "收藏的无线 ME 网络当前不可用。",
   "tooltip.gtlcore.wireless_bookmark.quick_connect": "蹲下放置 ME 仓室可以快捷连接收藏的 ME 网络",
+  "item.gtlcore.throughput_monitor": "ME吞吐量监控器",
+  "item.gtlcore.throughput_monitor_configurator": "吞吐量监控配置器",
+  "gui.gtlcore.throughput_monitor_value": "%s%s/s",
+  "gui.gtlcore.throughput_monitor_value_tick": "%s%s/t",
+  "gui.gtlcore.throughput_monitor_value_minute": "%s%s/m",
+  "gui.gtlcore.throughput_monitor_value_ten_minutes": "%s%s/10m",
   "gtlcore.machine.wireless_energy_monitor.tooltip.hidden_entries": "已省略 %s 条无线能源统计记录"
 }
