@@ -70,6 +70,7 @@ public final class WirelessAeNetworkRuntime {
     private static final Set<String> GTL_ME_TARGET_CLASSES = Set.of(
             "org.gtlcore.gtlcore.common.machine.multiblock.part.MEDualHatchStockPartMachine",
             "org.gtlcore.gtlcore.common.machine.multiblock.part.TagFilterMEStockBusPartMachine",
+            "org.gtlcore.gtlcore.common.machine.multiblock.part.TagFilterMEStockHatchPartMachine",
             "org.gtlcore.gtlcore.integration.wildcard.MEWildcardPatternBufferPartMachine");
     private static final Set<String> WIRELESS_ME_TARGET_IDS = Set.of(
             "me_input_bus",
@@ -97,6 +98,7 @@ public final class WirelessAeNetworkRuntime {
             "me_stocking_input_hatch",
             "me_output_hatch",
             "tag_filter_me_stock_bus_part_machine",
+            "tag_filter_me_stock_hatch_part_machine",
             "me_dual_hatch_stock_part_machine");
 
     public enum ConnectionResult {
