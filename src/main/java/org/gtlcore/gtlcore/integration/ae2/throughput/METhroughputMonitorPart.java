@@ -31,6 +31,7 @@ import appeng.api.orientation.BlockOrientation;
 import appeng.api.parts.IPartItem;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.AmountFormat;
+import appeng.api.storage.MEStorage;
 import appeng.api.util.AEColor;
 import appeng.client.render.BlockEntityRenderHelper;
 import appeng.hooks.ticking.TickHandler;
@@ -42,7 +43,7 @@ import org.joml.Matrix4f;
 
 import java.util.Locale;
 
-public class METhroughputMonitorPart extends StorageMonitorPart implements IGridTickable {
+public class METhroughputMonitorPart extends StorageMonitorPart implements IGridTickable, ThroughputMonitorStorageTracker.Listener {
 
     private static final String TAG_THROUGHPUT = "throughput";
     private static final String TAG_LAST_VALUE = "lastValue";
@@ -50,8 +51,10 @@ public class METhroughputMonitorPart extends StorageMonitorPart implements IGrid
 
     private static final int MIN_TICK_RATE = 20;
     private static final int MAX_TICK_RATE = 100;
-    private static final int MINUTE_SAMPLE_WINDOW_SECONDS = ThroughputCache.DEFAULT_MAX_SAMPLES / 2;
-    private static final int TEN_MINUTE_SAMPLE_WINDOW_SECONDS = ThroughputCache.DEFAULT_MAX_SAMPLES * 5;
+    private static final int TICK_SAMPLE_WINDOW_SECONDS = 10;
+    private static final int SECOND_SAMPLE_WINDOW_SECONDS = 20;
+    private static final int SECONDS_PER_MINUTE = 60;
+    private static final int TEN_MINUTE_SAMPLE_WINDOW_SECONDS = 10 * SECONDS_PER_MINUTE;
     private static final double WHOLE_AMOUNT_THRESHOLD = 10.0D;
     private static final String SMALL_AMOUNT_FORMAT = "%.2f";
 
@@ -82,6 +85,8 @@ public class METhroughputMonitorPart extends StorageMonitorPart implements IGrid
     private double lastReportedValue = 0.0D;
     private WorkRoutine workRoutine = DEFAULT_ROUTINE;
     private WorkRoutine lastWorkRoutine = DEFAULT_ROUTINE;
+    private MEStorage trackedStorage;
+    private long trackedStorageTopologyVersion = Long.MIN_VALUE;
 
     public METhroughputMonitorPart(IPartItem<?> partItem) {
         super(partItem);
@@ -130,10 +135,12 @@ public class METhroughputMonitorPart extends StorageMonitorPart implements IGrid
     @Override
     public boolean readFromStream(FriendlyByteBuf data) {
         boolean needRedraw = super.readFromStream(data);
+        double previousValue = lastReportedValue;
+        WorkRoutine previousRoutine = workRoutine;
         lastReportedValue = data.readDouble();
         workRoutine = data.readEnum(WorkRoutine.class);
         lastWorkRoutine = workRoutine;
-        return needRedraw;
+        return needRedraw || Double.compare(previousValue, lastReportedValue) != 0 || previousRoutine != workRoutine;
     }
 
     @Override
@@ -175,16 +182,19 @@ public class METhroughputMonitorPart extends StorageMonitorPart implements IGrid
         super.configureWatchers();
 
         if (getDisplayed() != null) {
-            updateState(getAmount(), TickHandler.instance().getCurrentTick());
+            startState();
+            registerStorageTracker();
             getMainNode().ifPresent((grid, node) -> grid.getTickManager().wakeDevice(node));
         } else {
             resetState();
+            unregisterStorageTracker();
             getMainNode().ifPresent((grid, node) -> grid.getTickManager().sleepDevice(node));
         }
     }
 
     @Override
     protected void onMainNodeStateChanged(IGridNodeListener.State reason) {
+        registerStorageTracker();
         getMainNode().ifPresent((grid, node) -> grid.getTickManager().wakeDevice(node));
         super.onMainNodeStateChanged(reason);
     }
@@ -198,21 +208,21 @@ public class METhroughputMonitorPart extends StorageMonitorPart implements IGrid
     public TickRateModulation tickingRequest(IGridNode node, int ticksSinceLastCall) {
         if (!getMainNode().isActive() || getDisplayed() == null) {
             resetState();
+            unregisterStorageTracker();
             return TickRateModulation.SLEEP;
         }
 
+        refreshVisibleStorageLinks();
         long currentTick = TickHandler.instance().getCurrentTick();
-        long currentAmount = getAmount();
-
-        if (cache.size() == 0) {
-            updateState(currentAmount, currentTick);
+        ThroughputCache.ThroughputSample sample = cache.sample(workRoutine.sampleWindowSeconds, currentTick);
+        if (workRoutine != lastWorkRoutine) {
             lastReportedValue = 0.0D;
-            return TickRateModulation.URGENT;
+        } else if (cache.hasRecordedChanges()) {
+            lastReportedValue = displayValue(sample, workRoutine.displayTicks);
         }
+        ThroughputMonitorDebugLogger.writeDisplay(getDisplayed(), workRoutine.view(), currentTick, sample, lastReportedValue);
 
-        lastReportedValue = workRoutine == lastWorkRoutine ? cache.averagePerTick(workRoutine.sampleWindowSeconds) * workRoutine.displayTicks : 0.0D;
-
-        updateState(currentAmount, currentTick);
+        lastWorkRoutine = workRoutine;
         getHost().markForUpdate();
 
         return TickRateModulation.SLOWER;
@@ -260,11 +270,84 @@ public class METhroughputMonitorPart extends StorageMonitorPart implements IGrid
         cache.clear();
         lastReportedValue = 0.0D;
         lastWorkRoutine = workRoutine;
+        ThroughputMonitorDebugLogger.writeState("RESET", getDisplayed(), TickHandler.instance().getCurrentTick());
     }
 
-    private void updateState(long amount, long tick) {
-        cache.push(amount, tick);
+    private void startState() {
+        long currentTick = TickHandler.instance().getCurrentTick();
+        cache.reset(currentTick);
         lastWorkRoutine = workRoutine;
+        ThroughputMonitorDebugLogger.writeState("START", getDisplayed(), currentTick);
+    }
+
+    private void registerStorageTracker() {
+        if (isClientSide()) {
+            return;
+        }
+
+        long currentTick = TickHandler.instance().getCurrentTick();
+        if (getDisplayed() == null) {
+            ThroughputMonitorDebugLogger.writeState("REGISTER_SKIPPED_NO_KEY", null, currentTick);
+            return;
+        }
+
+        boolean hasGrid = getMainNode().ifPresent((grid, node) -> {
+            MEStorage storage = grid.getStorageService().getInventory();
+            if (storage != trackedStorage) {
+                unregisterStorageTracker();
+                trackedStorage = storage;
+                ThroughputMonitorStorageTracker.register(storage, this);
+            }
+            refreshVisibleStorageLinks();
+        });
+        if (!hasGrid) {
+            ThroughputMonitorDebugLogger.writeState("REGISTER_SKIPPED_NO_GRID", getDisplayed(), currentTick);
+        }
+    }
+
+    private void refreshVisibleStorageLinks() {
+        if (trackedStorage == null) {
+            return;
+        }
+
+        long topologyVersion = ThroughputMonitorStorageTracker.topologyVersion(trackedStorage);
+        if (topologyVersion == trackedStorageTopologyVersion) {
+            return;
+        }
+
+        int linkedStorages = ThroughputMonitorStorageTracker.refreshVisibleStorageLinks(trackedStorage);
+        trackedStorageTopologyVersion = topologyVersion;
+        ThroughputMonitorDebugLogger.writeVisibleStorageRefresh(
+                trackedStorage,
+                getDisplayed(),
+                TickHandler.instance().getCurrentTick(),
+                topologyVersion,
+                linkedStorages);
+    }
+
+    private void unregisterStorageTracker() {
+        ThroughputMonitorStorageTracker.unregister(this);
+        trackedStorage = null;
+        trackedStorageTopologyVersion = Long.MIN_VALUE;
+    }
+
+    @Override
+    public AEKey getTrackedKey() {
+        return getDisplayed();
+    }
+
+    @Override
+    public void recordThroughput(long amountDelta, long tick) {
+        cache.recordChange(amountDelta, tick);
+    }
+
+    private static double displayValue(ThroughputCache.ThroughputSample sample, int displayTicks) {
+        double inserted = sample.insertedPerTick() * displayTicks;
+        double extracted = sample.extractedPerTick() * displayTicks;
+        if (inserted == 0.0D && extracted == 0.0D) {
+            return 0.0D;
+        }
+        return inserted >= extracted ? inserted : -extracted;
     }
 
     @OnlyIn(Dist.CLIENT)
@@ -364,9 +447,9 @@ public class METhroughputMonitorPart extends StorageMonitorPart implements IGrid
 
     private enum WorkRoutine {
 
-        TICK(1, 10, "gui.gtlcore.throughput_monitor_value_tick"),
-        SECOND(20, 20, "gui.gtlcore.throughput_monitor_value"),
-        MINUTE(1200, MINUTE_SAMPLE_WINDOW_SECONDS, "gui.gtlcore.throughput_monitor_value_minute"),
+        TICK(1, TICK_SAMPLE_WINDOW_SECONDS, "gui.gtlcore.throughput_monitor_value_tick"),
+        SECOND(ThroughputCache.TICKS_PER_SECOND, SECOND_SAMPLE_WINDOW_SECONDS, "gui.gtlcore.throughput_monitor_value"),
+        MINUTE(ThroughputCache.TICKS_PER_SECOND * SECONDS_PER_MINUTE, SECONDS_PER_MINUTE, "gui.gtlcore.throughput_monitor_value_minute"),
         TEN_MINUTE(12000, TEN_MINUTE_SAMPLE_WINDOW_SECONDS, "gui.gtlcore.throughput_monitor_value_ten_minutes");
 
         private static final WorkRoutine[] ROUTINES = values();
@@ -385,8 +468,14 @@ public class METhroughputMonitorPart extends StorageMonitorPart implements IGrid
             return ROUTINES[(ordinal() + 1) % ROUTINES.length];
         }
 
+        private WorkRoutineView view() {
+            return new WorkRoutineView(name(), displayTicks, sampleWindowSeconds);
+        }
+
         private static WorkRoutine fromOrdinal(int ordinal) {
             return ordinal >= 0 && ordinal < ROUTINES.length ? ROUTINES[ordinal] : DEFAULT_ROUTINE;
         }
     }
+
+    record WorkRoutineView(String name, int displayTicks, int sampleWindowSeconds) {}
 }

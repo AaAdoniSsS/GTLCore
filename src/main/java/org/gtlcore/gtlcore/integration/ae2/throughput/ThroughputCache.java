@@ -1,5 +1,7 @@
 package org.gtlcore.gtlcore.integration.ae2.throughput;
 
+import org.gtlcore.gtlcore.utils.NumberUtils;
+
 import appeng.hooks.ticking.TickHandler;
 
 import java.util.ArrayDeque;
@@ -7,76 +9,117 @@ import java.util.Deque;
 
 final class ThroughputCache {
 
-    static final int DEFAULT_MAX_SAMPLES = 80;
+    static final int TICKS_PER_SECOND = 20;
+    static final int DEFAULT_MAX_SAMPLES = 10 * 60 * TICKS_PER_SECOND;
 
-    private static final int TICKS_PER_SECOND = 20;
     private static final long NO_TIMESTAMP = -1L;
 
     private final int maxSamples;
-    private final Deque<CacheEntry> samples = new ArrayDeque<>(DEFAULT_MAX_SAMPLES);
+    private final Deque<CacheEntry> changes = new ArrayDeque<>();
+    private long startTick = NO_TIMESTAMP;
+    private boolean hasRecordedChanges;
 
     ThroughputCache() {
         this(DEFAULT_MAX_SAMPLES);
     }
 
-    private ThroughputCache(int maxSamples) {
+    ThroughputCache(int maxSamples) {
         this.maxSamples = maxSamples;
     }
 
-    int size() {
-        return samples.size();
+    void reset(long timestamp) {
+        changes.clear();
+        startTick = timestamp > 0 ? timestamp : NO_TIMESTAMP;
+        hasRecordedChanges = false;
     }
 
-    void push(long amount, long timestamp) {
-        if (timestamp <= 0) {
+    void recordChange(long amountDelta, long timestamp) {
+        if (amountDelta == 0 || timestamp <= 0) {
             return;
         }
 
-        CacheEntry first = samples.peekFirst();
+        long inserted = amountDelta > 0 ? amountDelta : 0L;
+        long extracted = amountDelta < 0 ? -amountDelta : 0L;
+
+        if (startTick == NO_TIMESTAMP) {
+            startTick = timestamp;
+        }
+        hasRecordedChanges = true;
+
+        CacheEntry first = changes.peekFirst();
         if (first != null && first.timestamp == timestamp) {
+            changes.removeFirst();
+            changes.addFirst(
+                    new CacheEntry(
+                            NumberUtils.saturatedAdd(first.inserted, inserted),
+                            NumberUtils.saturatedAdd(first.extracted, extracted),
+                            timestamp));
             return;
         }
 
-        samples.addFirst(new CacheEntry(amount, timestamp));
-        while (samples.size() > maxSamples) {
-            samples.removeLast();
+        changes.addFirst(new CacheEntry(inserted, extracted, timestamp));
+        while (changes.size() > maxSamples) {
+            changes.removeLast();
         }
     }
 
     void clear() {
-        samples.clear();
+        changes.clear();
+        startTick = NO_TIMESTAMP;
+        hasRecordedChanges = false;
+    }
+
+    boolean hasRecordedChanges() {
+        return hasRecordedChanges;
     }
 
     double averagePerTick(int sampleWindowSeconds) {
-        long cutoffTick = TickHandler.instance().getCurrentTick() - secondsToTicks(sampleWindowSeconds);
-        long lastAmount = 0L;
-        long lastTimestamp = NO_TIMESTAMP;
-        double total = 0.0D;
-        int count = 0;
+        ThroughputSample sample = sample(sampleWindowSeconds, TickHandler.instance().getCurrentTick());
+        return sample.insertedPerTick - sample.extractedPerTick;
+    }
 
-        for (CacheEntry sample : samples) {
-            if (sample.timestamp < cutoffTick) {
+    double averagePerTick(int sampleWindowSeconds, long currentTick) {
+        ThroughputSample sample = sample(sampleWindowSeconds, currentTick);
+        return sample.insertedPerTick - sample.extractedPerTick;
+    }
+
+    ThroughputSample sample(int sampleWindowSeconds) {
+        return sample(sampleWindowSeconds, TickHandler.instance().getCurrentTick());
+    }
+
+    ThroughputSample sample(int sampleWindowSeconds, long currentTick) {
+        if (startTick == NO_TIMESTAMP || currentTick <= 0) {
+            return ThroughputSample.EMPTY;
+        }
+
+        long windowTicks = secondsToTicks(sampleWindowSeconds);
+        long firstTick = Math.max(startTick, currentTick - windowTicks);
+        long elapsedTicks = Math.max(1L, currentTick - firstTick);
+        long inserted = 0L;
+        long extracted = 0L;
+
+        for (CacheEntry change : changes) {
+            if (change.timestamp < firstTick) {
                 break;
             }
 
-            if (lastTimestamp != NO_TIMESTAMP) {
-                long timestampDelta = lastTimestamp - sample.timestamp;
-                if (timestampDelta > 0) {
-                    total += (lastAmount - sample.amount) / (double) timestampDelta;
-                    count++;
-                }
+            if (change.timestamp <= currentTick) {
+                inserted = NumberUtils.saturatedAdd(inserted, change.inserted);
+                extracted = NumberUtils.saturatedAdd(extracted, change.extracted);
             }
-
-            lastAmount = sample.amount;
-            lastTimestamp = sample.timestamp;
         }
 
-        return count == 0 ? 0.0D : total / count;
+        return new ThroughputSample(inserted / (double) elapsedTicks, extracted / (double) elapsedTicks);
     }
 
     private static long secondsToTicks(int seconds) {
         return seconds * (long) TICKS_PER_SECOND;
     }
 
-    private record CacheEntry(long amount, long timestamp) {}
+    record ThroughputSample(double insertedPerTick, double extractedPerTick) {
+
+        private static final ThroughputSample EMPTY = new ThroughputSample(0.0D, 0.0D);
+    }
+
+    private record CacheEntry(long inserted, long extracted, long timestamp) {}
 }
