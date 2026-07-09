@@ -173,7 +173,10 @@ public abstract class PatternEncodingTermScreenMixin<T extends AEBaseMenu> exten
     private void gtlcore$updateQuickUploadButton() {
         var widgets = ((WidgetContainerAccessor) this.widgets).gtlcore$getWidgets();
         AbstractWidget encodeButton = widgets.get(GTLCORE$ENCODE_PATTERN_WIDGET);
-        if (encodeButton != null) {
+        AbstractWidget modify1 = widgets.get("modify1");
+        AbstractWidget modify2 = widgets.get("modify2");
+        AbstractWidget modify3 = widgets.get("modify3");
+        if (encodeButton != null && modify1 != null && modify2 != null && modify3 != null) {
             int encodeRight = encodeButton.getX() + encodeButton.getWidth();
             int rightBoundary = widgets.values().stream()
                     .filter(widget -> widget != encodeButton)
@@ -185,10 +188,10 @@ public abstract class PatternEncodingTermScreenMixin<T extends AEBaseMenu> exten
             int hitY = encodeButton.getY();
             int hitWidth = Math.max(GTLCORE$QUICK_UPLOAD_BUTTON_SIZE, rightBoundary - encodeRight);
             int hitHeight = Math.max(GTLCORE$QUICK_UPLOAD_BUTTON_SIZE, encodeButton.getHeight());
-            int uploadButtonY = hitY + (hitHeight - GTLCORE$QUICK_UPLOAD_BUTTON_SIZE) / 2;
+            int uploadButtonY = (modify1.getY() + modify2.getY()) / 2;
             int uploadButtonX = encodeRight + GTLCORE$QUICK_UPLOAD_BUTTON_GAP;
-            int undoButtonX = encodeButton.getX() - GTLCORE$QUICK_UPLOAD_BUTTON_SIZE - GTLCORE$QUICK_UPLOAD_BUTTON_GAP;
-            boolean showUndoButton = undoButtonX >= 0;
+            int undoButtonY = (modify2.getY() + modify3.getY()) / 2;
+            boolean showUndoButton = true;
 
             if (showUndoButton) {
                 this.gtlcore$quickUploadButton.setX(uploadButtonX);
@@ -197,11 +200,10 @@ public abstract class PatternEncodingTermScreenMixin<T extends AEBaseMenu> exten
                 this.gtlcore$quickUploadHitY = uploadButtonY;
                 this.gtlcore$quickUploadHitWidth = GTLCORE$QUICK_UPLOAD_BUTTON_SIZE;
                 this.gtlcore$quickUploadHitHeight = GTLCORE$QUICK_UPLOAD_BUTTON_SIZE;
-
-                this.gtlcore$quickUploadUndoButton.setX(undoButtonX);
-                this.gtlcore$quickUploadUndoButton.setY(uploadButtonY);
-                this.gtlcore$quickUploadUndoHitX = undoButtonX;
-                this.gtlcore$quickUploadUndoHitY = uploadButtonY;
+                this.gtlcore$quickUploadUndoButton.setX(uploadButtonX);
+                this.gtlcore$quickUploadUndoButton.setY(undoButtonY);
+                this.gtlcore$quickUploadUndoHitX = uploadButtonX;
+                this.gtlcore$quickUploadUndoHitY = undoButtonY;
                 this.gtlcore$quickUploadUndoHitWidth = GTLCORE$QUICK_UPLOAD_BUTTON_SIZE;
                 this.gtlcore$quickUploadUndoHitHeight = GTLCORE$QUICK_UPLOAD_BUTTON_SIZE;
             } else {
