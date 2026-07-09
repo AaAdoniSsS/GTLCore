@@ -597,20 +597,6 @@ public class GTLMachines {
             .compassNode("item_bus")
             .register();
 
-    public static final MachineDefinition TAG_FILTER_ME_STOCK_HATCH_PART_MACHINE = REGISTRATE
-            .machine("tag_filter_me_stock_hatch_part_machine", TagFilterMEStockHatchPartMachine::new)
-            .tier(LuV)
-            .abilities(PartAbility.IMPORT_FLUIDS)
-            .rotationState(RotationState.ALL)
-            .renderer(() -> new OverlayTieredMachineRenderer(LuV, GTCEu.id("block/machine/part/me_fluid_hatch.import")))
-            .tooltips(
-                    Component.translatable("gtceu.machine.fluid_hatch.import.tooltip"),
-                    Component.translatable("gtceu.machine.me.fluid_import.tooltip"),
-                    Component.translatable("gtceu.machine.me.copy_paste.tooltip"),
-                    Component.translatable("gtceu.universal.enabled"))
-            .compassNode("fluid_hatch")
-            .register();
-
     public static final MachineDefinition ME_DUAL_HATCH_STOCK_PART_MACHINE = REGISTRATE
             .machine("me_dual_hatch_stock_part_machine", MEDualHatchStockPartMachine::new)
             .tier(LuV)

@@ -70,7 +70,6 @@ public final class WirelessAeNetworkRuntime {
     private static final Set<String> GTL_ME_TARGET_CLASSES = Set.of(
             "org.gtlcore.gtlcore.common.machine.multiblock.part.MEDualHatchStockPartMachine",
             "org.gtlcore.gtlcore.common.machine.multiblock.part.TagFilterMEStockBusPartMachine",
-            "org.gtlcore.gtlcore.common.machine.multiblock.part.TagFilterMEStockHatchPartMachine",
             "org.gtlcore.gtlcore.integration.wildcard.MEWildcardPatternBufferPartMachine");
     private static final Set<String> WIRELESS_ME_TARGET_IDS = Set.of(
             "me_input_bus",
@@ -81,6 +80,7 @@ public final class WirelessAeNetworkRuntime {
             "me_output_hatch",
             "tag_filter_me_stock_bus_part_machine",
             "me_dual_hatch_stock_part_machine",
+            "me_pattern_buffer",
             "me_mini_pattern_buffer",
             "me_extend_pattern_buffer",
             "me_stocking_pattern_buffer",
@@ -90,16 +90,6 @@ public final class WirelessAeNetworkRuntime {
             "me_extended_async_export_buffer",
             "me_molecular_assembler_io",
             "me_wildcard_pattern_buffer");
-    private static final Set<String> QUICK_CONNECT_TOOLTIP_TARGET_IDS = Set.of(
-            "me_input_bus",
-            "me_stocking_input_bus",
-            "me_output_bus",
-            "me_input_hatch",
-            "me_stocking_input_hatch",
-            "me_output_hatch",
-            "tag_filter_me_stock_bus_part_machine",
-            "tag_filter_me_stock_hatch_part_machine",
-            "me_dual_hatch_stock_part_machine");
 
     public enum ConnectionResult {
         CONNECTED,
@@ -1275,7 +1265,7 @@ public final class WirelessAeNetworkRuntime {
     }
 
     public static boolean shouldShowQuickConnectTooltip(ResourceLocation itemId) {
-        return itemId != null && QUICK_CONNECT_TOOLTIP_TARGET_IDS.contains(itemId.getPath());
+        return isWirelessMeTargetId(itemId);
     }
 
     private static boolean isGtmthingsMeLikePath(String path) {

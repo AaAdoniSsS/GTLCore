@@ -79,6 +79,12 @@ public class ConfigHolder {
     @Configurable.Comment("Write AE2 crafting calculation diagnostics to logs/gtlcore-ae2-crafting-<timestamp>.log")
     public boolean ae2CraftingCalculationLogEnabled = false;
     @Configurable
+    @Configurable.Comment("Write ME throughput monitor diagnostics to logs/gtlcore-throughput-monitor.log")
+    public boolean ae2ThroughputMonitorLogEnabled = false;
+    @Configurable
+    @Configurable.Comment("Write AE2 network energy diagnostics to logs/gtlcore-ae-energy.log")
+    public boolean ae2EnergyLogEnabled = false;
+    @Configurable
     @Configurable.Comment("允许普通AE2/扩展样板供应器使用智能翻倍")
     public boolean enableAe2PatternProviderAutoExpand = true;
     @Configurable

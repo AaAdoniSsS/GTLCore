@@ -191,6 +191,7 @@ public abstract class RecipeLogicMixin implements ILockRecipe, IRecipeStatus {
      */
     @Overwrite(remap = false)
     public void findAndHandleRecipe() {
+        GTRecipe previousOriginRecipe = this.lastOriginRecipe;
         this.lastRecipe = null;
         this.recipeStatus = null;
         this.workingStatus = null;
@@ -202,6 +203,10 @@ public abstract class RecipeLogicMixin implements ILockRecipe, IRecipeStatus {
             }
         } else {
             this.lastOriginRecipe = null;
+            if (!this.recipeDirty && previousOriginRecipe != null && this.gtlcore$trySetupLastOriginRecipe(previousOriginRecipe)) {
+                this.recipeDirty = false;
+                return;
+            }
             this.handleSearchingRecipes(gtlcore$searchRecipe(this.machine, this.machine instanceof ResearchStationMachine ?
                     (r) -> {
                         if (!this.machine.hasProxies()) return false;
@@ -225,6 +230,19 @@ public abstract class RecipeLogicMixin implements ILockRecipe, IRecipeStatus {
                     } : this::gtlcore$checkLastRecipe));
         }
         this.recipeDirty = false;
+    }
+
+    @Unique
+    private boolean gtlcore$trySetupLastOriginRecipe(@NotNull GTRecipe originRecipe) {
+        var modified = this.machine.fullModifyRecipe(originRecipe.copy(), this.ocParams, this.ocResult);
+        if (modified != null && this.gtlcore$checkLastRecipe(modified)) {
+            this.setupRecipe(modified);
+            if (this.lastRecipe != null && this.getStatus() == RecipeLogic.Status.WORKING) {
+                this.lastOriginRecipe = originRecipe;
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

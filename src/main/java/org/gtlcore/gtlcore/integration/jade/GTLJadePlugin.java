@@ -21,6 +21,7 @@ public class GTLJadePlugin implements IWailaPlugin {
 
     @Override
     public void register(IWailaCommonRegistration registration) {
+        registration.registerItemStorage(MEStockingItemStorageProvider.INSTANCE, MetaMachineBlockEntity.class);
         registration.registerBlockDataProvider(new WirelessOpticalDataHatchProvide(), BlockEntity.class);
         registration.registerBlockDataProvider(new TickTimeProvider(), MetaMachineBlockEntity.class);
         registration.registerBlockDataProvider(new MEPatternBufferProvider(), BlockEntity.class);
@@ -31,6 +32,7 @@ public class GTLJadePlugin implements IWailaPlugin {
 
     @Override
     public void registerClient(IWailaClientRegistration registration) {
+        registration.registerItemStorageClient(MEStockingItemStorageProvider.INSTANCE);
         registration.registerBlockComponent(new WirelessOpticalDataHatchProvide(), Block.class);
         registration.registerBlockComponent(new TickTimeProvider(), MetaMachineBlock.class);
         registration.registerBlockComponent(new MEPatternBufferProvider(), Block.class);
