@@ -271,7 +271,9 @@ public class AdditionalMultiBlockMachine {
                 recipe.tickInputs.put(EURecipeCapability.CAP,
                         List.of(new Content(eu, 10000, 10000, 0, null, null)));
                 ((IGTRecipe) recipe).setHasTick(true);
-                return GTRecipeModifiers.hatchParallel(machine, recipe, false, params, result);
+                int parallel = GTLRecipeModifiers.getHatchParallel(machine);
+                result.init(eu, recipe.duration, parallel, params.getOcAmount());
+                return recipe;
             }))
             .appearanceBlock(GTLBlocks.SPS_CASING)
             .pattern(definition -> FactoryBlockPattern.start()
