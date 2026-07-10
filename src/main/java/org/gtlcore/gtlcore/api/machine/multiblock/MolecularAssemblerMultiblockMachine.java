@@ -1,5 +1,6 @@
 package org.gtlcore.gtlcore.api.machine.multiblock;
 
+import org.gtlcore.gtlcore.api.machine.trait.AECraft.IMECraftSpeedCore;
 import org.gtlcore.gtlcore.api.machine.trait.ICheckPatternMachine;
 
 import com.gregtechceu.gtceu.api.gui.GuiTextures;
@@ -39,6 +40,12 @@ public class MolecularAssemblerMultiblockMachine extends MolecularAssemblerMulti
     public void addDisplayText(List<Component> textList) {
         IDisplayUIMachine.super.addDisplayText(textList);
         if (isFormed()) {
+            int coreCount = 0;
+            for (IMultiPart part : this.getParts()) {
+                if (part instanceof IMECraftSpeedCore) {
+                    coreCount++;
+                }
+            }
             textList.add(Component.translatable(getRecipeType().registryName.toLanguageKey())
                     .setStyle(Style.EMPTY.withColor(ChatFormatting.AQUA)
                             .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
@@ -63,6 +70,12 @@ public class MolecularAssemblerMultiblockMachine extends MolecularAssemblerMulti
             textList.add(Component.translatable("gtlcore.multiblock.tick_Duration", Component.literal(FormattingUtil.formatNumbers(tickDuration)).withStyle(ChatFormatting.BLUE))
                     .withStyle(ChatFormatting.GRAY));
             textList.add(Component.translatable("gtlcore.multiblock.contains_Patttern", Component.literal(FormattingUtil.formatNumbers(patternSize)).withStyle(ChatFormatting.GOLD))
+                    .withStyle(ChatFormatting.GRAY));
+            textList.add(Component.translatable("gui.gtlcore.molecular_assembler_0", Component.literal(FormattingUtil.formatNumbers(maxParallel / 4194304)).withStyle(ChatFormatting.DARK_GREEN))
+                    .withStyle(ChatFormatting.GRAY));
+            textList.add(Component.translatable("gui.gtlcore.molecular_assembler_2", Component.literal(FormattingUtil.formatNumbers(coreCount)).withStyle(ChatFormatting.DARK_GREEN))
+                    .withStyle(ChatFormatting.GRAY));
+            textList.add(Component.translatable("gui.gtlcore.molecular_assembler_1", Component.literal(FormattingUtil.formatNumbers(patternSize / 108)).withStyle(ChatFormatting.DARK_GREEN))
                     .withStyle(ChatFormatting.GRAY));
         } else {
             Component tooltip = Component.translatable("gtceu.multiblock.invalid_structure.tooltip")

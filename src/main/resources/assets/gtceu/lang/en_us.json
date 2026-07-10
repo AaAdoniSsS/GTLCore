@@ -767,7 +767,7 @@
   "gtceu.machine.me.me_extended_export_buffer.data_stick.name": "§oME Extended Export Bus Configuration Data",
   "gtceu.machine.me_craft_parallel_core.tooltip.0": "Provides §64194304§f parallel",
   "gtceu.machine.me_craft_pattern_core.tooltip": "Provides §6%d§f pattern capacity",
-  "gtceu.machine.me_craft_speed_core.tooltip.0": "Each reduces recipe duration by §68§f ticks",
+  "gtceu.machine.me_craft_speed_core.tooltip.0": "Each reduces recipe duration by §68§f ticks, recipe duration at least §61§f tick to complete",
   "gtceu.machine.me_extended_async_export_buffer.tooltip.0": "Allows configuring §bPriority§f",
   "gtceu.machine.me_extended_async_export_buffer.tooltip.1": "Uses §6Asynchronous Export§f, suitable for cross-recipe machines",
   "gtceu.machine.me_extended_export_buffer.tooltip.0": "Allows configuring §6Output Filter§f and §bPriority§f",
