@@ -73,17 +73,8 @@ public class ConfigHolder {
     @Configurable.Range(min = 1, max = 16)
     public int ae2StorageServiceUpdateInterval = 8;
     @Configurable
-    @Configurable.Comment("AE2合成计算模式: LEGACY(原版), FAST(快速), ULTRA_FAST(极快), MAX_FAST(最快)")
-    public AE2CalculationMode ae2CalculationMode = AE2CalculationMode.MAX_FAST;
-    @Configurable
-    @Configurable.Comment("Write AE2 crafting calculation diagnostics to logs/gtlcore-ae2-crafting-<timestamp>.log")
-    public boolean ae2CraftingCalculationLogEnabled = false;
-    @Configurable
-    @Configurable.Comment("Write ME throughput monitor diagnostics to logs/gtlcore-throughput-monitor.log")
-    public boolean ae2ThroughputMonitorLogEnabled = false;
-    @Configurable
-    @Configurable.Comment("Write AE2 network energy diagnostics to logs/gtlcore-ae-energy.log")
-    public boolean ae2EnergyLogEnabled = false;
+    @Configurable.Comment("AE2合成计算模式: LEGACY(原版), FAST(快速), ULTRA_FAST(极快)")
+    public AE2CalculationMode ae2CalculationMode = AE2CalculationMode.ULTRA_FAST;
     @Configurable
     @Configurable.Comment("允许普通AE2/扩展样板供应器使用智能翻倍")
     public boolean enableAe2PatternProviderAutoExpand = true;

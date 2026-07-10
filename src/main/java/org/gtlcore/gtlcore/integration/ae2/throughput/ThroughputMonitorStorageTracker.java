@@ -48,7 +48,6 @@ public final class ThroughputMonitorStorageTracker {
                 listeners.add(new WeakReference<>(listener));
             }
         }
-        ThroughputMonitorDebugLogger.writeRegister(storage, listener);
     }
 
     public static void unregister(Listener listener) {
@@ -61,7 +60,6 @@ public final class ThroughputMonitorStorageTracker {
                 }
             }
         }
-        ThroughputMonitorDebugLogger.writeUnregister(listener);
     }
 
     public static void beginInsert(MEStorage storage) {
@@ -171,9 +169,6 @@ public final class ThroughputMonitorStorageTracker {
         }
 
         boolean anyListeners;
-        boolean targetStorageListeners = false;
-        int liveStorageListeners = 0;
-        int matchedListeners = 0;
         List<Listener> matched = new ArrayList<>();
         synchronized (LOCK) {
             anyListeners = !LISTENERS.isEmpty();
@@ -185,16 +180,12 @@ public final class ThroughputMonitorStorageTracker {
                     continue;
                 }
 
-                targetStorageListeners = true;
                 for (Iterator<WeakReference<Listener>> iterator = listeners.iterator(); iterator.hasNext();) {
                     Listener listener = iterator.next().get();
                     if (listener == null) {
                         iterator.remove();
-                    } else {
-                        liveStorageListeners++;
-                        if (what.equals(listener.getTrackedKey()) && deliveredListeners.add(listener)) {
-                            matched.add(listener);
-                        }
+                    } else if (what.equals(listener.getTrackedKey()) && deliveredListeners.add(listener)) {
+                        matched.add(listener);
                     }
                 }
                 if (listeners.isEmpty()) {
@@ -209,20 +200,6 @@ public final class ThroughputMonitorStorageTracker {
 
         for (Listener listener : matched) {
             listener.recordThroughput(amountDelta, tick);
-        }
-        matchedListeners = matched.size();
-
-        if (!targetStorageListeners) {
-            ThroughputMonitorDebugLogger.writeIgnoredTransaction(storage, what, amountDelta, tick, "no_storage_listener");
-        } else if (matchedListeners == 0) {
-            ThroughputMonitorDebugLogger.writeIgnoredTransaction(
-                    storage,
-                    what,
-                    amountDelta,
-                    tick,
-                    "key_mismatch liveStorageListeners=" + liveStorageListeners);
-        } else {
-            ThroughputMonitorDebugLogger.writeTransaction(storage, what, amountDelta, tick, matchedListeners);
         }
     }
 

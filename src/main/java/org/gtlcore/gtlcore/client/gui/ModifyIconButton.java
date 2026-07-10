@@ -20,16 +20,20 @@ import java.util.List;
  */
 public class ModifyIconButton extends Button implements ITooltip {
 
+    private static final int BUTTON_SIZE = 8;
+
     private final ModifyIcon icon;
 
-    private final Component displayName;
-    private final Component displayValue;
+    private final Component tooltipMessage;
 
     public ModifyIconButton(Button.OnPress onPress, ModifyIcon icon, Component displayName, Component displayValue) {
-        super(0, 0, 8, 8, Component.empty(), onPress, DEFAULT_NARRATION);
+        this(onPress, icon, Component.empty().append(displayName).append("\n").append(displayValue));
+    }
+
+    public ModifyIconButton(Button.OnPress onPress, ModifyIcon icon, Component tooltipMessage) {
+        super(0, 0, BUTTON_SIZE, BUTTON_SIZE, Component.empty(), onPress, DEFAULT_NARRATION);
         this.icon = icon;
-        this.displayName = displayName;
-        this.displayValue = displayValue;
+        this.tooltipMessage = tooltipMessage;
     }
 
     public void setVisibility(boolean vis) {
@@ -92,7 +96,7 @@ public class ModifyIconButton extends Button implements ITooltip {
 
     @Override
     public Rect2i getTooltipArea() {
-        return new Rect2i(this.getX(), this.getY(), 8, 8);
+        return new Rect2i(this.getX(), this.getY(), BUTTON_SIZE, BUTTON_SIZE);
     }
 
     @Override
@@ -102,6 +106,6 @@ public class ModifyIconButton extends Button implements ITooltip {
 
     @Override
     public List<Component> getTooltipMessage() {
-        return Collections.singletonList(Component.empty().append(this.displayName).append("\n").append(this.displayValue));
+        return Collections.singletonList(this.tooltipMessage);
     }
 }

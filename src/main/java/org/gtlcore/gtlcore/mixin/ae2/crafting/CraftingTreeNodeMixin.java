@@ -27,7 +27,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -41,8 +40,6 @@ public abstract class CraftingTreeNodeMixin implements ICraftingTreeNode {
     private InputTemplate gTLCore$directTemplate;
     @Unique
     private InputTemplate gTLCore$processingTemplate;
-    @Unique
-    private CraftingTreeProcess gTLCore$maxFastPreferredProcess;
     @Unique
     private Object gTLCore$requestMergeKey;
 
@@ -128,7 +125,6 @@ public abstract class CraftingTreeNodeMixin implements ICraftingTreeNode {
                             @Nullable KeyCounter containerItems) throws CraftBranchFailure, InterruptedException {
         ICraftingCalculation calculation = (ICraftingCalculation) this.job;
         calculation.gtlcore$handlePausing();
-        calculation.gtlcore$recordCraftingLogNodeRequest();
 
         inv.addStackBytes(what, amount, requestedAmount);
 
@@ -251,7 +247,6 @@ public abstract class CraftingTreeNodeMixin implements ICraftingTreeNode {
                                  @Nullable KeyCounter containerItems) throws CraftBranchFailure, InterruptedException {
         ICraftingCalculation calculation = (ICraftingCalculation) this.job;
         calculation.gtlcore$handlePausing();
-        calculation.gtlcore$recordCraftingLogNodeRequest();
 
         inv.addStackBytes(what, amount, requestedAmount);
 
@@ -348,163 +343,6 @@ public abstract class CraftingTreeNodeMixin implements ICraftingTreeNode {
 
     @Override
     @Unique
-    public void maxFastRequest(CraftingSimulationState inv, long requestedAmount,
-                               @Nullable KeyCounter containerItems) throws CraftBranchFailure, InterruptedException {
-        ICraftingCalculation calculation = (ICraftingCalculation) this.job;
-        calculation.gtlcore$handlePausing();
-        calculation.gtlcore$recordCraftingLogNodeRequest();
-
-        inv.addStackBytes(what, amount, requestedAmount);
-
-        requestedAmount = gTLCore$extractAvailableTemplates(inv, requestedAmount, containerItems, calculation);
-        if (requestedAmount == 0) {
-            return;
-        }
-
-        addContainerItems(what, requestedAmount, containerItems);
-
-        if (this.canEmit) {
-            inv.emitItems(this.what, NumberUtils.saturatedMultiply(this.amount, requestedAmount));
-            return;
-        }
-
-        buildChildPatterns();
-        long totalRequestedItems = NumberUtils.saturatedMultiply(requestedAmount, this.amount);
-        if (this.nodes.size() == 1) {
-            final ICraftingTreeProcess pro = (ICraftingTreeProcess) (this.nodes.get(0));
-            var craftedPerPattern = pro.getOutputCountTest(this.what);
-
-            while (pro.getPossible() && totalRequestedItems > 0) {
-                long times = pro.limitsQuantityTest() ? 1 : gTLCore$ceilDiv(totalRequestedItems, craftedPerPattern);
-                pro.maxFastRequest(inv, times);
-
-                var available = inv.extract(this.what, totalRequestedItems, Actionable.MODULATE);
-                if (available != 0) {
-                    totalRequestedItems -= available;
-
-                    if (totalRequestedItems <= 0) {
-                        return;
-                    }
-                } else {
-                    var pattern = pro.getDetails().getDefinition();
-                    String outputs = Stream.of(pro.getDetails().getOutputs())
-                            .map(GenericStack::toString)
-                            .collect(Collectors.joining(", "));
-                    String errorMessage = """
-                            Unexpected error in the crafting calculation: can't find created items.
-                            This is an AE2 bug, please report it, with the following important information:
-
-                            - Found none of %s. Remaining request: %d of %d*%d.
-                            - Tried crafting %d times the pattern %s with tag %s.
-                            - Pattern outputs: %s.
-                            """.formatted(what, totalRequestedItems, requestedAmount, amount, times, pattern,
-                            pattern.getTag(), outputs);
-                    throw new UnsupportedOperationException(errorMessage);
-                }
-            }
-        } else if (this.nodes.size() > 1) {
-            CraftingTreeProcess preferredProcess = this.gTLCore$maxFastPreferredProcess;
-            if (preferredProcess == null) {
-                preferredProcess = gTLCore$findMaxFastPreferredProcess(calculation);
-            }
-            if (preferredProcess != null) {
-                long available = gTLCore$tryMaxFastProcess(preferredProcess, inv, totalRequestedItems, calculation);
-                if (available > 0) {
-                    totalRequestedItems -= available;
-
-                    if (totalRequestedItems <= 0) {
-                        return;
-                    }
-                }
-            }
-
-            for (CraftingTreeProcess node : this.nodes) {
-                if (node == preferredProcess) {
-                    continue;
-                }
-
-                long available = gTLCore$tryMaxFastProcess(node, inv, totalRequestedItems, calculation);
-                if (available > 0) {
-                    this.gTLCore$maxFastPreferredProcess = node;
-                    totalRequestedItems -= available;
-
-                    if (totalRequestedItems <= 0) {
-                        return;
-                    }
-                }
-            }
-        }
-
-        if (this.job.isSimulation()) {
-            this.job.getMissingItems().add(this.what, totalRequestedItems);
-        } else {
-            throw new CraftBranchFailure(this.what, totalRequestedItems);
-        }
-    }
-
-    @Unique
-    private long gTLCore$tryMaxFastProcess(CraftingTreeProcess node,
-                                           CraftingSimulationState inv,
-                                           long totalRequestedItems,
-                                           ICraftingCalculation calculation) throws InterruptedException {
-        ICraftingTreeProcess pro = (ICraftingTreeProcess) node;
-        if (!pro.getPossible() || totalRequestedItems <= 0) {
-            return 0;
-        }
-
-        if (calculation.gtlcore$shouldSkipBranch(this.what, pro.getDetails(), totalRequestedItems)) {
-            calculation.gtlcore$recordBranchSkip(this.what, pro.getDetails(), totalRequestedItems);
-            if (node == this.gTLCore$maxFastPreferredProcess) {
-                this.gTLCore$maxFastPreferredProcess = null;
-            }
-            return 0;
-        }
-
-        try {
-            var craftedPerPattern = pro.getOutputCountTest(this.what);
-            long times = pro.limitsQuantityTest() ? 1 : gTLCore$ceilDiv(totalRequestedItems, craftedPerPattern);
-
-            if (times <= 0) {
-                return 0;
-            }
-
-            final ChildCraftingSimulationState child = new ChildCraftingSimulationState(inv);
-            pro.maxFastRequest(child, times);
-
-            var available = child.extract(this.what, totalRequestedItems, Actionable.MODULATE);
-
-            if (available != 0) {
-                child.applyDiff(inv);
-                calculation.gtlcore$recordBranchSuccess(this.what, pro.getDetails(), available);
-                return available;
-            }
-        } catch (CraftBranchFailure fail) {
-            calculation.gtlcore$recordBranchFailure(this.what, pro.getDetails(), totalRequestedItems);
-            if (node == this.gTLCore$maxFastPreferredProcess) {
-                this.gTLCore$maxFastPreferredProcess = null;
-            }
-        }
-
-        return 0;
-    }
-
-    @Unique
-    private CraftingTreeProcess gTLCore$findMaxFastPreferredProcess(ICraftingCalculation calculation) {
-        Object preferredDefinition = calculation.gtlcore$getPreferredBranchDefinition(this.what);
-        if (preferredDefinition == null) {
-            return null;
-        }
-
-        for (CraftingTreeProcess node : this.nodes) {
-            if (Objects.equals(((ICraftingTreeProcess) node).getDetails().getDefinition(), preferredDefinition)) {
-                return node;
-            }
-        }
-        return null;
-    }
-
-    @Override
-    @Unique
     public void gtlcore$resetFastState() {
         if (this.nodes == null) {
             return;
@@ -557,7 +395,6 @@ public abstract class CraftingTreeNodeMixin implements ICraftingTreeNode {
                                          @Nullable KeyCounter containerItems,
                                          ICraftingCalculation calculation, InputTemplate template) {
         long extracted = gTLCore$extractTemplates(inv, template, requestedAmount);
-        calculation.gtlcore$recordCraftingLogTemplateExtraction(extracted);
 
         if (extracted > 0) {
             requestedAmount -= extracted;

@@ -11,8 +11,6 @@ public interface ICraftingTreeProcess {
 
     void ultraFastRequest(CraftingSimulationState inv, long times) throws CraftBranchFailure, InterruptedException;
 
-    void maxFastRequest(CraftingSimulationState inv, long times) throws CraftBranchFailure, InterruptedException;
-
     IPatternDetails getDetails();
 
     boolean getPossible();

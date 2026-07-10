@@ -10,9 +10,6 @@ public interface ICraftingTreeNode {
     void ultraFastRequest(CraftingSimulationState inv, long requestedAmount,
                           @Nullable KeyCounter containerItems) throws CraftBranchFailure, InterruptedException;
 
-    void maxFastRequest(CraftingSimulationState inv, long requestedAmount,
-                        @Nullable KeyCounter containerItems) throws CraftBranchFailure, InterruptedException;
-
     void fastRequest(CraftingSimulationState inv, long requestedAmount,
                      @Nullable KeyCounter containerItems) throws CraftBranchFailure, InterruptedException;
 

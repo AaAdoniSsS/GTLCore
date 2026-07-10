@@ -14,6 +14,7 @@ public enum ModifyIcon {
     DIVISION_2(0, 16),
     DIVISION_3(16, 16),
     DIVISION_5(32, 16),
+    UNDO(0, 32),
     TOOLBAR_BUTTON_BACKGROUND(32, 32);
 
     public final int x;
