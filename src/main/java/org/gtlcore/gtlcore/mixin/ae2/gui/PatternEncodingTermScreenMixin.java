@@ -1,6 +1,8 @@
 package org.gtlcore.gtlcore.mixin.ae2.gui;
 
 import org.gtlcore.gtlcore.client.ae2.wireless.PatternQuickUploadSelectionOverlay;
+import org.gtlcore.gtlcore.client.gui.ModifyIcon;
+import org.gtlcore.gtlcore.client.gui.ModifyIconButton;
 import org.gtlcore.gtlcore.client.gui.PatterEncodingTermMenuModify;
 
 import net.minecraft.client.gui.GuiGraphics;
@@ -44,7 +46,7 @@ public abstract class PatternEncodingTermScreenMixin<T extends AEBaseMenu> exten
     @Unique
     private IconButton gtlcore$quickUploadButton;
     @Unique
-    private IconButton gtlcore$quickUploadUndoButton;
+    private ModifyIconButton gtlcore$quickUploadUndoButton;
     @Unique
     private int gtlcore$quickUploadHitX;
     @Unique
@@ -289,19 +291,11 @@ public abstract class PatternEncodingTermScreenMixin<T extends AEBaseMenu> exten
     }
 
     @Unique
-    private static final class QuickUploadUndoButton extends IconButton {
+    private static final class QuickUploadUndoButton extends ModifyIconButton {
 
         private QuickUploadUndoButton(OnPress onPress) {
-            super(onPress);
-            this.setHalfSize(true);
-            this.setWidth(GTLCORE$QUICK_UPLOAD_BUTTON_SIZE);
-            this.setHeight(GTLCORE$QUICK_UPLOAD_BUTTON_SIZE);
-            this.setTooltip(Tooltip.create(Component.translatable("tooltip.gtlcore.pattern_quick_upload_undo")));
-        }
-
-        @Override
-        protected Icon getIcon() {
-            return Icon.SCHEDULING_ROUND_ROBIN;
+            super(onPress, ModifyIcon.UNDO,
+                    Component.translatable("tooltip.gtlcore.pattern_quick_upload_undo"));
         }
     }
 }

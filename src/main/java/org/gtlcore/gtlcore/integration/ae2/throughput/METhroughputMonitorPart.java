@@ -220,7 +220,6 @@ public class METhroughputMonitorPart extends StorageMonitorPart implements IGrid
         } else if (cache.hasRecordedChanges()) {
             lastReportedValue = displayValue(sample, workRoutine.displayTicks);
         }
-        ThroughputMonitorDebugLogger.writeDisplay(getDisplayed(), workRoutine.view(), currentTick, sample, lastReportedValue);
 
         lastWorkRoutine = workRoutine;
         getHost().markForUpdate();
@@ -270,14 +269,12 @@ public class METhroughputMonitorPart extends StorageMonitorPart implements IGrid
         cache.clear();
         lastReportedValue = 0.0D;
         lastWorkRoutine = workRoutine;
-        ThroughputMonitorDebugLogger.writeState("RESET", getDisplayed(), TickHandler.instance().getCurrentTick());
     }
 
     private void startState() {
         long currentTick = TickHandler.instance().getCurrentTick();
         cache.reset(currentTick);
         lastWorkRoutine = workRoutine;
-        ThroughputMonitorDebugLogger.writeState("START", getDisplayed(), currentTick);
     }
 
     private void registerStorageTracker() {
@@ -285,13 +282,11 @@ public class METhroughputMonitorPart extends StorageMonitorPart implements IGrid
             return;
         }
 
-        long currentTick = TickHandler.instance().getCurrentTick();
         if (getDisplayed() == null) {
-            ThroughputMonitorDebugLogger.writeState("REGISTER_SKIPPED_NO_KEY", null, currentTick);
             return;
         }
 
-        boolean hasGrid = getMainNode().ifPresent((grid, node) -> {
+        getMainNode().ifPresent((grid, node) -> {
             MEStorage storage = grid.getStorageService().getInventory();
             if (storage != trackedStorage) {
                 unregisterStorageTracker();
@@ -300,9 +295,6 @@ public class METhroughputMonitorPart extends StorageMonitorPart implements IGrid
             }
             refreshVisibleStorageLinks();
         });
-        if (!hasGrid) {
-            ThroughputMonitorDebugLogger.writeState("REGISTER_SKIPPED_NO_GRID", getDisplayed(), currentTick);
-        }
     }
 
     private void refreshVisibleStorageLinks() {
@@ -315,14 +307,8 @@ public class METhroughputMonitorPart extends StorageMonitorPart implements IGrid
             return;
         }
 
-        int linkedStorages = ThroughputMonitorStorageTracker.refreshVisibleStorageLinks(trackedStorage);
+        ThroughputMonitorStorageTracker.refreshVisibleStorageLinks(trackedStorage);
         trackedStorageTopologyVersion = topologyVersion;
-        ThroughputMonitorDebugLogger.writeVisibleStorageRefresh(
-                trackedStorage,
-                getDisplayed(),
-                TickHandler.instance().getCurrentTick(),
-                topologyVersion,
-                linkedStorages);
     }
 
     private void unregisterStorageTracker() {

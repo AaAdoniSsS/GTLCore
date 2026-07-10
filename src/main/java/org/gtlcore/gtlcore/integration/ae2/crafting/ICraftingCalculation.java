@@ -23,37 +23,5 @@ public interface ICraftingCalculation {
                                                        AEKey what,
                                                        Supplier<Iterable<InputTemplate>> loader);
 
-    boolean gtlcore$shouldSkipBranch(AEKey output, IPatternDetails details, long requestedAmount);
-
-    void gtlcore$recordBranchFailure(AEKey output, IPatternDetails details, long requestedAmount);
-
-    void gtlcore$recordBranchSkip(AEKey output, IPatternDetails details, long requestedAmount);
-
-    void gtlcore$recordBranchSuccess(AEKey output, IPatternDetails details, long craftedAmount);
-
-    Object gtlcore$getPreferredBranchDefinition(AEKey output);
-
     void gtlcore$clearTemplateCache();
-
-    boolean gtlcore$isCraftingCalculationLogEnabled();
-
-    AE2CraftingCalculationLogger.Counters gtlcore$getCraftingCalculationLogCounters();
-
-    default void gtlcore$recordCraftingLogTemplateExtraction(long extracted) {
-        if (gtlcore$isCraftingCalculationLogEnabled()) {
-            gtlcore$getCraftingCalculationLogCounters().recordTemplateExtraction(extracted);
-        }
-    }
-
-    default void gtlcore$recordCraftingLogNodeRequest() {
-        if (gtlcore$isCraftingCalculationLogEnabled()) {
-            gtlcore$getCraftingCalculationLogCounters().recordNodeRequest();
-        }
-    }
-
-    default void gtlcore$recordCraftingLogProcessRequest(boolean limitQty, long times, int childEdges) {
-        if (gtlcore$isCraftingCalculationLogEnabled()) {
-            gtlcore$getCraftingCalculationLogCounters().recordProcessRequest(limitQty, times, childEdges);
-        }
-    }
 }

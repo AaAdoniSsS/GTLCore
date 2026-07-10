@@ -73,7 +73,6 @@ public abstract class CraftingTreeProcessMixin implements ICraftingTreeProcess {
     public void fastRequest(CraftingSimulationState inv, long times) throws CraftBranchFailure, InterruptedException {
         ICraftingCalculation calculation = (ICraftingCalculation) this.job;
         calculation.gtlcore$handlePausing();
-        calculation.gtlcore$recordCraftingLogProcessRequest(this.limitQty, times, this.gTLCore$childNodes.length);
 
         var containerItems = this.containerItems ? new KeyCounter() : null;
 
@@ -91,27 +90,8 @@ public abstract class CraftingTreeProcessMixin implements ICraftingTreeProcess {
     public void ultraFastRequest(CraftingSimulationState inv, long times) throws CraftBranchFailure, InterruptedException {
         ICraftingCalculation calculation = (ICraftingCalculation) this.job;
         calculation.gtlcore$handlePausing();
-        calculation.gtlcore$recordCraftingLogProcessRequest(this.limitQty, times, this.gTLCore$childNodes.length);
 
         gTLCore$runUltraFastRequest(inv, times, calculation);
-    }
-
-    @Override
-    @Unique
-    public void maxFastRequest(CraftingSimulationState inv, long times) throws CraftBranchFailure, InterruptedException {
-        ICraftingCalculation calculation = (ICraftingCalculation) this.job;
-        calculation.gtlcore$handlePausing();
-        calculation.gtlcore$recordCraftingLogProcessRequest(this.limitQty, times, this.gTLCore$childNodes.length);
-
-        var containerItems = this.containerItems ? new KeyCounter() : null;
-
-        for (int i = 0; i < this.gTLCore$childNodes.length; i++) {
-            ((ICraftingTreeNode) this.gTLCore$childNodes[i]).maxFastRequest(inv,
-                    NumberUtils.saturatedMultiply(this.gTLCore$childMultipliers[i], times), containerItems);
-        }
-
-        onSucceed(inv, times, containerItems);
-        calculation.gtlcore$clearTemplateCache();
     }
 
     @Unique

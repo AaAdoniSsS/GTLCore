@@ -1,6 +1,7 @@
 package org.gtlcore.gtlcore.api.pattern;
 
 import org.gtlcore.gtlcore.common.item.UltimateTerminalBehavior;
+import org.gtlcore.gtlcore.integration.ae2.WirelessTerminalGridResolver;
 
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
 import com.gregtechceu.gtceu.api.machine.MetaMachine;
@@ -51,7 +52,6 @@ import appeng.api.stacks.AEFluidKey;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.storage.MEStorage;
 import appeng.blockentity.grid.AENetworkBlockEntity;
-import appeng.items.tools.powered.WirelessTerminalItem;
 import it.unimi.dsi.fastutil.ints.IntObjectPair;
 import it.unimi.dsi.fastutil.objects.*;
 import org.apache.commons.lang3.ArrayUtils;
@@ -549,33 +549,7 @@ public class AdvancedBlockPattern extends BlockPattern {
                 }
             }
         }
-        return findWirelessTerminalGrid(player, level);
-    }
-
-    @Nullable
-    private IGrid findWirelessTerminalGrid(Player player, Level level) {
-        IItemHandler handler = player.getCapability(ForgeCapabilities.ITEM_HANDLER).resolve().orElse(null);
-        if (handler == null) return null;
-        return findWirelessTerminalGrid(handler, level, Collections.newSetFromMap(new IdentityHashMap<>()));
-    }
-
-    @Nullable
-    private IGrid findWirelessTerminalGrid(IItemHandler handler, Level level, Set<IItemHandler> visited) {
-        if (handler == null || !visited.add(handler)) return null;
-        for (int i = 0; i < handler.getSlots(); i++) {
-            ItemStack stack = handler.getStackInSlot(i);
-            if (stack.isEmpty()) continue;
-
-            if (stack.getItem() instanceof WirelessTerminalItem terminal) {
-                IGrid grid = terminal.getLinkedGrid(stack, level, null);
-                if (grid != null) return grid;
-            }
-
-            IItemHandler nested = stack.getCapability(ForgeCapabilities.ITEM_HANDLER).resolve().orElse(null);
-            IGrid nestedGrid = findWirelessTerminalGrid(nested, level, visited);
-            if (nestedGrid != null) return nestedGrid;
-        }
-        return null;
+        return WirelessTerminalGridResolver.find(player, level);
     }
 
     private boolean canInsertItemIntoAE(@Nullable MEStorage aeInventory, ItemStack stack, IActionSource source) {
