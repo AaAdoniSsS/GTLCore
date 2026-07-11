@@ -440,7 +440,7 @@
   "gtlcore.ae2.crafting.dispatch_reason.providers_busy": "All applicable pattern providers are busy",
   "gtlcore.ae2.crafting.dispatch_reason.waiting_for_inputs": "Waiting for inputs to reach the crafting CPU",
   "gtlcore.ae2.crafting.dispatch_reason.insufficient_power": "The ME network does not have enough power",
-  "gtlcore.ae2.crafting.dispatch_reason.provider_rejected": "The pattern provider rejected the pattern push",
+  "gtlcore.ae2.crafting.dispatch_reason.provider_rejected": "The pattern provider target cannot accept the inputs",
   "tooltip.gtlcore.pattern_quick_upload": "Finds pattern targets by matching the recipe type; asks when ambiguous",
   "tooltip.gtlcore.pattern_quick_upload_undo": "Undo the last quick pattern upload",
   "tooltip.gtlcore.pattern_quick_upload_recipe_types": "Recipe types: %s",

@@ -19,7 +19,7 @@ public final class WirelessTerminalGridResolver {
 
     private static final int MAX_NESTED_HANDLER_DEPTH = 5;
     private static final int MAX_SCANNED_SLOTS = 256;
-    private static final double MIN_TERMINAL_POWER = 0.5D;
+    public static final double MIN_TERMINAL_POWER = 0.5D;
 
     private WirelessTerminalGridResolver() {}
 

@@ -46,11 +46,34 @@ public final class JeiMeInventoryTooltip {
         }
     }
 
-    private static @Nullable AEKey getHoveredKey(IJeiRuntime runtime) {
-        Optional<ITypedIngredient<?>> hovered = runtime.getIngredientListOverlay().getIngredientUnderMouse();
-        if (hovered.isEmpty()) {
-            hovered = runtime.getBookmarkOverlay().getIngredientUnderMouse();
+    public static Optional<String> getHoveredIngredientName() {
+        IJeiRuntime runtime = JeiMeInventoryTooltip.runtime;
+        if (runtime == null) {
+            return Optional.empty();
         }
+        Optional<ITypedIngredient<?>> hovered = getHoveredIngredient(runtime);
+        if (hovered.isPresent()) {
+            return toSearchText(hovered.get());
+        }
+
+        Optional<ItemStack> item = runtime.getRecipesGui().getIngredientUnderMouse(VanillaTypes.ITEM_STACK);
+        if (item.isPresent()) {
+            return toSearchText(item.get());
+        }
+        Optional<FluidStack> fluid = runtime.getRecipesGui().getIngredientUnderMouse(ForgeTypes.FLUID_STACK);
+        if (fluid.isPresent()) {
+            return toSearchText(fluid.get());
+        }
+        return Optional.empty();
+    }
+
+    public static Optional<AEKey> getHoveredIngredientKey() {
+        IJeiRuntime runtime = JeiMeInventoryTooltip.runtime;
+        return runtime == null ? Optional.empty() : Optional.ofNullable(getHoveredKey(runtime));
+    }
+
+    private static @Nullable AEKey getHoveredKey(IJeiRuntime runtime) {
+        Optional<ITypedIngredient<?>> hovered = getHoveredIngredient(runtime);
         if (hovered.isPresent()) {
             return toKey(hovered.get());
         }
@@ -64,6 +87,40 @@ public final class JeiMeInventoryTooltip {
             return AEFluidKey.of(fluid.get());
         }
         return null;
+    }
+
+    private static Optional<ITypedIngredient<?>> getHoveredIngredient(IJeiRuntime runtime) {
+        Optional<ITypedIngredient<?>> hovered = runtime.getIngredientListOverlay().getIngredientUnderMouse();
+        if (hovered.isEmpty()) {
+            hovered = runtime.getBookmarkOverlay().getIngredientUnderMouse();
+        }
+        return hovered;
+    }
+
+    private static Optional<String> toSearchText(ITypedIngredient<?> ingredient) {
+        Optional<ItemStack> item = ingredient.getIngredient(VanillaTypes.ITEM_STACK);
+        if (item.isPresent()) {
+            return toSearchText(item.get());
+        }
+        Optional<FluidStack> fluid = ingredient.getIngredient(ForgeTypes.FLUID_STACK);
+        if (fluid.isPresent()) {
+            return toSearchText(fluid.get());
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<String> toSearchText(ItemStack item) {
+        if (item.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(item.getHoverName().getString()).filter(name -> !name.isBlank());
+    }
+
+    private static Optional<String> toSearchText(FluidStack fluid) {
+        if (fluid.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(fluid.getDisplayName().getString()).filter(name -> !name.isBlank());
     }
 
     private static @Nullable AEKey toKey(ITypedIngredient<?> ingredient) {
