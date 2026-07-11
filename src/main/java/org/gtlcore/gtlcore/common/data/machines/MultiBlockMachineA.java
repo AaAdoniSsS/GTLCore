@@ -3094,7 +3094,8 @@ public class MultiBlockMachineA {
             .tooltipBuilder(GTLMachines.GTL_ADD)
             .rotationState(RotationState.ALL)
             .recipeType(GTLRecipeTypes.ELECTRIC_IMPLOSION_COMPRESSOR_RECIPES)
-            .recipeModifiers(GTRecipeModifiers.PARALLEL_HATCH,
+            .recipeModifiers(GTLRecipeModifiers.GCYM_REDUCTION,
+                    GTRecipeModifiers.PARALLEL_HATCH,
                     GTRecipeModifiers.ELECTRIC_OVERCLOCK.apply(OverclockingLogic.NON_PERFECT_OVERCLOCK_SUBTICK))
             .appearanceBlock(GTBlocks.CASING_TUNGSTENSTEEL_ROBUST)
             .pattern(definition -> FactoryBlockPattern.start()

@@ -116,13 +116,23 @@ public class AdditionalMultiBlockMachine {
             .appearanceBlock(GTBlocks.HIGH_POWER_CASING)
             .recipeModifiers((machine, recipe, params, result) -> {
                 if (machine instanceof CoilWorkableElectricMultiblockMachine coilMachine) {
-                    GTRecipe recipe1 = GTRecipeModifiers.accurateParallel(coilMachine, recipe, (int) Math.min(2147483647, Math.pow(2, coilMachine.getCoilType().getCoilTemperature() / 900D)), false).getFirst();
-                    if (recipe1 != null) {
-                        return RecipeHelper.applyOverclock(OverclockingLogic.NON_PERFECT_OVERCLOCK_SUBTICK, recipe1, coilMachine.getOverclockVoltage(), params, result);
+                    // 0.5 耗时倍率在并行之先应用，与其他带固定耗时倍率的机器保持一致
+                    recipe.duration = (int) Math.max(1, recipe.duration * 0.5);
+
+                    int parallel = (int) Math.min(2147483647,
+                            Math.pow(2, coilMachine.getCoilType().getCoilTemperature() / 900D));
+                    GTRecipe recipe1 = GTRecipeModifiers.accurateParallel(coilMachine, recipe, parallel, false).getFirst();
+                    if (recipe1 == null) return null;
+
+                    if (recipe1.data.contains("ebf_temp")) {
+                        return GTRecipeModifiers.ebfOverclock(coilMachine, recipe1, params, result);
+                    } else {
+                        return RecipeHelper.applyOverclock(OverclockingLogic.PERFECT_OVERCLOCK_SUBTICK, recipe1,
+                                coilMachine.getOverclockVoltage(), params, result);
                     }
                 }
                 return null;
-            }, (machine, recipe, params, result) -> GTLRecipeModifiers.reduction(machine, recipe, 1, 0.5))
+            })
             .pattern(definition -> FactoryBlockPattern.start()
                     .aisle("          AAAAAAA  ", "   BBBBBBBBBBBBBB  ", "   B         C     ", "           CCCCC   ", "          CCCCCCC  ", "         CCCCCCCCC ", "         CCCDDDCCC ", "        CCCCDDDCCCC", "         CCCDDDCCC ", "         CCCCCCCCC ", "          CCCCCCC  ", "           CCCCC   ", "             C     ", "                   ")
                     .aisle("CCCCCCC   A CCC A  ", "  GGG       CCC B  ", "  GBG      FFFFF   ", "  GGG     FFFFFFF  ", "  GGG    FFFFFFFFF ", "  GGG   FFFFFFFFFFF", "  GGG   FFFFFFFFFFF", "  GGG   FFFFFFFFFFF", "  GGG   FFFFFFFFFFF", "   C    FFFFFFFFFFF", "         FFFFFFFFF ", "          FFFFFFF  ", "           FFFFF   ", "                   ")
@@ -271,7 +281,9 @@ public class AdditionalMultiBlockMachine {
                 recipe.tickInputs.put(EURecipeCapability.CAP,
                         List.of(new Content(eu, 10000, 10000, 0, null, null)));
                 ((IGTRecipe) recipe).setHasTick(true);
-                return GTRecipeModifiers.hatchParallel(machine, recipe, false, params, result);
+                int parallel = GTLRecipeModifiers.getHatchParallel(machine);
+                result.init(eu, recipe.duration, parallel, params.getOcAmount());
+                return recipe;
             }))
             .appearanceBlock(GTLBlocks.SPS_CASING)
             .pattern(definition -> FactoryBlockPattern.start()
