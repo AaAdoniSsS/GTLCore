@@ -679,6 +679,7 @@
   "gtceu.machine.cold_ice_freezer.tooltip.0": "Requires §b10x voltage tier^2§rmb of §bLiquid Ice§r per second",
   "gtceu.machine.create_computation.tooltip.0": "Input Voltage: §4§lMAX§r",
   "gtceu.machine.dimensionally_transcendent_dirt_forge.tooltip.0": "Has a maximum parallel of 524288 and directly completes recipes",
+  "gtceu.machine.dimensionally_transcendent_plasma_forge.tooltip.0": "The stellar forge mode can only use super-thermal-capacity coils and can run recipes for all stellar containment tiers.",
   "gtceu.machine.dimensionally_transcendent_mixer.tooltip.0": "Duration multiplier is 0.2 when running mixer recipes",
   "gtceu.machine.duration_multiplier.tooltip": "Duration Multiplier: %s",
   "gtceu.machine.dyson_sphere.number": "Launch Count: %s / 10000",

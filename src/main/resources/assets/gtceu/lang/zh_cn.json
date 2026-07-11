@@ -679,6 +679,7 @@
   "gtceu.machine.cold_ice_freezer.tooltip.0": "需每秒提供§b10x2^(电压等级-2)§rmB的§b液态冰§r",
   "gtceu.machine.create_computation.tooltip.0": "输入电压：§4§lMAX§r",
   "gtceu.machine.dimensionally_transcendent_dirt_forge.tooltip.0": "拥有524288的最大并行，且直接完成配方",
+  "gtceu.machine.dimensionally_transcendent_plasma_forge.tooltip.0": "恒星热能熔炼模式只能使用超级热容线圈，可执行所有恒星热容等级的配方",
   "gtceu.machine.dimensionally_transcendent_mixer.tooltip.0": "运行搅拌机配方时耗时倍数为0.2",
   "gtceu.machine.duration_multiplier.tooltip": "耗时倍数：%s",
   "gtceu.machine.dyson_sphere.number": "发射次数：%s / 10000",
