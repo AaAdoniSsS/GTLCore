@@ -440,7 +440,7 @@
   "gtlcore.ae2.crafting.dispatch_reason.providers_busy": "所有对应样板供应器都在忙",
   "gtlcore.ae2.crafting.dispatch_reason.waiting_for_inputs": "等待输入材料进入合成 CPU",
   "gtlcore.ae2.crafting.dispatch_reason.insufficient_power": "ME 网络能源不足",
-  "gtlcore.ae2.crafting.dispatch_reason.provider_rejected": "样板供应器拒绝接收该样板",
+  "gtlcore.ae2.crafting.dispatch_reason.provider_rejected": "样板供应器目标无法接收",
   "tooltip.gtlcore.pattern_quick_upload": "根据配方类型识别样板总成；不唯一时手动选择",
   "tooltip.gtlcore.pattern_quick_upload_undo": "撤回最近一次快捷上传",
   "tooltip.gtlcore.pattern_quick_upload_recipe_types": "配方类型：%s",

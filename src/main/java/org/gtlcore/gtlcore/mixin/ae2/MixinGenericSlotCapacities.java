@@ -22,7 +22,7 @@ public abstract class MixinGenericSlotCapacities {
                      target = "Lappeng/api/behaviors/GenericSlotCapacities;register(Lappeng/api/stacks/AEKeyType;Ljava/lang/Long;)V"),
             remap = false)
     private static void clinitInj(CallbackInfo ci) {
-        map.putIfAbsent(AEKeyType.items(), 2147483647L);
-        map.putIfAbsent(AEKeyType.fluids(), 2147483647L);
+        map.putIfAbsent(AEKeyType.items(), Long.MAX_VALUE);
+        map.putIfAbsent(AEKeyType.fluids(), Long.MAX_VALUE);
     }
 }

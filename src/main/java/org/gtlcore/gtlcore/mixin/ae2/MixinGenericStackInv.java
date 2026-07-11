@@ -26,7 +26,7 @@ public abstract class MixinGenericStackInv {
     @Unique
     private long gtceu$getMaxAmount(AEKey key, @NotNull GenericStackInv inv) {
         if (key instanceof AEItemKey) {
-            return 2147483647L;
+            return Long.MAX_VALUE;
         } else {
             return inv.getCapacity(key.getType());
         }

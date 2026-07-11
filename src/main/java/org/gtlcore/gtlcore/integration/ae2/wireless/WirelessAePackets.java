@@ -35,7 +35,7 @@ import java.util.function.Supplier;
 
 public final class WirelessAePackets {
 
-    private static final String PROTOCOL_VERSION = "2";
+    private static final String PROTOCOL_VERSION = "3";
     private static int nextPacketId;
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
@@ -111,6 +111,7 @@ public final class WirelessAePackets {
                 SelectPatternQuickUploadTargetPacket::handle,
                 java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
         MeInventoryAmountPackets.register(CHANNEL, () -> nextPacketId++);
+        JeiWirelessTerminalOrderPackets.register(CHANNEL, () -> nextPacketId++);
     }
 
     public record RenameNetworkPacket(BlockPos corePos, String name) {
