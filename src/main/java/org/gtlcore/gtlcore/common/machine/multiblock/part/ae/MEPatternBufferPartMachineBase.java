@@ -1,5 +1,6 @@
 package org.gtlcore.gtlcore.common.machine.multiblock.part.ae;
 
+import org.gtlcore.gtlcore.api.gui.PatternBufferProxyPositionConfigurator;
 import org.gtlcore.gtlcore.api.machine.trait.IMERecipeHandlerTrait;
 import org.gtlcore.gtlcore.api.machine.trait.MEPart.IMEPatternPartMachine;
 import org.gtlcore.gtlcore.api.machine.trait.MEPart.IMEPatternTrait;
@@ -68,6 +69,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.IntStream;
@@ -80,6 +82,9 @@ public abstract class MEPatternBufferPartMachineBase extends MEIOPartMachine
 
     protected static final ManagedFieldHolder MANAGED_FIELD_HOLDER = new ManagedFieldHolder(
             MEPatternBufferPartMachineBase.class, MEIOPartMachine.MANAGED_FIELD_HOLDER);
+    private static final Comparator<BlockPos> PROXY_POSITION_ORDER = Comparator.comparingInt((BlockPos position) -> position.getX())
+            .thenComparingInt(position -> position.getY())
+            .thenComparingInt(position -> position.getZ());
 
     // ========================================
     // Common Fields
@@ -201,8 +206,12 @@ public abstract class MEPatternBufferPartMachineBase extends MEIOPartMachine
         return Collections.unmodifiableSet(proxyMachines);
     }
 
+    public List<BlockPos> getBoundProxyPositions() {
+        return proxies.stream().sorted(PROXY_POSITION_ORDER).toList();
+    }
+
     protected List<Long> getProxyPosList() {
-        return proxies.stream().map(BlockPos::asLong).toList();
+        return getBoundProxyPositions().stream().map(BlockPos::asLong).toList();
     }
 
     protected void releaseProxies() {
@@ -275,6 +284,7 @@ public abstract class MEPatternBufferPartMachineBase extends MEIOPartMachine
                         Component.translatable("gui.gtceu.share_inventory.desc.1"))));
 
         configuratorPanel.attachConfigurators(new CircuitFancyConfigurator(sharedCircuitInventory.storage));
+        configuratorPanel.attachConfigurators(new PatternBufferProxyPositionConfigurator(this::getBoundProxyPositions));
     }
 
     // ========================================
