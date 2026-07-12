@@ -58,6 +58,17 @@ public class WirelessNetworkCoreScreen extends AbstractContainerScreen<WirelessN
     }
 
     @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (this.nameField.keyPressed(keyCode, scanCode, modifiers)) {
+            return true;
+        }
+        if (this.nameField.isFocused() && keyCode == this.minecraft.options.keyInventory.getKey().getValue()) {
+            return true;
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
     public void containerTick() {
         super.containerTick();
         this.nameField.tick();

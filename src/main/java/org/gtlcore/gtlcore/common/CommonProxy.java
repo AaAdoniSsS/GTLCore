@@ -7,6 +7,7 @@ import org.gtlcore.gtlcore.config.ConfigHolder;
 import org.gtlcore.gtlcore.integration.ae2.InfinityCellGuiHandler;
 import org.gtlcore.gtlcore.integration.ae2.storage.FastInfinityCellHandler;
 import org.gtlcore.gtlcore.integration.ae2.storage.InfinityCellHandler;
+import org.gtlcore.gtlcore.integration.ae2.wireless.CuriosTerminalLocator;
 import org.gtlcore.gtlcore.integration.ae2.wireless.GTLWirelessAeContent;
 import org.gtlcore.gtlcore.integration.ae2.wireless.WirelessAeNetworkRuntime;
 import org.gtlcore.gtlcore.integration.ae2.wireless.WirelessAePackets;
@@ -42,6 +43,7 @@ public class CommonProxy {
         GTLWirelessAeContent.register(eventBus);
         WirelessAeNetworkRuntime.register(MinecraftForge.EVENT_BUS);
         WirelessAePackets.register();
+        CuriosTerminalLocator.register();
         eventBus.addListener(this::commonSetup);
         eventBus.addListener(this::clientSetup);
         eventBus.addListener(this::addMaterialRegistries);
