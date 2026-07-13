@@ -4,21 +4,16 @@ import org.gtlcore.gtlcore.integration.ae2.WirelessTerminalGridResolver;
 
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 
+import appeng.api.implementations.menuobjects.ItemMenuHost;
 import appeng.api.networking.IGrid;
 import appeng.api.stacks.AEKey;
 import appeng.helpers.WirelessTerminalMenuHost;
 import appeng.items.tools.powered.WirelessTerminalItem;
-import appeng.menu.ISubMenu;
-import appeng.menu.MenuOpener;
 import appeng.menu.locator.MenuLocator;
 import appeng.menu.locator.MenuLocators;
-import appeng.menu.me.common.MEStorageMenu;
 import appeng.menu.me.crafting.CraftAmountMenu;
-
-import java.util.function.BiConsumer;
 
 public final class WirelessTerminalCraftingMenuService {
 
@@ -62,10 +57,12 @@ public final class WirelessTerminalCraftingMenuService {
             return false;
         }
 
-        BiConsumer<Player, ISubMenu> returnToMainMenu = (p, sub) -> MenuOpener.open(MEStorageMenu.WIRELESS_TYPE, p,
-                locator);
-        var host = new WirelessTerminalMenuHost(player, hostSlot, stack, returnToMainMenu);
-        if (!host.rangeCheck() || !grid.getCraftingService().isCraftable(key)) {
+        ItemMenuHost menuHost = terminal.getMenuHost(player, hostSlot != null ? hostSlot : -1, stack, null);
+        if (!(menuHost instanceof WirelessTerminalMenuHost host) || !host.rangeCheck()) {
+            return false;
+        }
+
+        if (!grid.getCraftingService().isCraftable(key)) {
             return false;
         }
 

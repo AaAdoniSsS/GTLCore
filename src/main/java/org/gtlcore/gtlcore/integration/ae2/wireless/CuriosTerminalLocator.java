@@ -7,11 +7,15 @@ import net.minecraft.world.item.ItemStack;
 import appeng.api.implementations.menuobjects.IMenuItem;
 import appeng.api.implementations.menuobjects.ItemMenuHost;
 import appeng.items.tools.powered.WirelessTerminalItem;
+import appeng.menu.ISubMenu;
 import appeng.menu.MenuOpener;
 import appeng.menu.locator.MenuLocator;
 import appeng.menu.locator.MenuLocators;
 import appeng.menu.me.common.MEStorageMenu;
+import de.mari_023.ae2wtlib.terminal.IUniversalWirelessTerminalItem;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.function.BiConsumer;
 
 public record CuriosTerminalLocator(String identifier, int index) implements MenuLocator {
 
@@ -27,7 +31,11 @@ public record CuriosTerminalLocator(String identifier, int index) implements Men
         }
 
         ItemMenuHost host;
-        if (stack.getItem() instanceof WirelessTerminalItem) {
+        if (stack.getItem() instanceof IUniversalWirelessTerminalItem) {
+            CuriosTerminalLocator locator = new CuriosTerminalLocator(identifier, index);
+            BiConsumer<Player, ISubMenu> returnToMainMenu = (p, sub) -> MenuOpener.open(MEStorageMenu.WIRELESS_TYPE, p, locator);
+            host = new CuriosAe2wtlibTerminalMenuHost(player, null, stack, identifier, index, returnToMainMenu);
+        } else if (stack.getItem() instanceof WirelessTerminalItem) {
             // Use null slot so the host does not try to validate an inventory index.
             host = new CuriosWirelessTerminalMenuHost(
                     player,

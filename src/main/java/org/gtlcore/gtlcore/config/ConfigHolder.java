@@ -76,7 +76,7 @@ public class ConfigHolder {
     @Configurable.Comment("AE2合成计算模式: LEGACY(原版), FAST(快速), ULTRA_FAST(极快)")
     public AE2CalculationMode ae2CalculationMode = AE2CalculationMode.ULTRA_FAST;
     @Configurable
-    @Configurable.Comment("允许普通AE2/扩展样板供应器使用智能翻倍")
+    @Configurable.Comment("新放置的普通 AE2 / 扩展样板供应器是否默认开启智能翻倍（ME 样板总成仍强制开启）")
     public boolean enableAe2PatternProviderAutoExpand = false;
     @Configurable
     @Configurable.Comment("编写多方块结构样板过滤的仓室")
