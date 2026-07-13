@@ -50,7 +50,8 @@ public abstract class CraftingCPUMenuMixin extends AEBaseMenu implements ICrafti
 
     @Inject(method = "broadcastChanges",
             at = @At(value = "INVOKE",
-                     target = "Lappeng/menu/AEBaseMenu;broadcastChanges()V"))
+                     target = "Lappeng/menu/AEBaseMenu;broadcastChanges()V"),
+            remap = false)
     private void gtlcore$refreshJobSuspensionBeforeSync(CallbackInfo ci) {
         gtlcore$refreshJobSuspensionSync();
     }
