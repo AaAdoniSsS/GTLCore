@@ -140,7 +140,7 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
         return true;
     }
 
-    @Inject(method = "broadcastChanges", at = @At("RETURN"), remap = false)
+    @Inject(method = "broadcastChanges", at = @At("RETURN"))
     private void onBroadcastChanges(CallbackInfo ci) {
         if (gtlcore$sent || this.plan == null) return;
         KeyCounter relevantStored = gtlcore$getRelevantStoredAmounts();

@@ -44,8 +44,7 @@ public abstract class PatternProviderMenuMixin extends AEBaseMenu implements IAu
 
     @Inject(method = "broadcastChanges",
             at = @At(value = "INVOKE",
-                     target = "Lappeng/menu/AEBaseMenu;broadcastChanges()V"),
-            remap = false)
+                     target = "Lappeng/menu/AEBaseMenu;broadcastChanges()V"))
     private void gtlcore$syncAutoExpand(CallbackInfo ci) {
         if (isServerSide()) {
             this.gtlcore$autoExpand = ((IAutoExpandSettings) this.logic).isPatternAutoExpand();
