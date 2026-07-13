@@ -129,7 +129,7 @@ dependencies {
     annotationProcessor 'org.projectlombok:lombok:1.18.30'
 
     modImplementation('curse.maven:applied-energistics-2-223794:7148487')
-    modCompileOnly("curse.maven:applied-energistics-2-wireless-terminals-459929:5162352") { transitive = false }
+    modImplementation("curse.maven:applied-energistics-2-wireless-terminals-459929:5162352") { transitive = false }
 
     modImplementation("dev.architectury:architectury-forge:${project.architectury_version}")
 

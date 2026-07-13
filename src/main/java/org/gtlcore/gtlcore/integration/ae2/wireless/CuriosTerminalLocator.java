@@ -3,16 +3,19 @@ package org.gtlcore.gtlcore.integration.ae2.wireless;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.fml.ModList;
 
 import appeng.api.implementations.menuobjects.IMenuItem;
 import appeng.api.implementations.menuobjects.ItemMenuHost;
 import appeng.items.tools.powered.WirelessTerminalItem;
+import appeng.menu.ISubMenu;
 import appeng.menu.MenuOpener;
 import appeng.menu.locator.MenuLocator;
 import appeng.menu.locator.MenuLocators;
 import appeng.menu.me.common.MEStorageMenu;
+import de.mari_023.ae2wtlib.terminal.IUniversalWirelessTerminalItem;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.function.BiConsumer;
 
 public record CuriosTerminalLocator(String identifier, int index) implements MenuLocator {
 
@@ -28,16 +31,10 @@ public record CuriosTerminalLocator(String identifier, int index) implements Men
         }
 
         ItemMenuHost host;
-        // ae2wtlib 终端（含量子桥卡）需要复用其 WTMenuHost 的 rangeCheck/isQuantumLinked 逻辑。
-        if (ModList.get().isLoaded("ae2wtlib") &&
-                stack.getItem().getClass().getName().startsWith("de.mari_023.ae2wtlib")) {
-            host = new CuriosAe2wtlibTerminalMenuHost(
-                    player,
-                    null,
-                    stack,
-                    identifier,
-                    index,
-                    (p, sub) -> MenuOpener.open(MEStorageMenu.WIRELESS_TYPE, p, this));
+        if (stack.getItem() instanceof IUniversalWirelessTerminalItem) {
+            CuriosTerminalLocator locator = new CuriosTerminalLocator(identifier, index);
+            BiConsumer<Player, ISubMenu> returnToMainMenu = (p, sub) -> MenuOpener.open(MEStorageMenu.WIRELESS_TYPE, p, locator);
+            host = new CuriosAe2wtlibTerminalMenuHost(player, null, stack, identifier, index, returnToMainMenu);
         } else if (stack.getItem() instanceof WirelessTerminalItem) {
             // Use null slot so the host does not try to validate an inventory index.
             host = new CuriosWirelessTerminalMenuHost(
