@@ -21,6 +21,7 @@ import net.minecraftforge.items.IItemHandler;
 import appeng.api.config.Actionable;
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.implementations.blockentities.ICraftingMachine;
+import appeng.api.networking.IManagedGridNode;
 import appeng.api.stacks.AEFluidKey;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
@@ -105,6 +106,21 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
         } else {
             gtlcore$autoExpand = isPatternProviderAutoExpandEnabledByDefault();
         }
+    }
+
+    @Inject(method = "<init>(Lappeng/api/networking/IManagedGridNode;Lappeng/helpers/patternprovider/PatternProviderLogicHost;)V",
+            at = @At("RETURN"),
+            remap = false)
+    private void gtlcore$initAutoExpandDefault(IManagedGridNode node, PatternProviderLogicHost host, CallbackInfo ci) {
+        this.gtlcore$autoExpand = isPatternProviderAutoExpandEnabledByDefault();
+    }
+
+    @Inject(method = "<init>(Lappeng/api/networking/IManagedGridNode;Lappeng/helpers/patternprovider/PatternProviderLogicHost;I)V",
+            at = @At("RETURN"),
+            remap = false)
+    private void gtlcore$initAutoExpandDefault(IManagedGridNode node, PatternProviderLogicHost host, int slots,
+                                               CallbackInfo ci) {
+        this.gtlcore$autoExpand = isPatternProviderAutoExpandEnabledByDefault();
     }
 
     @Unique
@@ -271,36 +287,60 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
 
     @Unique
     private boolean gtlcore$canItemHandlerAccept(IItemHandler handler, AEItemKey itemKey, long amount) {
-        int slots = handler.getSlots();
         long remaining = amount;
-        while (remaining > 0) {
-            ItemStack stack = itemKey.toStack((int) Math.min(remaining, Integer.MAX_VALUE));
-            int start = stack.getCount();
-            for (int i = 0; i < slots && !stack.isEmpty(); i++) {
-                stack = handler.insertItem(i, stack, true);
+        int slots = handler.getSlots();
+        ItemStack representative = itemKey.toStack();
+        int maxStack = representative.getMaxStackSize();
+
+        for (int i = 0; i < slots && remaining > 0; i++) {
+            ItemStack current = handler.getStackInSlot(i);
+            if (!current.isEmpty() && !ItemStack.isSameItem(current, representative)) {
+                continue;
             }
-            int accepted = start - stack.getCount();
-            if (accepted <= 0) {
-                return false;
+
+            int capacity = Math.min(maxStack, handler.getSlotLimit(i));
+            int free = capacity - current.getCount();
+            if (free <= 0) {
+                continue;
             }
-            remaining -= accepted;
+
+            // Verify the slot actually accepts this item (respects filters, etc.).
+            if (!handler.insertItem(i, itemKey.toStack(1), true).isEmpty()) {
+                continue;
+            }
+
+            remaining -= free;
         }
-        return true;
+
+        return remaining <= 0;
     }
 
     @Unique
     private boolean gtlcore$canFluidHandlerAccept(IFluidHandler handler, AEFluidKey fluidKey, long amount) {
         long remaining = amount;
-        while (remaining > 0) {
-            FluidStack stack = fluidKey.toStack((int) Math.min(remaining, Integer.MAX_VALUE));
-            int start = stack.getAmount();
-            int filled = handler.fill(stack, IFluidHandler.FluidAction.SIMULATE);
-            if (filled <= 0) {
-                return false;
+        int tanks = handler.getTanks();
+        FluidStack representative = fluidKey.toStack(1);
+
+        for (int i = 0; i < tanks && remaining > 0; i++) {
+            FluidStack current = handler.getFluidInTank(i);
+            if (!current.isEmpty() && !current.isFluidEqual(representative)) {
+                continue;
             }
-            remaining -= filled;
+
+            long free = handler.getTankCapacity(i) - current.getAmount();
+            if (free <= 0) {
+                continue;
+            }
+
+            // Verify the handler accepts this fluid at all.
+            if (handler.fill(representative, IFluidHandler.FluidAction.SIMULATE) <= 0) {
+                continue;
+            }
+
+            remaining -= free;
         }
-        return true;
+
+        return remaining <= 0;
     }
 
     @Unique
