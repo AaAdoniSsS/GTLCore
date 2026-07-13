@@ -1,5 +1,6 @@
 package org.gtlcore.gtlcore.integration.ae2.crafting;
 
+import org.gtlcore.gtlcore.api.crafting.IAutoExpandSettings;
 import org.gtlcore.gtlcore.api.machine.trait.AECraft.IMECraftIOPart;
 import org.gtlcore.gtlcore.api.machine.trait.MEPart.IMEPatternPartMachine;
 import org.gtlcore.gtlcore.config.ConfigHolder;
@@ -18,6 +19,9 @@ public final class CraftingPatternAutoExpand {
         }
         if (provider instanceof IMEPatternPartMachine || provider instanceof IMECraftIOPart) {
             return true;
+        }
+        if (provider instanceof IAutoExpandSettings settings) {
+            return settings.isPatternAutoExpand();
         }
         return isPatternProviderAutoExpandEnabled() && provider instanceof PatternProviderLogic;
     }
