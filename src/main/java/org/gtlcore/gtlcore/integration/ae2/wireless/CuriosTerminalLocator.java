@@ -3,6 +3,7 @@ package org.gtlcore.gtlcore.integration.ae2.wireless;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraftforge.fml.ModList;
 
 import appeng.api.implementations.menuobjects.IMenuItem;
 import appeng.api.implementations.menuobjects.ItemMenuHost;
@@ -27,7 +28,17 @@ public record CuriosTerminalLocator(String identifier, int index) implements Men
         }
 
         ItemMenuHost host;
-        if (stack.getItem() instanceof WirelessTerminalItem) {
+        // ae2wtlib 终端（含量子桥卡）需要复用其 WTMenuHost 的 rangeCheck/isQuantumLinked 逻辑。
+        if (ModList.get().isLoaded("ae2wtlib") &&
+                stack.getItem().getClass().getName().startsWith("de.mari_023.ae2wtlib")) {
+            host = new CuriosAe2wtlibTerminalMenuHost(
+                    player,
+                    null,
+                    stack,
+                    identifier,
+                    index,
+                    (p, sub) -> MenuOpener.open(MEStorageMenu.WIRELESS_TYPE, p, this));
+        } else if (stack.getItem() instanceof WirelessTerminalItem) {
             // Use null slot so the host does not try to validate an inventory index.
             host = new CuriosWirelessTerminalMenuHost(
                     player,
