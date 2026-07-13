@@ -36,7 +36,8 @@ public class WirelessNetworkBookmarkBlock extends BaseEntityBlock {
     public WirelessNetworkBookmarkBlock() {
         super(BlockBehaviour.Properties.of()
                 .mapColor(MapColor.COLOR_LIGHT_BLUE)
-                .strength(3.0F));
+                .strength(3.0F)
+                .requiresCorrectToolForDrops());
         registerDefaultState(stateDefinition.any().setValue(FACING, Direction.NORTH));
     }
 
