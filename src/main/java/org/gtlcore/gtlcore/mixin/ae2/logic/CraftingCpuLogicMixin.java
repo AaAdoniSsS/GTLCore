@@ -23,7 +23,6 @@ import appeng.crafting.execution.CraftingCpuHelper;
 import appeng.crafting.execution.CraftingCpuLogic;
 import appeng.crafting.execution.ExecutingCraftingJob;
 import appeng.crafting.inv.ListCraftingInventory;
-import appeng.crafting.pattern.AEProcessingPattern;
 import appeng.me.cluster.implementations.CraftingCPUCluster;
 import appeng.me.service.CraftingService;
 import org.jetbrains.annotations.Nullable;
@@ -190,7 +189,7 @@ public abstract class CraftingCpuLogicMixin implements ICraftingJobSuspension, I
             }
 
             var details = task.getKey();
-            final boolean isProcessing = details instanceof AEProcessingPattern;
+            final boolean isProcessing = details.supportsPushInputsToExternalInventory();
             boolean providerSeen = false;
             boolean idleProviderSeen = false;
             boolean providerRejected = false;
@@ -204,8 +203,10 @@ public abstract class CraftingCpuLogicMixin implements ICraftingJobSuspension, I
                 idleProviderSeen = true;
 
                 final boolean autoExpand = CraftingPatternAutoExpand.canAutoExpand(isProcessing, provider);
+                final long operations = CraftingPatternAutoExpand.getOperations(isProcessing, provider, details,
+                        taskProgress.getValue());
                 KeyCounter expectedOutputs = new KeyCounter(), expectedContainerItems = new KeyCounter();
-                KeyCounter[] craftingContainer = isProcessing ? (autoExpand ? AEUtils.extractForProcessingPattern((AEProcessingPattern) details, inventory, expectedOutputs, taskProgress.getValue()) : AEUtils.extractForProcessingPattern((AEProcessingPattern) details, inventory, expectedOutputs)) : AEUtils.extractForCraftPattern(details, inventory, level, expectedOutputs, expectedContainerItems);
+                KeyCounter[] craftingContainer = isProcessing ? (autoExpand ? AEUtils.extractForProcessingPattern(details, inventory, expectedOutputs, operations) : AEUtils.extractForProcessingPattern(details, inventory, expectedOutputs)) : AEUtils.extractForCraftPattern(details, inventory, level, expectedOutputs, expectedContainerItems);
 
                 if (craftingContainer == null) {
                     taskReasonMask |= CraftingDispatchReason.WAITING_FOR_INPUTS.mask();
@@ -213,7 +214,7 @@ public abstract class CraftingCpuLogicMixin implements ICraftingJobSuspension, I
                 }
 
                 var patternPower = CraftingPatternPower.forCpu(CraftingCpuHelper.calculatePatternPower(craftingContainer),
-                        autoExpand, taskProgress.getValue());
+                        autoExpand, operations);
                 if (energyService.extractAEPower(patternPower, Actionable.SIMULATE, PowerMultiplier.CONFIG) < patternPower - 0.01) {
                     CraftingCpuHelper.reinjectPatternInputs(inventory, craftingContainer);
                     taskReasonMask |= CraftingDispatchReason.INSUFFICIENT_POWER.mask();
@@ -240,9 +241,16 @@ public abstract class CraftingCpuLogicMixin implements ICraftingJobSuspension, I
 
                     // 1) AutoExpand
                     if (autoExpand) {
-                        taskProgress.setValue(0);
-                        it.remove();
-                        this.gtlcore$workingDispatchReasons.remove(details);
+                        taskProgress.setValue(taskProgress.getValue() - operations);
+                        if (taskProgress.getValue() <= 0) {
+                            it.remove();
+                            this.gtlcore$workingDispatchReasons.remove(details);
+                            continue taskLoop;
+                        }
+                        if (pushedPatterns == maxPatterns) {
+                            gtlcore$markAllUnclassified(CraftingDispatchReason.CPU_OPERATION_LIMIT);
+                            break taskLoop;
+                        }
                         continue taskLoop;
                     }
 

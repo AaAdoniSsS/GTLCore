@@ -280,13 +280,13 @@ public class AEUtils {
         }
     }
 
-    public static KeyCounter[] extractForProcessingPattern(AEProcessingPattern originDetail,
+    public static KeyCounter[] extractForProcessingPattern(IPatternDetails originDetail,
                                                            ICraftingInventory sourceInv,
                                                            KeyCounter expectedOutputs) {
         return extractForProcessingPattern(originDetail, sourceInv, expectedOutputs, 1);
     }
 
-    public static KeyCounter[] extractForProcessingPattern(AEProcessingPattern originDetail,
+    public static KeyCounter[] extractForProcessingPattern(IPatternDetails originDetail,
                                                            ICraftingInventory sourceInv,
                                                            KeyCounter expectedOutputs,
                                                            long multiplier) {
