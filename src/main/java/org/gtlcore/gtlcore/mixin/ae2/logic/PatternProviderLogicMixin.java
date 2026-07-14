@@ -2,6 +2,7 @@ package org.gtlcore.gtlcore.mixin.ae2.logic;
 
 import org.gtlcore.gtlcore.api.crafting.IAutoExpandSettings;
 import org.gtlcore.gtlcore.config.ConfigHolder;
+import org.gtlcore.gtlcore.integration.ae2.compat.MAE2Compat;
 import org.gtlcore.gtlcore.integration.ae2.crafting.IPatternProviderAutoExpand;
 import org.gtlcore.gtlcore.utils.NumberUtils;
 
@@ -177,14 +178,29 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
 
         var baseInputs = gtlcore$toInputCounter(pattern);
         long maxOperations = 0;
+        long p2pMaxOperations = Long.MAX_VALUE;
         boolean hasAdapter = false;
+        boolean hasP2PTunnel = false;
+        boolean hasUnlimitedMachine = false;
 
         for (var direction : getActiveSides()) {
             var targetPosition = blockEntity.getBlockPos().relative(direction);
             var targetBlockEntity = level.getBlockEntity(targetPosition);
             var machine = ICraftingMachine.of(level, targetPosition, direction.getOpposite(), targetBlockEntity);
             if (machine != null && machine.acceptsPlans()) {
-                return requestedOperations;
+                if (MAE2Compat.isPatternP2PTunnelLogic(machine)) {
+                    // MAE2 pattern P2P tunnels route one whole batch to a single output.
+                    // The safe expansion is therefore limited by the smallest capacity among
+                    // all of the tunnel's outputs. Because the provider may select this side
+                    // before any other active side, we cap the global operation count by it.
+                    hasP2PTunnel = true;
+                    p2pMaxOperations = Math.min(p2pMaxOperations,
+                            MAE2Compat.getPatternP2PMaxOperations(machine, pattern, requestedOperations,
+                                    level, baseInputs, isBlocking(), patternInputs, this));
+                } else {
+                    hasUnlimitedMachine = true;
+                }
+                continue;
             }
 
             var target = findAdapter(direction);
@@ -197,10 +213,25 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
                             baseInputs, requestedOperations));
         }
 
-        if (!hasAdapter) {
+        if (hasUnlimitedMachine && !hasP2PTunnel) {
             return requestedOperations;
         }
-        return Math.max(maxOperations, 1);
+
+        if (!hasAdapter && !hasP2PTunnel) {
+            return requestedOperations;
+        }
+
+        long result = hasP2PTunnel ? p2pMaxOperations : maxOperations;
+        if (hasP2PTunnel && hasAdapter) {
+            result = Math.min(result, maxOperations);
+        }
+        return Math.max(1, result);
+    }
+
+    @Override
+    public long gtlcore$findMaxOperationsForTarget(PatternProviderTarget target, BlockEntity targetBE, Direction side,
+                                                   KeyCounter baseInputs, long requestedOperations) {
+        return gtlcore$findMaxOperations(target, targetBE, side, baseInputs, requestedOperations);
     }
 
     @Unique

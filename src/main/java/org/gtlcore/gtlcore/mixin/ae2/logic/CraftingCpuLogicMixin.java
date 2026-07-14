@@ -23,7 +23,6 @@ import appeng.crafting.execution.CraftingCpuHelper;
 import appeng.crafting.execution.CraftingCpuLogic;
 import appeng.crafting.execution.ExecutingCraftingJob;
 import appeng.crafting.inv.ListCraftingInventory;
-import appeng.crafting.pattern.AEProcessingPattern;
 import appeng.me.cluster.implementations.CraftingCPUCluster;
 import appeng.me.service.CraftingService;
 import org.jetbrains.annotations.Nullable;
@@ -190,7 +189,7 @@ public abstract class CraftingCpuLogicMixin implements ICraftingJobSuspension, I
             }
 
             var details = task.getKey();
-            final boolean isProcessing = details instanceof AEProcessingPattern;
+            final boolean isProcessing = details.supportsPushInputsToExternalInventory();
             boolean providerSeen = false;
             boolean idleProviderSeen = false;
             boolean providerRejected = false;
@@ -207,7 +206,7 @@ public abstract class CraftingCpuLogicMixin implements ICraftingJobSuspension, I
                 final long operations = CraftingPatternAutoExpand.getOperations(isProcessing, provider, details,
                         taskProgress.getValue());
                 KeyCounter expectedOutputs = new KeyCounter(), expectedContainerItems = new KeyCounter();
-                KeyCounter[] craftingContainer = isProcessing ? (autoExpand ? AEUtils.extractForProcessingPattern((AEProcessingPattern) details, inventory, expectedOutputs, operations) : AEUtils.extractForProcessingPattern((AEProcessingPattern) details, inventory, expectedOutputs)) : AEUtils.extractForCraftPattern(details, inventory, level, expectedOutputs, expectedContainerItems);
+                KeyCounter[] craftingContainer = isProcessing ? (autoExpand ? AEUtils.extractForProcessingPattern(details, inventory, expectedOutputs, operations) : AEUtils.extractForProcessingPattern(details, inventory, expectedOutputs)) : AEUtils.extractForCraftPattern(details, inventory, level, expectedOutputs, expectedContainerItems);
 
                 if (craftingContainer == null) {
                     taskReasonMask |= CraftingDispatchReason.WAITING_FOR_INPUTS.mask();
