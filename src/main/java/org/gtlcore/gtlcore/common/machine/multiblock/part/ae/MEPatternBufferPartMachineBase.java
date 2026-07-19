@@ -5,15 +5,11 @@ import org.gtlcore.gtlcore.api.machine.trait.IMERecipeHandlerTrait;
 import org.gtlcore.gtlcore.api.machine.trait.MEPart.IMEPatternPartMachine;
 import org.gtlcore.gtlcore.api.machine.trait.MEPart.IMEPatternTrait;
 import org.gtlcore.gtlcore.api.machine.trait.NotifiableCircuitItemStackHandler;
-import org.gtlcore.gtlcore.common.data.GTLItems;
-import org.gtlcore.gtlcore.common.item.VirtualIngredientBehavior;
 import org.gtlcore.gtlcore.integration.ae2.AEUtils;
 import org.gtlcore.gtlcore.integration.ae2.handler.MEBufferPatternHelper;
 import org.gtlcore.gtlcore.integration.ae2.handler.SlotCacheManager;
 
-import com.gregtechceu.gtceu.api.capability.recipe.FluidRecipeCapability;
 import com.gregtechceu.gtceu.api.capability.recipe.IO;
-import com.gregtechceu.gtceu.api.capability.recipe.ItemRecipeCapability;
 import com.gregtechceu.gtceu.api.gui.GuiTextures;
 import com.gregtechceu.gtceu.api.gui.fancy.ConfiguratorPanel;
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
@@ -28,7 +24,6 @@ import com.gregtechceu.gtceu.api.machine.trait.NotifiableItemStackHandler;
 import com.gregtechceu.gtceu.api.recipe.GTRecipe;
 import com.gregtechceu.gtceu.api.recipe.ingredient.FluidIngredient;
 import com.gregtechceu.gtceu.common.data.GTItems;
-import com.gregtechceu.gtceu.common.item.IntCircuitBehaviour;
 import com.gregtechceu.gtceu.utils.ResearchManager;
 
 import com.lowdragmc.lowdraglib.gui.texture.GuiTextureGroup;
@@ -472,34 +467,6 @@ public abstract class MEPatternBufferPartMachineBase extends MEIOPartMachine
         @Getter
         private final Object2LongOpenHashMap<AEFluidKey> fluidInventory = new Object2LongOpenHashMap<>();
 
-        /**
-         * Payloads this slot may present without ever holding them, established by the virtual ingredients AE pushed
-         * in. Sets rather than counted maps on purpose: a virtual supply has no quantity, which is exactly what lets
-         * it satisfy a demand for any amount.
-         */
-        private final ObjectSet<AEItemKey> virtualItemSupply = new ObjectOpenHashSet<>();
-
-        private final ObjectSet<AEFluidKey> virtualFluidSupply = new ObjectOpenHashSet<>();
-
-        /**
-         * Payloads of virtual ingredients the player parked in this slot's catalyst inventory. Kept apart from the
-         * pushed ones because their lifetimes differ: these last as long as the wrapper sits in the slot, while pushed
-         * ones belong to the pattern and go when it does.
-         */
-        @Getter
-        private final ObjectSet<AEItemKey> configuredVirtualItems = new ObjectOpenHashSet<>();
-
-        @Getter
-        private final ObjectSet<AEFluidKey> configuredVirtualFluids = new ObjectOpenHashSet<>();
-
-        private boolean suppliesItem(AEItemKey key) {
-            return virtualItemSupply.contains(key) || configuredVirtualItems.contains(key);
-        }
-
-        private boolean suppliesFluid(AEFluidKey key) {
-            return virtualFluidSupply.contains(key) || configuredVirtualFluids.contains(key);
-        }
-
         @Persisted
         @Getter
         private final SlotCacheManager cacheManager = new SlotCacheManager();
@@ -520,41 +487,19 @@ public abstract class MEPatternBufferPartMachineBase extends MEIOPartMachine
         public boolean isItemActive(boolean simulate) {
             return hasPatternInSlot(slotIndex) && (simulate ?
                     (!itemInventory.isEmpty() || !sharedCatalystInventory.isEmpty() ||
-                            !getCircuitForRecipe(slotIndex).isEmpty() || hasItemCatalystInventory() ||
-                            hasVirtualItemSupply()) :
+                            !getCircuitForRecipe(slotIndex).isEmpty() || hasItemCatalystInventory()) :
                     !itemInventory.isEmpty());
         }
 
         public boolean isFluidActive(boolean simulate) {
             return hasPatternInSlot(slotIndex) && (simulate ?
-                    (!fluidInventory.isEmpty() || !sharedCatalystTank.isEmpty() || hasFluidCatalystInventory() ||
-                            hasVirtualFluidSupply()) :
+                    (!fluidInventory.isEmpty() || !sharedCatalystTank.isEmpty() || hasFluidCatalystInventory()) :
                     !fluidInventory.isEmpty());
         }
 
         public void add(AEKey what, long amount) {
             if (amount <= 0L) return;
             if (what instanceof AEItemKey itemKey) {
-                ItemStack stack = itemKey.getReadOnlyStack();
-                if (GTLItems.VIRTUAL_INGREDIENT.isIn(stack)) {
-                    // The wrapper is spent right here. A supply machine hands out an unlimited stream of them, so
-                    // there is no point storing one; what this slot has to remember is the payload it vouches for.
-                    AEItemKey payloadItem = VirtualIngredientBehavior.payloadItemKey(stack);
-                    if (payloadItem != null) {
-                        ItemStack payload = payloadItem.toStack(1);
-                        if (IntCircuitBehaviour.isIntegratedCircuit(payload)) {
-                            // Circuits never travel through the item map -- the buffer strips them out and matches
-                            // them against this slot's cached configuration instead. A virtual circuit has to land in
-                            // that same channel, exactly as an embedded one would, or nothing would ever consult it.
-                            cacheManager.setCircuitCache(IntCircuitBehaviour.getCircuitConfiguration(payload));
-                        } else {
-                            virtualItemSupply.add(payloadItem);
-                        }
-                    }
-                    AEFluidKey payloadFluid = VirtualIngredientBehavior.payloadFluidKey(stack);
-                    if (payloadFluid != null) virtualFluidSupply.add(payloadFluid);
-                    return;
-                }
                 itemInventory.addTo(itemKey, amount);
             } else if (what instanceof AEFluidKey fluidKey) {
                 fluidInventory.addTo(fluidKey, amount);
@@ -600,7 +545,6 @@ public abstract class MEPatternBufferPartMachineBase extends MEIOPartMachine
                 limitInput.add(entry.getKey().toStack((int) Math.min(amount, Integer.MAX_VALUE)));
             }
             appendLimitItemCatalystInputs(limitInput);
-            appendVirtualItemInputs(limitInput);
             return limitInput;
         }
 
@@ -616,7 +560,6 @@ public abstract class MEPatternBufferPartMachineBase extends MEIOPartMachine
                 limitInput.add(FluidStack.create(entry.getKey().getFluid(), amount));
             }
             appendLimitFluidCatalystInputs(limitInput);
-            appendVirtualFluidInputs(limitInput);
             return limitInput;
         }
 
@@ -721,9 +664,6 @@ public abstract class MEPatternBufferPartMachineBase extends MEIOPartMachine
         public void clearInventories() {
             itemInventory.clear();
             fluidInventory.clear();
-            // Tied to the pattern that vouched for them, so they go when its contents do.
-            virtualItemSupply.clear();
-            virtualFluidSupply.clear();
             cacheManager.clearAllCaches();
         }
 
@@ -747,122 +687,6 @@ public abstract class MEPatternBufferPartMachineBase extends MEIOPartMachine
 
         protected void appendLimitFluidCatalystInputs(ObjectList<FluidStack> limitInput) {}
 
-        // ==================== Virtual ingredient supply ====================
-        //
-        // A virtual ingredient is a key this slot may satisfy without ever holding the material: the authorizing
-        // material is locked inside a provider held by the machine, so one copy serves every isolated slot at once.
-        // Only inputs the recipe itself declares non-consumed (chance == 0) qualify, which is what keeps the books
-        // balanced -- those inputs are already dropped from the real (non-simulated) pass by RecipeRunner, so nothing
-        // that would otherwise have been paid for is being skipped.
-        //
-        // The default implementations below are inert, so every buffer that does not opt in behaves exactly as before.
-
-        /**
-         * Keeps the slot eligible during matching even when its real inventory is empty.
-         */
-        protected boolean hasVirtualItemSupply() {
-            return !virtualItemSupply.isEmpty() || !configuredVirtualItems.isEmpty();
-        }
-
-        protected boolean hasVirtualFluidSupply() {
-            return !virtualFluidSupply.isEmpty() || !configuredVirtualFluids.isEmpty();
-        }
-
-        /**
-         * Publishes virtual keys to GT recipe lookup. Without this the branch tree never reaches a recipe that needs
-         * the key, so the feature would silently never trigger. The amount is unbounded because this list only ever
-         * feeds lookup; the parallel calculation reads {@link #getItemStackInputMap()}, which never sees these.
-         */
-        protected void appendVirtualItemInputs(ObjectList<ItemStack> limitInput) {
-            for (AEItemKey key : virtualItemSupply) {
-                limitInput.add(key.toStack(Integer.MAX_VALUE));
-            }
-            for (AEItemKey key : configuredVirtualItems) {
-                if (!virtualItemSupply.contains(key)) limitInput.add(key.toStack(Integer.MAX_VALUE));
-            }
-        }
-
-        protected void appendVirtualFluidInputs(ObjectList<FluidStack> limitInput) {
-            for (AEFluidKey key : virtualFluidSupply) {
-                limitInput.add(FluidStack.create(key.getFluid(), Integer.MAX_VALUE));
-            }
-            for (AEFluidKey key : configuredVirtualFluids) {
-                if (!virtualFluidSupply.contains(key)) {
-                    limitInput.add(FluidStack.create(key.getFluid(), Integer.MAX_VALUE));
-                }
-            }
-        }
-
-        /**
-         * Rejects recipes whose virtually supplied inputs are actually consumed. Letting one through would pass
-         * matching and then fail every real dispatch, trapping the multiblock in a match/fail loop and caching a
-         * recipe that can never run.
-         *
-         * @return false to veto this recipe for this slot
-         */
-        public boolean testVirtualItemInternal(GTRecipe recipe) {
-            if (!hasVirtualItemSupply()) return true;
-            for (var content : recipe.getInputContents(ItemRecipeCapability.CAP)) {
-                if (content.chance <= 0) continue;
-                for (ItemStack item : ((Ingredient) content.getContent()).getItems()) {
-                    if (suppliesItem(AEItemKey.of(item))) return false;
-                }
-            }
-            return true;
-        }
-
-        public boolean testVirtualFluidInternal(GTRecipe recipe) {
-            if (!hasVirtualFluidSupply()) return true;
-            for (var content : recipe.getInputContents(FluidRecipeCapability.CAP)) {
-                if (content.chance <= 0) continue;
-                for (FluidStack stack : ((FluidIngredient) content.getContent()).getStacks()) {
-                    if (suppliesFluid(AEFluidKey.of(stack.getFluid()))) return false;
-                }
-            }
-            return true;
-        }
-
-        /**
-         * Drops the demands this slot covers virtually, whatever amount they ask for. Callers pass the same map to
-         * several slots in turn, so this returns a filtered copy and never mutates the argument; when nothing is
-         * covered it hands the argument straight back, keeping the hot path allocation free.
-         */
-        public Object2LongMap<Ingredient> stripVirtuallySuppliedItems(Object2LongMap<Ingredient> left) {
-            if (left.isEmpty() || !hasVirtualItemSupply()) return left;
-            Object2LongMap<Ingredient> remaining = null;
-            for (var entry : Object2LongMaps.fastIterable(left)) {
-                if (!coversItem(entry.getKey())) continue;
-                if (remaining == null) remaining = new Object2LongOpenHashMap<>(left);
-                remaining.removeLong(entry.getKey());
-            }
-            return remaining == null ? left : remaining;
-        }
-
-        public Object2LongMap<FluidIngredient> stripVirtuallySuppliedFluids(Object2LongMap<FluidIngredient> left) {
-            if (left.isEmpty() || !hasVirtualFluidSupply()) return left;
-            Object2LongMap<FluidIngredient> remaining = null;
-            for (var entry : Object2LongMaps.fastIterable(left)) {
-                if (!coversFluid(entry.getKey())) continue;
-                if (remaining == null) remaining = new Object2LongOpenHashMap<>(left);
-                remaining.removeLong(entry.getKey());
-            }
-            return remaining == null ? left : remaining;
-        }
-
-        private boolean coversItem(Ingredient ingredient) {
-            for (ItemStack item : ingredient.getItems()) {
-                if (suppliesItem(AEItemKey.of(item))) return true;
-            }
-            return false;
-        }
-
-        private boolean coversFluid(FluidIngredient ingredient) {
-            for (FluidStack stack : ingredient.getStacks()) {
-                if (suppliesFluid(AEFluidKey.of(stack.getFluid()))) return true;
-            }
-            return false;
-        }
-
         @Override
         public CompoundTag serializeNBT() {
             CompoundTag tag = new CompoundTag();
@@ -872,18 +696,6 @@ public abstract class MEPatternBufferPartMachineBase extends MEIOPartMachine
 
             ListTag fluidsTag = AEUtils.createListTag(AEFluidKey::toTag, fluidInventory);
             if (!fluidsTag.isEmpty()) tag.put("fluidInventory", fluidsTag);
-
-            // Kept across a reload so a slot stays runnable until its next dispatch re-establishes the supply.
-            if (!virtualItemSupply.isEmpty()) {
-                ListTag list = new ListTag();
-                for (AEItemKey key : virtualItemSupply) list.add(key.toTag());
-                tag.put("virtualItemSupply", list);
-            }
-            if (!virtualFluidSupply.isEmpty()) {
-                ListTag list = new ListTag();
-                for (AEFluidKey key : virtualFluidSupply) list.add(key.toTag());
-                tag.put("virtualFluidSupply", list);
-            }
 
             return tag;
         }
@@ -898,20 +710,6 @@ public abstract class MEPatternBufferPartMachineBase extends MEIOPartMachine
 
             ListTag fluids = tag.getList("fluidInventory", Tag.TAG_COMPOUND);
             AEUtils.loadInventory(fluids, AEFluidKey::fromTag, fluidInventory);
-
-            virtualItemSupply.clear();
-            ListTag virtualItems = tag.getList("virtualItemSupply", Tag.TAG_COMPOUND);
-            for (int i = 0; i < virtualItems.size(); i++) {
-                AEItemKey key = AEItemKey.fromTag(virtualItems.getCompound(i));
-                if (key != null) virtualItemSupply.add(key);
-            }
-
-            virtualFluidSupply.clear();
-            ListTag virtualFluids = tag.getList("virtualFluidSupply", Tag.TAG_COMPOUND);
-            for (int i = 0; i < virtualFluids.size(); i++) {
-                AEFluidKey key = AEFluidKey.fromTag(virtualFluids.getCompound(i));
-                if (key != null) virtualFluidSupply.add(key);
-            }
         }
     }
 }

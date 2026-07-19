@@ -4,9 +4,7 @@ import org.gtlcore.gtlcore.api.gui.MEPatternCatalystUIManager;
 import org.gtlcore.gtlcore.api.gui.PatternCircuitConfigurator;
 import org.gtlcore.gtlcore.api.machine.trait.*;
 import org.gtlcore.gtlcore.api.machine.trait.MEPart.IMEPatternTrait;
-import org.gtlcore.gtlcore.common.data.GTLItems;
 import org.gtlcore.gtlcore.common.data.GTLMachines;
-import org.gtlcore.gtlcore.common.item.VirtualIngredientBehavior;
 import org.gtlcore.gtlcore.integration.ae2.AEUtils;
 import org.gtlcore.gtlcore.integration.ae2.widget.AEPatternViewExtendSlotWidget;
 import org.gtlcore.gtlcore.utils.GTLUtil;
@@ -283,31 +281,16 @@ public class MEPatternBufferPartMachine extends MEPatternBufferPartMachineBase {
     }
 
     private void reCalculateCatalystItemMap(int slot) {
-        final var internalSlot = internalInventory[slot];
-        final var itemCatalystInventory = internalSlot.getItemCatalystInventory();
+        final var itemCatalystInventory = internalInventory[slot].getItemCatalystInventory();
         itemCatalystInventory.clear();
-        internalSlot.getConfiguredVirtualItems().clear();
-        internalSlot.getConfiguredVirtualFluids().clear();
         var catalystItem = catalystItems[slot];
         for (int i = 0; i < catalystItem.getSlots(); i++) {
             ItemStack stack = catalystItem.getStackInSlot(i);
-            if (stack.isEmpty()) continue;
-
-            if (GTLItems.VIRTUAL_INGREDIENT.isIn(stack)) {
-                // A wrapper parked here vouches for its payload without the slot ever holding it. The wrapper itself
-                // is not a catalyst, so it must not reach the catalyst map, or recipes would start matching against
-                // the wrapper item instead of what it stands for.
-                AEItemKey payloadItem = VirtualIngredientBehavior.payloadItemKey(stack);
-                if (payloadItem != null) internalSlot.getConfiguredVirtualItems().add(payloadItem);
-                AEFluidKey payloadFluid = VirtualIngredientBehavior.payloadFluidKey(stack);
-                if (payloadFluid != null) internalSlot.getConfiguredVirtualFluids().add(payloadFluid);
-                continue;
+            if (!stack.isEmpty()) {
+                itemCatalystInventory.mergeLong(AEItemKey.of(stack), stack.getCount(), Long::sum);
             }
-
-            itemCatalystInventory.mergeLong(AEItemKey.of(stack), stack.getCount(), Long::sum);
         }
-        removeSlotFromGTRecipeCache(slot);
-        internalSlot.getOnContentsChanged().run();
+        internalInventory[slot].getOnContentsChanged().run();
     }
 
     private void reCalculateCatalystFluidMap(int slot) {
