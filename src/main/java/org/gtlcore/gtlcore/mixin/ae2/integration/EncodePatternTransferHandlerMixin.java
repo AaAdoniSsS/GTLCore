@@ -67,11 +67,8 @@ public class EncodePatternTransferHandlerMixin {
     }
 
     /**
-     * Advertises the control-click alternative on the transfer button.
-     * <p>
-     * AE always hands back an error object while JEI is only asking what the button should look like, so the hint has
-     * to wrap that object rather than replace it: replacing it would drop whatever AE wanted to draw about missing
-     * ingredients. Only shown for recipes that actually have a non-consumed input to virtualise.
+     * Advertises the control-click alternative on the transfer button. Wraps AE's error object rather than replacing
+     * it, which would drop whatever AE wanted to say about missing ingredients.
      */
     @Inject(method = "transferRecipe(Lappeng/menu/me/items/PatternEncodingTermMenu;Ljava/lang/Object;Lmezz/jei/api/gui/ingredient/IRecipeSlotsView;Lnet/minecraft/world/entity/player/Player;ZZ)Lmezz/jei/api/recipe/transfer/IRecipeTransferError;",
             at = @At("RETURN"),
@@ -100,9 +97,9 @@ public class EncodePatternTransferHandlerMixin {
 
             @Override
             public void getTooltip(ITooltipBuilder tooltip) {
-                // JEI asks the builder overload; filling the legacy list as well would draw both, overlapping.
+                // JEI asks this overload; filling the legacy list too would draw both, overlapping.
                 original.getTooltip(tooltip);
-                // AE's own line carries no break, so without a spacer the hint runs on from it.
+                // AE's line carries no break, so the hint would run on from it.
                 tooltip.add(Component.empty());
                 tooltip.add(Component.translatable("gtlcore.jei.virtual_ingredient_hint")
                         .withStyle(ChatFormatting.AQUA));
@@ -111,11 +108,8 @@ public class EncodePatternTransferHandlerMixin {
     }
 
     /**
-     * Replaces every non-consumed input with a virtual ingredient when the player holds control.
-     * <p>
-     * Done here rather than in the ingredient converters because only the recipe knows which inputs are non-consumed,
-     * and because items and fluids both pass through this one list. Wrapping a consumed input would encode a pattern
-     * that matches and then never runs, so eligibility comes straight from the recipe's own chance values.
+     * Replaces every non-consumed input with a virtual ingredient when the player holds control. Done here rather
+     * than in the ingredient converters because only the recipe knows which inputs are non-consumed.
      */
     @ModifyArg(method = "transferRecipe(Lappeng/menu/me/items/PatternEncodingTermMenu;Ljava/lang/Object;Lmezz/jei/api/gui/ingredient/IRecipeSlotsView;Lnet/minecraft/world/entity/player/Player;ZZ)Lmezz/jei/api/recipe/transfer/IRecipeTransferError;",
                at = @At(value = "INVOKE",

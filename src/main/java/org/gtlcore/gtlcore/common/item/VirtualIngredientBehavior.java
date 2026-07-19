@@ -38,17 +38,13 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 
 /**
- * Wraps one real item and/or fluid so that an AE network can hand the wrapper around in place of the material itself.
+ * Wraps one real item or fluid so an AE network can hand the wrapper around in place of the material itself.
  * <p>
- * A provider cell publishes an unlimited supply of the wrapper to the network, so AE stocks and dispatches it natively,
- * exactly like any other pattern input. What is spent on each craft is therefore the wrapper, never the payload: the
- * only real copy of the payload is the one locked in here when the player configured it.
+ * Once published to a network a wrapper is marked and can no longer give its payload back, otherwise one locked copy
+ * could be released and re-locked indefinitely while the supply machine kept publishing it.
  * <p>
- * Once a wrapper has been placed into a provider cell it is marked, and its payload can no longer be taken back out.
- * Without that, a single locked copy could be released and re-locked indefinitely while cells kept publishing it.
- * <p>
- * Deliberately a stateless singleton: one instance serves every player on the server, so nothing player- or
- * hand-specific may be cached on it. Everything comes from the {@link HeldItemUIFactory.HeldItemHolder}.
+ * Stateless singleton shared by every player, so nothing player- or hand-specific may be cached here; it all comes
+ * from the {@link HeldItemUIFactory.HeldItemHolder}.
  * <p>
  * Item texture adapted from GTMThings (com.hepdd.gtmthings, {@code virtual_ingredient_provider}).
  */
@@ -58,7 +54,7 @@ public class VirtualIngredientBehavior implements IItemUIFactory, IAddInformatio
 
     private static final String ITEM_TAG = "VirtualItem";
     private static final String FLUID_TAG = "VirtualFluid";
-    /** Upstream GTMThings uses this same key for the same purpose; kept identical so behaviour reads the same way. */
+    /** Same key GTMThings uses upstream. */
     private static final String MARKED_TAG = "marked";
 
     private static final long FLUID_CAPACITY = FluidHelper.getBucket();
@@ -74,12 +70,10 @@ public class VirtualIngredientBehavior implements IItemUIFactory, IAddInformatio
     private static final int INV_TOP = 84;
     private static final int HOTBAR_TOP = INV_TOP + 3 * SLOT_SIZE + 4;
 
-    /**
-     * Reads the locked item. The transfer is detached; write it back with {@link #saveItemStorage}.
-     */
+    /** Detached copy; write it back with {@link #saveItemStorage}. */
     public static ItemStackTransfer getItemStorage(ItemStack wrapper) {
         ItemStackTransfer transfer = new ItemStackTransfer(1);
-        // Nesting would let one wrapper claim a payload it does not actually lock.
+        // Nesting would let a wrapper claim a payload it does not lock.
         transfer.setFilter(stack -> stack.isEmpty() || !GTLItems.VIRTUAL_INGREDIENT.isIn(stack));
         CompoundTag tag = wrapper.getTag();
         if (tag != null && tag.contains(ITEM_TAG)) {
@@ -92,9 +86,7 @@ public class VirtualIngredientBehavior implements IItemUIFactory, IAddInformatio
         wrapper.getOrCreateTag().put(ITEM_TAG, transfer.serializeNBT());
     }
 
-    /**
-     * Reads the locked fluid. The storage is detached; write it back with {@link #saveFluidStorage}.
-     */
+    /** Detached copy; write it back with {@link #saveFluidStorage}. */
     public static FluidStorage getFluidStorage(ItemStack wrapper) {
         FluidStorage storage = new FluidStorage(FLUID_CAPACITY);
         CompoundTag tag = wrapper.getTag();
@@ -108,18 +100,12 @@ public class VirtualIngredientBehavior implements IItemUIFactory, IAddInformatio
         wrapper.getOrCreateTag().put(FLUID_TAG, storage.serializeNBT());
     }
 
-    /**
-     * @return the item key this wrapper stands in for, or null when it locks no item
-     */
     @Nullable
     public static AEItemKey payloadItemKey(ItemStack wrapper) {
         ItemStack locked = getItemStorage(wrapper).getStackInSlot(0);
         return locked.isEmpty() ? null : AEItemKey.of(locked);
     }
 
-    /**
-     * @return the fluid key this wrapper stands in for, or null when it locks no fluid
-     */
     @Nullable
     public static AEFluidKey payloadFluidKey(ItemStack wrapper) {
         FluidStack locked = getFluidStorage(wrapper).getFluidInTank(0);
@@ -130,12 +116,7 @@ public class VirtualIngredientBehavior implements IItemUIFactory, IAddInformatio
         return payloadItemKey(wrapper) != null || payloadFluidKey(wrapper) != null;
     }
 
-    /**
-     * Builds a sealed wrapper standing in for the given payload. Used by the supply machine, which wraps whatever real
-     * material the player parks in it rather than making them configure wrappers by hand.
-     *
-     * @param payload the material to stand in for; may be empty to produce a blank placeholder
-     */
+    /** Sealed on creation: built for publishing, not for the player to edit. */
     public static ItemStack wrap(ItemStack payload) {
         ItemStack wrapper = new ItemStack(GTLItems.VIRTUAL_INGREDIENT.asItem());
         if (!payload.isEmpty()) {
@@ -147,9 +128,6 @@ public class VirtualIngredientBehavior implements IItemUIFactory, IAddInformatio
         return wrapper;
     }
 
-    /**
-     * Builds a sealed wrapper standing in for the given fluid.
-     */
     public static ItemStack wrap(FluidStack payload) {
         ItemStack wrapper = new ItemStack(GTLItems.VIRTUAL_INGREDIENT.asItem());
         if (!payload.isEmpty()) {
@@ -161,9 +139,7 @@ public class VirtualIngredientBehavior implements IItemUIFactory, IAddInformatio
         return wrapper;
     }
 
-    /**
-     * A marked wrapper has been published to a network and may no longer give its payload back.
-     */
+    /** Marked means published to a network, and so no longer able to give its payload back. */
     public static boolean isMarked(ItemStack wrapper) {
         CompoundTag tag = wrapper.getTag();
         return tag != null && tag.getBoolean(MARKED_TAG);
@@ -181,8 +157,7 @@ public class VirtualIngredientBehavior implements IItemUIFactory, IAddInformatio
         ItemStackTransfer itemStorage = getItemStorage(wrapper);
         FluidStorage fluidStorage = getFluidStorage(wrapper);
 
-        // One payload per wrapper, never both. The network identifies a wrapper by its whole NBT, so a wrapper
-        // carrying two payloads would be a third, distinct key that no pattern asking for either one can match.
+        // Item xor fluid: AE keys a wrapper by its whole NBT, so carrying both yields a third key matching neither.
         itemStorage.setFilter(stack -> stack.isEmpty() ||
                 (!GTLItems.VIRTUAL_INGREDIENT.isIn(stack) && fluidStorage.getFluidInTank(0).isEmpty()));
         fluidStorage.setValidator(fluid -> fluid.isEmpty() || itemStorage.getStackInSlot(0).isEmpty());
@@ -209,7 +184,7 @@ public class VirtualIngredientBehavior implements IItemUIFactory, IAddInformatio
                 .setBackground(GuiTextures.FLUID_SLOT));
 
         Inventory playerInv = player.getInventory();
-        // The held wrapper must stay put while its own UI edits it.
+        // Held wrapper must stay put while its own UI edits it.
         int heldSlot = holder.getHand() == InteractionHand.MAIN_HAND ? playerInv.selected : -1;
         for (int row = 0; row < 3; row++) {
             for (int col = 0; col < COLS; col++) {

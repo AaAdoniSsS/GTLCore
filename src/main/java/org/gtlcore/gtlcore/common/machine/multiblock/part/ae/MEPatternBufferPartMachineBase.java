@@ -472,19 +472,14 @@ public abstract class MEPatternBufferPartMachineBase extends MEIOPartMachine
         @Getter
         private final Object2LongOpenHashMap<AEFluidKey> fluidInventory = new Object2LongOpenHashMap<>();
 
-        /**
-         * Payloads this slot may present without ever holding them, established by the virtual ingredients AE pushed
-         * in. Sets rather than counted maps on purpose: a virtual supply has no quantity, which is exactly what lets
-         * it satisfy a demand for any amount.
-         */
+        /** Sets rather than counted maps: having no quantity is what lets these satisfy a demand for any amount. */
         private final ObjectSet<AEItemKey> virtualItemSupply = new ObjectOpenHashSet<>();
 
         private final ObjectSet<AEFluidKey> virtualFluidSupply = new ObjectOpenHashSet<>();
 
         /**
-         * Payloads of virtual ingredients the player parked in this slot's catalyst inventory. Kept apart from the
-         * pushed ones because their lifetimes differ: these last as long as the wrapper sits in the slot, while pushed
-         * ones belong to the pattern and go when it does.
+         * Kept apart from the pushed ones: these live as long as the wrapper sits in the slot, not as long as the
+         * pattern.
          */
         @Getter
         private final ObjectSet<AEItemKey> configuredVirtualItems = new ObjectOpenHashSet<>();
@@ -537,15 +532,13 @@ public abstract class MEPatternBufferPartMachineBase extends MEIOPartMachine
             if (what instanceof AEItemKey itemKey) {
                 ItemStack stack = itemKey.getReadOnlyStack();
                 if (GTLItems.VIRTUAL_INGREDIENT.isIn(stack)) {
-                    // The wrapper is spent right here. A supply machine hands out an unlimited stream of them, so
-                    // there is no point storing one; what this slot has to remember is the payload it vouches for.
+                    // Wrapper is spent here: supply is unlimited, so only the payload is worth remembering.
                     AEItemKey payloadItem = VirtualIngredientBehavior.payloadItemKey(stack);
                     if (payloadItem != null) {
                         ItemStack payload = payloadItem.toStack(1);
                         if (IntCircuitBehaviour.isIntegratedCircuit(payload)) {
-                            // Circuits never travel through the item map -- the buffer strips them out and matches
-                            // them against this slot's cached configuration instead. A virtual circuit has to land in
-                            // that same channel, exactly as an embedded one would, or nothing would ever consult it.
+                            // Circuits are stripped out of the item map and matched against the slot's cached
+                            // configuration, so a virtual one has to land in that channel or nothing consults it.
                             cacheManager.setCircuitCache(IntCircuitBehaviour.getCircuitConfiguration(payload));
                         } else {
                             virtualItemSupply.add(payloadItem);
@@ -749,17 +742,11 @@ public abstract class MEPatternBufferPartMachineBase extends MEIOPartMachine
 
         // ==================== Virtual ingredient supply ====================
         //
-        // A virtual ingredient is a key this slot may satisfy without ever holding the material: the authorizing
-        // material is locked inside a provider held by the machine, so one copy serves every isolated slot at once.
-        // Only inputs the recipe itself declares non-consumed (chance == 0) qualify, which is what keeps the books
-        // balanced -- those inputs are already dropped from the real (non-simulated) pass by RecipeRunner, so nothing
-        // that would otherwise have been paid for is being skipped.
-        //
-        // The default implementations below are inert, so every buffer that does not opt in behaves exactly as before.
+        // Keys this slot may satisfy without holding the material. Restricted to inputs the recipe declares
+        // non-consumed (chance == 0), which RecipeRunner already drops from the real pass, so nothing that would have
+        // been paid for is skipped. Defaults below are inert; buffers that do not opt in behave as before.
 
-        /**
-         * Keeps the slot eligible during matching even when its real inventory is empty.
-         */
+        /** Keeps the slot eligible during matching even when its real inventory is empty. */
         protected boolean hasVirtualItemSupply() {
             return !virtualItemSupply.isEmpty() || !configuredVirtualItems.isEmpty();
         }
@@ -769,9 +756,9 @@ public abstract class MEPatternBufferPartMachineBase extends MEIOPartMachine
         }
 
         /**
-         * Publishes virtual keys to GT recipe lookup. Without this the branch tree never reaches a recipe that needs
-         * the key, so the feature would silently never trigger. The amount is unbounded because this list only ever
-         * feeds lookup; the parallel calculation reads {@link #getItemStackInputMap()}, which never sees these.
+         * Publishes virtual keys to GT recipe lookup, without which the branch tree never reaches a recipe needing
+         * them. Amounts are unbounded because this list only feeds lookup; parallel calculation reads
+         * {@link #getItemStackInputMap()}, which never sees these.
          */
         protected void appendVirtualItemInputs(ObjectList<ItemStack> limitInput) {
             for (AEItemKey key : virtualItemSupply) {
@@ -794,9 +781,8 @@ public abstract class MEPatternBufferPartMachineBase extends MEIOPartMachine
         }
 
         /**
-         * Rejects recipes whose virtually supplied inputs are actually consumed. Letting one through would pass
-         * matching and then fail every real dispatch, trapping the multiblock in a match/fail loop and caching a
-         * recipe that can never run.
+         * Rejects recipes that actually consume a virtually supplied input. One slipping through would match and then
+         * fail every dispatch, caching a recipe that can never run.
          *
          * @return false to veto this recipe for this slot
          */
@@ -823,9 +809,8 @@ public abstract class MEPatternBufferPartMachineBase extends MEIOPartMachine
         }
 
         /**
-         * Drops the demands this slot covers virtually, whatever amount they ask for. Callers pass the same map to
-         * several slots in turn, so this returns a filtered copy and never mutates the argument; when nothing is
-         * covered it hands the argument straight back, keeping the hot path allocation free.
+         * Drops the demands this slot covers virtually, whatever amount they ask for. Returns a filtered copy because
+         * callers pass the same map to several slots in turn, or the argument itself when nothing is covered.
          */
         public Object2LongMap<Ingredient> stripVirtuallySuppliedItems(Object2LongMap<Ingredient> left) {
             if (left.isEmpty() || !hasVirtualItemSupply()) return left;

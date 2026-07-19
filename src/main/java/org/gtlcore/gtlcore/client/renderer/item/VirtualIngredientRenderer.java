@@ -25,11 +25,9 @@ import com.mojang.blaze3d.vertex.*;
 import org.joml.Matrix4f;
 
 /**
- * Draws what a virtual ingredient stands for, with the wrapper's own sprite laid over it as a frame.
+ * Draws a virtual ingredient's payload, with the wrapper's own sprite laid over it as a frame.
  * <p>
- * The payload is the main icon rather than a badge: a pattern encodes the wrapper, so a stack of them is otherwise
- * indistinguishable at a glance. Fluid payloads are drawn as a flat sprite instead of borrowing their bucket, because
- * a bucket is itself a legitimate item payload and the two must not look alike.
+ * Fluid payloads get a flat sprite rather than their bucket, because a bucket is itself a legitimate item payload.
  */
 public class VirtualIngredientRenderer implements IRenderer {
 
@@ -53,8 +51,7 @@ public class VirtualIngredientRenderer implements IRenderer {
             mc.getItemRenderer().render(payload, transformType, leftHand, poseStack, buffer, combinedLight,
                     combinedOverlay, payloadModel);
         } else if (payloadFluid == null) {
-            // Nothing configured yet, so the wrapper's own model is all there is to show. Rendering our own stack
-            // dispatches straight back into this renderer, so the provider has to be muted for the duration.
+            // Rendering our own stack dispatches straight back here, so mute the provider for the duration.
             BakedModel own = mc.getItemRenderer().getModel(stack, mc.level, mc.player, 0);
             IItemRendererProvider.disabled.set(true);
             try {
@@ -80,11 +77,8 @@ public class VirtualIngredientRenderer implements IRenderer {
     }
 
     /**
-     * Emits the quad into the same buffer source the item itself was drawn with.
-     * <p>
-     * Drawing it immediately with a Tesselator instead puts it outside that batch, which leaves its ordering against
-     * the item at the mercy of whoever flushes the batch. That differs between screens, so the overlay would appear in
-     * some slots and vanish in others.
+     * Emits into the same buffer source the item was drawn with. An immediate-mode Tesselator lands outside that
+     * batch, leaving draw order up to whoever flushes it, which differs per screen.
      */
     @OnlyIn(Dist.CLIENT)
     private static void blit(PoseStack poseStack, MultiBufferSource buffer, int light,
@@ -93,7 +87,7 @@ public class VirtualIngredientRenderer implements IRenderer {
         int r = tint >> 16 & 0xFF;
         int g = tint >> 8 & 0xFF;
         int b = tint & 0xFF;
-        // A tint with no alpha means the sprite carries its own colour; multiplying by zero would erase it.
+        // No alpha means the sprite carries its own colour; multiplying by zero would erase it.
         if (a == 0) {
             a = 0xFF;
             r = 0xFF;

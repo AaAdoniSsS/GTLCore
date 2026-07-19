@@ -31,29 +31,19 @@ import static com.gregtechceu.gtceu.common.data.GTItems.SHAPE_MOLDS;
 /**
  * Decides what a pattern transfer does with inputs that are not really consumed.
  * <p>
- * A plain transfer drops moulds and extruder shapes, because encoding one per pattern only forces the player to stock
- * copies of something they already own. Holding control asks for every non-consumed input to be encoded as a virtual
- * ingredient instead, which a supply machine can then serve to all of them at once.
- * <p>
- * Eligibility is taken from the recipe rather than guessed from the item: a virtual ingredient only ever satisfies an
- * input the recipe declares non-consumed, so wrapping anything else would produce a pattern that matches and then
- * never runs.
+ * Eligibility comes from the recipe, not from the item: wrapping a consumed input would encode a pattern that matches
+ * and then never runs.
  */
 public final class VirtualIngredientEncoding {
 
     private VirtualIngredientEncoding() {}
 
-    /**
-     * Research sticks are dropped whatever the player holds down. They carry the recipe's identity rather than being
-     * an ingredient, so a virtual stand-in for one is meaningless.
-     */
+    /** Research sticks carry the recipe's identity rather than being an ingredient, so a stand-in is meaningless. */
     public static boolean isAlwaysDropped(ItemStack stack) {
         return !stack.isEmpty() && stack.getTag() != null && stack.getTag().contains("assembly_line_research");
     }
 
-    /**
-     * Dropped by a plain transfer, but eligible to be encoded virtually instead.
-     */
+    /** Dropped by a plain transfer, but eligible to be encoded virtually instead. */
     public static boolean isDroppedUnlessVirtual(ItemStack stack) {
         if (stack.isEmpty()) return false;
         var item = stack.getItem();
@@ -62,11 +52,7 @@ public final class VirtualIngredientEncoding {
                         .anyMatch(i -> i.equals(item));
     }
 
-    /**
-     * Every key the recipe declares non-consumed, across items and fluids.
-     *
-     * @return an empty set when the recipe is not a GT recipe, which leaves the transfer untouched
-     */
+    /** Empty for a non-GT recipe, which leaves the transfer untouched. */
     public static Set<AEKey> notConsumedKeys(@Nullable Object recipeBase) {
         GTRecipe recipe = asGTRecipe(recipeBase);
         if (recipe == null) return Set.of();
@@ -87,9 +73,7 @@ public final class VirtualIngredientEncoding {
         return keys;
     }
 
-    /**
-     * @return the same stack wrapped into a virtual ingredient, or null when the key is not one of {@code notConsumed}
-     */
+    /** @return null when the key is not one of {@code notConsumed} */
     @Nullable
     public static GenericStack wrapIfNotConsumed(GenericStack stack, Set<AEKey> notConsumed) {
         if (stack == null || !notConsumed.contains(stack.what())) return null;

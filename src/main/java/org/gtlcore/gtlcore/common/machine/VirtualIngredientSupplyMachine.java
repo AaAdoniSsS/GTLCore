@@ -46,15 +46,9 @@ import org.jetbrains.annotations.NotNull;
 import java.util.EnumSet;
 
 /**
- * Publishes an unlimited supply of virtual items to the ME network, one for every real stack parked inside it.
+ * Publishes an unlimited virtual ingredient to the ME network for every real stack parked inside.
  * <p>
- * This is what makes virtual ingredients native to AE: the network genuinely holds the wrapper, so AE stocks, plans and
- * dispatches it exactly like any other pattern input, with no interception anywhere along the crafting path. What the
- * network never sees is the payload -- the single real copy of it stays locked in this machine's inventory, and that is
- * the whole ownership gate. Wrappers are free and infinite; the material behind them is neither.
- * <p>
- * Adapted from GTOCore's {@code VirtualItemProviderMachine} (com.gtocore.common.machine.noenergy), rewritten against
- * GTLCore's own virtual item and LDLib persistence rather than GTOLib's cell storage helpers and GTMThings' item.
+ * Adapted from GTOCore's {@code VirtualItemProviderMachine} (com.gtocore.common.machine.noenergy).
  */
 public class VirtualIngredientSupplyMachine extends MetaMachine
                                             implements IUIMachine, IDropSaveMachine, MEStorage, IGridConnectedMachine,
@@ -78,7 +72,7 @@ public class VirtualIngredientSupplyMachine extends MetaMachine
     @DescSynced
     private boolean isOnline;
 
-    /** Rebuilt whenever the inventory changes; never persisted, because it is derived. */
+    /** Derived from the inventory, so rebuilt on change rather than persisted. */
     private final Object2LongMap<AEKey> published = new Object2LongOpenHashMap<>();
 
     private KeyCounter cachedStacks;
@@ -86,11 +80,10 @@ public class VirtualIngredientSupplyMachine extends MetaMachine
 
     public VirtualIngredientSupplyMachine(IMachineBlockEntity holder) {
         super(holder);
-        // IO.NONE as the handler role keeps recipe logic from ever seeing this as machine input or output.
+        // IO.NONE keeps recipe logic from seeing this as machine input or output.
         this.inventory = new NotifiableItemStackHandler(this, SLOT_COUNT, IO.NONE, IO.BOTH);
         this.nodeHolder = new GridNodeHolder(this);
-        // A standalone block, unlike the ME hatches this trait was written for: cabling it up should work from any
-        // face rather than only the one it happens to be facing.
+        // GridNodeHolder exposes the front face only, which suits ME hatches but not a standalone block.
         getMainNode().setExposedOnSides(EnumSet.allOf(Direction.class));
         getMainNode().addService(IStorageProvider.class, this);
         this.inventory.addChangedListener(this::rebuildPublishedKeys);
@@ -99,7 +92,7 @@ public class VirtualIngredientSupplyMachine extends MetaMachine
     @Override
     public void onRotated(@NotNull Direction oldFacing, @NotNull Direction newFacing) {
         super.onRotated(oldFacing, newFacing);
-        // Keep every face connectable; the default would narrow this back down to the new front.
+        // Rotating narrows exposure back down to the new front.
         getMainNode().setExposedOnSides(EnumSet.allOf(Direction.class));
     }
 
@@ -110,10 +103,6 @@ public class VirtualIngredientSupplyMachine extends MetaMachine
         rebuildPublishedKeys();
     }
 
-    /**
-     * Wraps every parked stack into a sealed virtual item. A stack that is already a wrapper is published as-is, so a
-     * hand-configured one can be seeded here too.
-     */
     private void rebuildPublishedKeys() {
         published.clear();
         for (int i = 0; i < inventory.getSlots(); i++) {
@@ -122,9 +111,7 @@ public class VirtualIngredientSupplyMachine extends MetaMachine
 
             ItemStack wrapper;
             if (GTLItems.VIRTUAL_INGREDIENT.isIn(stack)) {
-                // Seal the parked wrapper itself. Publishing it hands out unlimited copies, so letting the player
-                // then pull the payload back out would turn one locked copy into an unlimited source of the real
-                // material.
+                // Sealed in place: an editable wrapper here would turn one locked copy into unlimited real material.
                 VirtualIngredientBehavior.mark(stack);
                 wrapper = stack.copyWithCount(1);
             } else {
@@ -155,10 +142,9 @@ public class VirtualIngredientSupplyMachine extends MetaMachine
         ItemStack stack = itemKey.getReadOnlyStack();
         if (!GTLItems.VIRTUAL_INGREDIENT.isIn(stack)) return 0;
 
-        // Sealed wrappers are what we handed out, so swallow them rather than let returned ones pile up in the network.
+        // Sealed wrappers are ours coming back; swallow them instead of letting them pile up in the network.
         if (VirtualIngredientBehavior.isMarked(stack)) return amount;
 
-        // An unsealed wrapper is real cargo: accept it into a slot so it starts being published.
         return store(stack, mode.isSimulate()) ? amount : 0;
     }
 
@@ -173,8 +159,7 @@ public class VirtualIngredientSupplyMachine extends MetaMachine
 
     @Override
     public long extract(AEKey what, long amount, Actionable mode, IActionSource source) {
-        // Extraction never decrements: the wrapper is a token, and tokens are free. The payload is not stored here in
-        // any form AE can reach, so nothing real leaves the machine.
+        // Never decrements: wrappers are tokens, and the payload is not reachable from here.
         return amount > 0 && published.containsKey(what) ? amount : 0;
     }
 
@@ -262,8 +247,7 @@ public class VirtualIngredientSupplyMachine extends MetaMachine
 
                 @Override
                 public boolean isEnabled() {
-                    // Slots scrolled out of view are disabled by default, which silently makes everything past the
-                    // first visible page reject insertion.
+                    // Default disables slots scrolled out of view, which makes them silently reject insertion.
                     return true;
                 }
             }.setBackgroundTexture(GuiTextures.SLOT));
