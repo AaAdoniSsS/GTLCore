@@ -129,10 +129,15 @@ public abstract class MEPatternBufferRecipeHandlerTraitBase extends MachineTrait
         public boolean meHandleRecipeInner(GTRecipe recipe, Object2LongMap<Ingredient> left, boolean simulate, int trySlot) {
             var internalSlot = getMachine().getInternalSlotOrNull(trySlot);
             if (internalSlot != null && internalSlot.isItemActive(simulate)) {
+                Object2LongMap<Ingredient> remaining = left;
                 if (simulate) {
                     if (!internalSlot.testCatalystItemInternal(recipe)) return false;
+                    if (!internalSlot.testVirtualItemInternal(recipe)) return false;
+                    // Matching only. On the real pass these demands are already gone -- RecipeRunner drops chance == 0
+                    // contents -- so there is nothing to strip and nothing this handler could avoid paying for.
+                    remaining = internalSlot.stripVirtuallySuppliedItems(left);
                 }
-                return internalSlot.handleItemInternal(left, preparedCircuitConfig, simulate);
+                return internalSlot.handleItemInternal(remaining, preparedCircuitConfig, simulate);
             } else return left.isEmpty() && preparedCircuitConfig < 0;
         }
 
@@ -234,10 +239,13 @@ public abstract class MEPatternBufferRecipeHandlerTraitBase extends MachineTrait
         public boolean meHandleRecipeInner(GTRecipe recipe, Object2LongMap<FluidIngredient> left, boolean simulate, int trySlot) {
             var internalSlot = getMachine().getInternalSlotOrNull(trySlot);
             if (internalSlot != null && internalSlot.isFluidActive(simulate)) {
+                Object2LongMap<FluidIngredient> remaining = left;
                 if (simulate) {
                     if (!internalSlot.testCatalystFluidInternal(recipe)) return false;
+                    if (!internalSlot.testVirtualFluidInternal(recipe)) return false;
+                    remaining = internalSlot.stripVirtuallySuppliedFluids(left);
                 }
-                return internalSlot.handleFluidInternal(left, simulate);
+                return internalSlot.handleFluidInternal(remaining, simulate);
             } else return left.isEmpty();
         }
 
