@@ -297,7 +297,10 @@ public class AEUtils {
         for (int x = 0; x < inputs.length; x++) {
             var list = inputHolder[x] = new KeyCounter();
             AEKey key = inputs[x].getPossibleInputs()[0].what();
-            long amount = NumberUtils.saturatedMultiply(inputs[x].getMultiplier(), multiplier);
+            // Programmed circuits only reconfigure the target circuit slot,
+            // so always push exactly one operation's worth regardless of the multiplier.
+            long effectiveMultiplier = isIntegratedCircuit(key) ? 1 : multiplier;
+            long amount = NumberUtils.saturatedMultiply(inputs[x].getMultiplier(), effectiveMultiplier);
             long extracted = AEUtils.extractTemplates(sourceInv, key, amount);
             list.add(key, extracted);
             if (extracted < amount) {
