@@ -24,7 +24,6 @@ import com.lowdragmc.lowdraglib.syncdata.annotation.DescSynced;
 import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
 import com.lowdragmc.lowdraglib.syncdata.field.ManagedFieldHolder;
 
-import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Player;
@@ -44,7 +43,6 @@ import it.unimi.dsi.fastutil.objects.Object2LongMaps;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.EnumSet;
 import java.util.List;
 
 /**
@@ -85,17 +83,8 @@ public class VirtualIngredientSupplyMachine extends MetaMachine
         // IO.NONE keeps recipe logic from seeing this as machine input or output.
         this.inventory = new NotifiableItemStackHandler(this, SLOT_COUNT, IO.NONE, IO.BOTH);
         this.nodeHolder = new GridNodeHolder(this);
-        // GridNodeHolder exposes the front face only, which suits ME hatches but not a standalone block.
-        getMainNode().setExposedOnSides(EnumSet.allOf(Direction.class));
         getMainNode().addService(IStorageProvider.class, this);
         this.inventory.addChangedListener(this::rebuildPublishedKeys);
-    }
-
-    @Override
-    public void onRotated(@NotNull Direction oldFacing, @NotNull Direction newFacing) {
-        super.onRotated(oldFacing, newFacing);
-        // Rotating narrows exposure back down to the new front.
-        getMainNode().setExposedOnSides(EnumSet.allOf(Direction.class));
     }
 
     @Override
