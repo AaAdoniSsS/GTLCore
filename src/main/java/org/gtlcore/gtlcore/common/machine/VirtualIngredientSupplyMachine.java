@@ -9,6 +9,7 @@ import com.gregtechceu.gtceu.api.gui.UITemplate;
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
 import com.gregtechceu.gtceu.api.machine.MetaMachine;
 import com.gregtechceu.gtceu.api.machine.feature.IDropSaveMachine;
+import com.gregtechceu.gtceu.api.machine.feature.IMachineModifyDrops;
 import com.gregtechceu.gtceu.api.machine.feature.IUIMachine;
 import com.gregtechceu.gtceu.api.machine.trait.NotifiableItemStackHandler;
 import com.gregtechceu.gtceu.integration.ae2.machine.feature.IGridConnectedMachine;
@@ -44,6 +45,7 @@ import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.EnumSet;
+import java.util.List;
 
 /**
  * Publishes an unlimited virtual ingredient to the ME network for every real stack parked inside.
@@ -51,8 +53,8 @@ import java.util.EnumSet;
  * Adapted from GTOCore's {@code VirtualItemProviderMachine} (com.gtocore.common.machine.noenergy).
  */
 public class VirtualIngredientSupplyMachine extends MetaMachine
-                                            implements IUIMachine, IDropSaveMachine, MEStorage, IGridConnectedMachine,
-                                            IStorageProvider {
+                                            implements IUIMachine, IDropSaveMachine, IMachineModifyDrops, MEStorage,
+                                            IGridConnectedMachine, IStorageProvider {
 
     protected static final ManagedFieldHolder MANAGED_FIELD_HOLDER = new ManagedFieldHolder(
             VirtualIngredientSupplyMachine.class, MetaMachine.MANAGED_FIELD_HOLDER);
@@ -60,8 +62,8 @@ public class VirtualIngredientSupplyMachine extends MetaMachine
     public static final int SLOT_COUNT = 288;
     private static final int COLS = 9;
     private static final int SLOT_SIZE = 18;
-    /** Matches AE's own creative cell, which reports Integer.MAX_VALUE per configured key. */
-    private static final long PUBLISHED_AMOUNT = Integer.MAX_VALUE;
+    /** Caps how much the crafting planner will pull from here, so anything short of unlimited caps order size. */
+    private static final long PUBLISHED_AMOUNT = Long.MAX_VALUE;
 
     @Persisted
     private final NotifiableItemStackHandler inventory;
@@ -208,6 +210,12 @@ public class VirtualIngredientSupplyMachine extends MetaMachine
     }
 
     // ==================== Persistence ====================
+
+    // Runs before saveToItem, which then stores the emptied inventory, so the material drops once rather than twice.
+    @Override
+    public void onDrops(List<ItemStack> drops) {
+        clearInventory(inventory.storage);
+    }
 
     @Override
     public void loadFromItem(CompoundTag tag) {
