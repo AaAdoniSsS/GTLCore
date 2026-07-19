@@ -1,5 +1,6 @@
 package org.gtlcore.gtlcore.mixin.ae2.integration;
 
+import org.gtlcore.gtlcore.client.gui.EncodePatternErrorModify;
 import org.gtlcore.gtlcore.client.gui.PatterEncodingTermMenuModify;
 import org.gtlcore.gtlcore.integration.ae2.pattern.VirtualIngredientEncoding;
 
@@ -7,8 +8,6 @@ import com.gregtechceu.gtceu.api.recipe.GTRecipe;
 import com.gregtechceu.gtceu.integration.jei.multipage.MultiblockInfoWrapper;
 import com.gregtechceu.gtceu.integration.jei.recipe.GTRecipeWrapper;
 
-import net.minecraft.ChatFormatting;
-import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
@@ -22,7 +21,6 @@ import appeng.integration.modules.jei.transfer.EncodePatternTransferHandler;
 import appeng.menu.me.items.PatternEncodingTermMenu;
 import com.llamalad7.mixinextras.sugar.Local;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import mezz.jei.api.gui.builder.ITooltipBuilder;
 import mezz.jei.api.gui.ingredient.IRecipeSlotsView;
 import mezz.jei.api.recipe.transfer.IRecipeTransferError;
 import org.spongepowered.asm.mixin.Mixin;
@@ -67,44 +65,18 @@ public class EncodePatternTransferHandlerMixin {
     }
 
     /**
-     * Advertises the control-click alternative on the transfer button. Wraps AE's error object rather than replacing
-     * it, which would drop whatever AE wanted to say about missing ingredients.
+     * Advertises the control-click alternative on the transfer button. The line itself is appended by
+     * {@link EncodePatternErrorRendererMixin}, which is the only place AE's own tooltip is reachable.
      */
     @Inject(method = "transferRecipe(Lappeng/menu/me/items/PatternEncodingTermMenu;Ljava/lang/Object;Lmezz/jei/api/gui/ingredient/IRecipeSlotsView;Lnet/minecraft/world/entity/player/Player;ZZ)Lmezz/jei/api/recipe/transfer/IRecipeTransferError;",
             at = @At("RETURN"),
-            cancellable = true,
             remap = false)
     private void gtlcore$hintVirtualIngredients(PatternEncodingTermMenu menu, Object recipeBase,
                                                 IRecipeSlotsView recipeSlots, Player player, boolean maxTransfer,
                                                 boolean doTransfer,
                                                 CallbackInfoReturnable<IRecipeTransferError> cir) {
-        if (doTransfer) return;
-        IRecipeTransferError original = cir.getReturnValue();
-        if (original == null || !original.getType().allowsTransfer) return;
-        if (VirtualIngredientEncoding.notConsumedKeys(recipeBase).isEmpty()) return;
-
-        cir.setReturnValue(new IRecipeTransferError() {
-
-            @Override
-            public Type getType() {
-                return original.getType();
-            }
-
-            @Override
-            public void showError(GuiGraphics graphics, int mouseX, int mouseY, IRecipeSlotsView slots, int x, int y) {
-                original.showError(graphics, mouseX, mouseY, slots, x, y);
-            }
-
-            @Override
-            public void getTooltip(ITooltipBuilder tooltip) {
-                // JEI asks this overload; filling the legacy list too would draw both, overlapping.
-                original.getTooltip(tooltip);
-                // AE's line carries no break, so the hint would run on from it.
-                tooltip.add(Component.empty());
-                tooltip.add(Component.translatable("gtlcore.jei.virtual_ingredient_hint")
-                        .withStyle(ChatFormatting.AQUA));
-            }
-        });
+        if (doTransfer || !(cir.getReturnValue() instanceof EncodePatternErrorModify error)) return;
+        error.gTLCore$setVirtualIngredientHint(!VirtualIngredientEncoding.notConsumedKeys(recipeBase).isEmpty());
     }
 
     /**
