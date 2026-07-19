@@ -347,7 +347,7 @@ public class MEStockingPatternBufferPartMachine extends MEPatternBufferPartMachi
             return hasPatternInSlot(getSlotIndex()) && (simulate ?
                     (!getItemInventory().isEmpty() || !sharedCatalystInventory.isEmpty() ||
                             !getCircuitForRecipe(getSlotIndex()).isEmpty() || hasItemCatalystInventory() ||
-                            hasVirtualItemSupply() || stockItemHandler.hasConfig()) :
+                            stockItemHandler.hasConfig()) :
                     (!getItemInventory().isEmpty() || stockItemHandler.hasConfig()));
         }
 
@@ -355,8 +355,7 @@ public class MEStockingPatternBufferPartMachine extends MEPatternBufferPartMachi
         public boolean isFluidActive(boolean simulate) {
             return hasPatternInSlot(getSlotIndex()) && (simulate ?
                     (!getFluidInventory().isEmpty() || !sharedCatalystTank.isEmpty() ||
-                            hasFluidCatalystInventory() || hasVirtualFluidSupply() ||
-                            stockFluidHandler.hasConfig()) :
+                            hasFluidCatalystInventory() || stockFluidHandler.hasConfig()) :
                     (!getFluidInventory().isEmpty() || stockFluidHandler.hasConfig()));
         }
 
