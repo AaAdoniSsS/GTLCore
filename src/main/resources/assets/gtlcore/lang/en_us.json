@@ -1,5 +1,5 @@
 {
-  "gui.gtlcore.pattern_provider.auto_expand": "Pattern Auto-Expand",
+  "gui.gtlcore.pattern_provider.auto_expand": "Pattern Auto-Expand Mode",
   "gui.gtlcore.pattern_provider.auto_expand.off": "Dispatch patterns at original amount",
   "gui.gtlcore.pattern_provider.auto_expand.on": "Multiply processing patterns by requested amount",
   "block.gtceu.performance_monitor": "Performance Monitor",
