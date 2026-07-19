@@ -4,6 +4,7 @@ import org.gtlcore.gtlcore.GTLCore;
 import org.gtlcore.gtlcore.api.machine.PerformanceMonitorMachine;
 import org.gtlcore.gtlcore.api.machine.multiblock.GTLPartAbility;
 import org.gtlcore.gtlcore.common.data.machines.*;
+import org.gtlcore.gtlcore.common.machine.VirtualIngredientSupplyMachine;
 import org.gtlcore.gtlcore.common.machine.generator.LightningRodMachine;
 import org.gtlcore.gtlcore.common.machine.generator.MagicEnergyMachine;
 import org.gtlcore.gtlcore.common.machine.multiblock.electric.CoilWorkableElectricMultipleRecipesMultiblockMachine;
@@ -490,6 +491,20 @@ public class GTLMachines {
             .workableTieredHullRenderer(GTMThings.id("block/machines/wireless_energy_monitor"))
             .tier(LV)
             .tooltips(Component.translatable("block.gtlcore.performance_monitor.tooltip"))
+            .tooltipBuilder(GTL_ADD)
+            .register();
+
+    public static final MachineDefinition VIRTUAL_INGREDIENT_SUPPLY_MACHINE = REGISTRATE
+            .machine("virtual_ingredient_supply_machine", VirtualIngredientSupplyMachine::new)
+            .rotationState(RotationState.ALL)
+            .tier(MV)
+            .renderer(() -> new OverlayTieredMachineRenderer(MV, GTCEu.id("block/machine/part/me_pattern_buffer_proxy")))
+            // Deliberately not under the block's own descriptionId: GTCEu's TooltipsHandler auto-appends every
+            // "<descriptionId>.tooltip.N" it finds for anything named block.gtceu.*, so keeping them there would
+            // print the whole block twice.
+            .tooltips(Component.translatable("block.gtlcore.virtual_ingredient_supply_machine.tooltip.0"),
+                    Component.translatable("block.gtlcore.virtual_ingredient_supply_machine.tooltip.1"),
+                    Component.translatable("block.gtlcore.virtual_ingredient_supply_machine.tooltip.2"))
             .tooltipBuilder(GTL_ADD)
             .register();
 
