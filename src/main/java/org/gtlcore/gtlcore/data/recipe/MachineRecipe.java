@@ -107,6 +107,24 @@ public class MachineRecipe {
                 .outputItems(AdvancedMultiBlockMachine.ADVANCED_INFINITE_DRILLER)
                 .duration(400).EUt(V[UEV]).save(provider);
 
+        // Shape follows GTOCore's virtual_item_supply_machine recipe, with its programmable cover swapped for steel
+        // plate and its virtual item inputs dropped: nothing in this family may cost a virtual ingredient to build.
+        ASSEMBLER_RECIPES.recipeBuilder("virtual_ingredient")
+                .inputItems(ROBOT_ARM_MV, 2)
+                .inputItems(TagPrefix.plate, GTMaterials.Steel, 4)
+                .inputItems(CustomTags.HV_CIRCUITS, 2)
+                .inputFluids(SolderingAlloy.getFluid(L))
+                .outputItems(GTLItems.VIRTUAL_INGREDIENT)
+                .duration(200).EUt(VA[MV]).save(provider);
+
+        ASSEMBLER_RECIPES.recipeBuilder("virtual_ingredient_supply_machine")
+                .inputItems(ROBOT_ARM_MV, 16)
+                .inputItems(TagPrefix.plate, GTMaterials.Steel, 16)
+                .inputItems(CustomTags.HV_CIRCUITS, 4)
+                .inputFluids(SolderingAlloy.getFluid(L * 4))
+                .outputItems(GTLMachines.VIRTUAL_INGREDIENT_SUPPLY_MACHINE)
+                .duration(400).EUt(VA[MV]).save(provider);
+
         ASSEMBLER_RECIPES.recipeBuilder("block_bus")
                 .inputItems(CONVEYOR_MODULE_LuV, 2)
                 .inputItems(ROBOT_ARM_LuV, 2)

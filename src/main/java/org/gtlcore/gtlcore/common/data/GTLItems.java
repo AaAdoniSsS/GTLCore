@@ -1,5 +1,6 @@
 package org.gtlcore.gtlcore.common.data;
 
+import org.gtlcore.gtlcore.client.renderer.item.VirtualIngredientRenderer;
 import org.gtlcore.gtlcore.common.item.*;
 import org.gtlcore.gtlcore.integration.ae2.FastInfinityCell;
 import org.gtlcore.gtlcore.integration.ae2.InfinityCell;
@@ -9,6 +10,8 @@ import com.gregtechceu.gtceu.GTCEu;
 import com.gregtechceu.gtceu.api.GTValues;
 import com.gregtechceu.gtceu.api.item.ComponentItem;
 import com.gregtechceu.gtceu.api.item.component.ElectricStats;
+import com.gregtechceu.gtceu.api.item.component.ICustomRenderer;
+import com.gregtechceu.gtceu.client.util.TooltipHelper;
 import com.gregtechceu.gtceu.common.data.GTItems;
 import com.gregtechceu.gtceu.common.item.CoverPlaceBehavior;
 import com.gregtechceu.gtceu.common.item.TooltipBehavior;
@@ -317,6 +320,22 @@ public class GTLItems {
                 lines.add(Component.translatable("tooltip.gtlcore.pattern_box_extract").withStyle(ChatFormatting.GRAY));
                 lines.add(Component.translatable("tooltip.gtlcore.pattern_box_insert").withStyle(ChatFormatting.GRAY));
             })))
+            .model(NonNullBiConsumer.noop())
+            .register();
+
+    public static ItemEntry<ComponentItem> VIRTUAL_INGREDIENT = REGISTRATE
+            .item("virtual_ingredient", ComponentItem::create)
+            .properties(stack -> stack.stacksTo(1))
+            .onRegister(attach(VirtualIngredientBehavior.INSTANCE,
+                    (ICustomRenderer) () -> VirtualIngredientRenderer.INSTANCE,
+                    new TooltipBehavior(lines -> {
+                        lines.add(Component.translatable("tooltip.gtlcore.virtual_ingredient.usage")
+                                .withStyle(ChatFormatting.GRAY));
+                        lines.add(Component.translatable("tooltip.gtlcore.virtual_ingredient.role")
+                                .withStyle(ChatFormatting.GRAY));
+                        lines.add(Component.translatable("gtlcore.registry.add")
+                                .withStyle(style -> style.withColor(TooltipHelper.RAINBOW_SLOW.getCurrent())));
+                    })))
             .model(NonNullBiConsumer.noop())
             .register();
 
