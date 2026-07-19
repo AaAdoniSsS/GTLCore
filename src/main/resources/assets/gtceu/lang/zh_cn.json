@@ -229,6 +229,7 @@
   "block.gtceu.me_extended_async_export_buffer": "增广ME异步输出总成",
   "block.gtceu.me_extended_export_buffer": "增广ME输出总成",
   "block.gtceu.me_final_pattern_buffer": "终极ME样板总成",
+  "block.gtceu.me_input_assembly": "ME输入总成",
   "block.gtceu.me_mini_pattern_buffer": "小型ME样板总成",
   "block.gtceu.me_molecular_assembler_io": "分子操纵者端口",
   "block.gtceu.me_stocking_pattern_buffer": "库存ME样板总成",

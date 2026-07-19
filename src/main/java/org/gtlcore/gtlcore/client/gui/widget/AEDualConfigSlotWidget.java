@@ -11,6 +11,7 @@ import com.gregtechceu.gtceu.integration.ae2.utils.AEUtil;
 import com.lowdragmc.lowdraglib.LDLib;
 import com.lowdragmc.lowdraglib.gui.ingredient.Target;
 import com.lowdragmc.lowdraglib.gui.util.DrawerHelper;
+import com.lowdragmc.lowdraglib.gui.util.TextFormattingUtil;
 import com.lowdragmc.lowdraglib.gui.widget.Widget;
 import com.lowdragmc.lowdraglib.side.fluid.FluidStack;
 import com.lowdragmc.lowdraglib.side.fluid.FluidTransferHelper;
@@ -81,10 +82,10 @@ public class AEDualConfigSlotWidget extends Widget implements IGhostItemTarget, 
                 if (this.parentWidget.isAutoPull()) {
                     hoverStringList.add(Component.translatable("gtceu.gui.config_slot.auto_pull_managed"));
                 } else {
-                    hoverStringList.add(Component.translatable("gtceu.gui.config_slot.set_only"));
-                    hoverStringList.add(Component.translatable("gtceu.gui.config_slot.remove"));
-                    hoverStringList.add(Component.translatable("gtceu.gui.config_slot.remove"));
+                    hoverStringList.add(Component.translatable("gtceu.gui.config_slot.set"));
+                    hoverStringList.add(Component.translatable("gtceu.gui.config_slot.scroll"));
                 }
+                hoverStringList.add(Component.translatable("gtceu.gui.config_slot.remove"));
                 graphics.renderTooltip(Minecraft.getInstance().font, hoverStringList, Optional.empty(), mouseX, mouseY);
             }
         } else {
@@ -153,6 +154,10 @@ public class AEDualConfigSlotWidget extends Widget implements IGhostItemTarget, 
                     DrawerHelper.drawFluidForGui(graphics, stack, config.amount(), stackX, stackY, 16, 16);
                 }
             }
+            if (!this.parentWidget.isAutoPull()) {
+                String amount = TextFormattingUtil.formatLongToCompactString(config.amount(), 4);
+                drawStringFixedCorner(graphics, amount, stackX + 17, stackY + 17, 16777215, true, 0.5f);
+            }
         }
 
         if (stock != null) {
@@ -199,6 +204,7 @@ public class AEDualConfigSlotWidget extends Widget implements IGhostItemTarget, 
 
             if (button == 1) {
                 writeClientAction(REMOVE_ID, buf -> {});
+                this.parentWidget.disableAmount();
             } else if (button == 0) {
                 ItemStack item = this.gui.getModularUIContainer().getCarried();
                 FluidStack fluid = FluidTransferHelper.getFluidContained(item);
@@ -207,6 +213,8 @@ public class AEDualConfigSlotWidget extends Widget implements IGhostItemTarget, 
                 } else if (!item.isEmpty()) {
                     writeClientAction(ITEM_UPDATE_ID, buf -> buf.writeItem(item));
                 }
+                this.parentWidget.enableAmount(this.getIndex());
+                this.select = true;
             }
         }
         return false;

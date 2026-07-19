@@ -626,6 +626,20 @@ public class GTLMachines {
             .compassNode("fluid_hatch")
             .register();
 
+    public static final MachineDefinition ME_INPUT_ASSEMBLY = REGISTRATE
+            .machine("me_input_assembly", MEDualInputHatchPartMachine::new)
+            .tier(EV)
+            .abilities(PartAbility.IMPORT_ITEMS, PartAbility.IMPORT_FLUIDS)
+            .rotationState(RotationState.ALL)
+            .renderer(() -> new OverlayTieredMachineRenderer(EV, GTCEu.id("block/machine/part/me_pattern_buffer")))
+            .tooltips(
+                    Component.translatable("gtceu.machine.dual_hatch.import.tooltip"),
+                    Component.translatable("gtlcore.machine.me.dual_import.tooltip"),
+                    Component.translatable("gtceu.machine.me.copy_paste.tooltip"),
+                    Component.translatable("gtceu.universal.enabled"))
+            .compassNode("dual_hatch")
+            .register();
+
     public static final MachineDefinition ME_DUAL_HATCH_STOCK_PART_MACHINE = REGISTRATE
             .machine("me_dual_hatch_stock_part_machine", MEDualHatchStockPartMachine::new)
             .tier(LuV)

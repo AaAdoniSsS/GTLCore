@@ -1,7 +1,6 @@
 package org.gtlcore.gtlcore.client.gui.widget;
 
 import com.gregtechceu.gtceu.api.gui.GuiTextures;
-import com.gregtechceu.gtceu.integration.ae2.gui.widget.slot.AEConfigSlotWidget;
 import com.gregtechceu.gtceu.integration.ae2.slot.*;
 
 import com.lowdragmc.lowdraglib.gui.util.ClickData;
@@ -34,6 +33,7 @@ public class AEDualConfigWidget extends WidgetGroup {
     protected IConfigurableSlot[] displayList;
     protected ButtonWidget pageUpWidget;
     protected ButtonWidget pageDownWidget;
+    protected AEDualAmountSetWidget amountSetWidget;
     private final ExportOnlyAEItemList aeItem;
     private final ExportOnlyAEFluidList aeFluid;
     private final IntConsumer pageSetter;
@@ -62,6 +62,10 @@ public class AEDualConfigWidget extends WidgetGroup {
         this.addWidget(new LabelWidget(66, 82, () -> this.page + " / " + MAX_PAGE));
         this.addWidget(this.pageUpWidget);
         this.addWidget(this.pageDownWidget);
+        this.amountSetWidget = new AEDualAmountSetWidget(31, -50, this);
+        this.addWidget(this.amountSetWidget);
+        this.addWidget(this.amountSetWidget.getAmountText());
+        this.disableAmount();
     }
 
     protected void pageUp(ClickData data) {
@@ -106,12 +110,28 @@ public class AEDualConfigWidget extends WidgetGroup {
     @OnlyIn(Dist.CLIENT)
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (this.amountSetWidget.isVisible() && this.amountSetWidget.getAmountText().mouseClicked(mouseX, mouseY, button)) {
+            return true;
+        }
         for (Widget w : this.widgets) {
-            if (w instanceof AEConfigSlotWidget slot) {
+            if (w instanceof AEDualConfigSlotWidget slot) {
                 slot.setSelect(false);
             }
         }
+        this.disableAmount();
         return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    public void enableAmount(int index) {
+        this.amountSetWidget.setSlotIndex(index);
+        this.amountSetWidget.setVisible(true);
+        this.amountSetWidget.getAmountText().setVisible(true);
+    }
+
+    public void disableAmount() {
+        this.amountSetWidget.setSlotIndex(-1);
+        this.amountSetWidget.setVisible(false);
+        this.amountSetWidget.getAmountText().setVisible(false);
     }
 
     @Override
