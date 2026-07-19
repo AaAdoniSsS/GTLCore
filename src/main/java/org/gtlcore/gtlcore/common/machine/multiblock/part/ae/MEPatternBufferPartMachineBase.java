@@ -28,6 +28,7 @@ import com.gregtechceu.gtceu.api.machine.trait.NotifiableItemStackHandler;
 import com.gregtechceu.gtceu.api.recipe.GTRecipe;
 import com.gregtechceu.gtceu.api.recipe.ingredient.FluidIngredient;
 import com.gregtechceu.gtceu.common.data.GTItems;
+import com.gregtechceu.gtceu.common.item.IntCircuitBehaviour;
 import com.gregtechceu.gtceu.utils.ResearchManager;
 
 import com.lowdragmc.lowdraglib.gui.texture.GuiTextureGroup;
@@ -539,7 +540,17 @@ public abstract class MEPatternBufferPartMachineBase extends MEIOPartMachine
                     // The wrapper is spent right here. A supply machine hands out an unlimited stream of them, so
                     // there is no point storing one; what this slot has to remember is the payload it vouches for.
                     AEItemKey payloadItem = VirtualIngredientBehavior.payloadItemKey(stack);
-                    if (payloadItem != null) virtualItemSupply.add(payloadItem);
+                    if (payloadItem != null) {
+                        ItemStack payload = payloadItem.toStack(1);
+                        if (IntCircuitBehaviour.isIntegratedCircuit(payload)) {
+                            // Circuits never travel through the item map -- the buffer strips them out and matches
+                            // them against this slot's cached configuration instead. A virtual circuit has to land in
+                            // that same channel, exactly as an embedded one would, or nothing would ever consult it.
+                            cacheManager.setCircuitCache(IntCircuitBehaviour.getCircuitConfiguration(payload));
+                        } else {
+                            virtualItemSupply.add(payloadItem);
+                        }
+                    }
                     AEFluidKey payloadFluid = VirtualIngredientBehavior.payloadFluidKey(stack);
                     if (payloadFluid != null) virtualFluidSupply.add(payloadFluid);
                     return;
