@@ -229,6 +229,7 @@
   "block.gtceu.me_extended_async_export_buffer": "Extended ME Async Export Buffer",
   "block.gtceu.me_extended_export_buffer": "Extended ME Export Buffer",
   "block.gtceu.me_final_pattern_buffer": "Ultimate ME Pattern Buffer",
+  "block.gtceu.me_input_assembly": "ME Input Assembly",
   "block.gtceu.me_mini_pattern_buffer": "Mini ME Pattern Buffer",
   "block.gtceu.me_molecular_assembler_io": "ME Molecular Assembler Matrix I/O",
   "block.gtceu.me_stocking_pattern_buffer": "ME Stocking Pattern Buffer",

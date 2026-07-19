@@ -1,5 +1,7 @@
 package org.gtlcore.gtlcore.common.item;
 
+import org.gtlcore.gtlcore.config.ConfigHolder;
+
 import com.gregtechceu.gtceu.api.blockentity.MetaMachineBlockEntity;
 import com.gregtechceu.gtceu.api.gui.GuiTextures;
 import com.gregtechceu.gtceu.api.item.component.IItemUIFactory;
@@ -60,13 +62,11 @@ public class PatternBoxBehavior implements IItemUIFactory {
 
     public static final PatternBoxBehavior INSTANCE = new PatternBoxBehavior();
 
-    public static final int SLOT_COUNT = 72;
     private static final String INV_TAG = "PatternInv";
 
     private static final int COLS = 9;
-    private static final int VISIBLE_SLOT_COUNT = 36;
-    private static final int ROWS = VISIBLE_SLOT_COUNT / COLS;
-    private static final int MAX_PAGE = (SLOT_COUNT + VISIBLE_SLOT_COUNT - 1) / VISIBLE_SLOT_COUNT;
+    private static final int SLOTS_PER_PAGE = 36;
+    private static final int ROWS = SLOTS_PER_PAGE / COLS;
     private static final int SLOT_SIZE = 18;
     private static final int LEFT = 7;
     private static final int PATTERN_TOP = 42;
@@ -81,11 +81,19 @@ public class PatternBoxBehavior implements IItemUIFactory {
     private static final int NEXT_PAGE_BUTTON_X = 154;
     private static final int PAGE_BUTTON_SIZE = 16;
 
+    public static int getPageCount() {
+        return ConfigHolder.INSTANCE.patternBoxPages;
+    }
+
+    public static int getSlotCount() {
+        return getPageCount() * SLOTS_PER_PAGE;
+    }
+
     /**
      * Reads the box inventory. Only encoded patterns are accepted.
      */
     public static ItemStackTransfer getInventory(ItemStack pouch) {
-        ItemStackTransfer transfer = new ItemStackTransfer(SLOT_COUNT);
+        ItemStackTransfer transfer = new ItemStackTransfer(getSlotCount());
         transfer.setFilter(stack -> stack.isEmpty() || PatternDetailsHelper.isEncodedPattern(stack));
         if (pouch.getTag() != null && pouch.hasTag() && pouch.getTag().contains(INV_TAG)) {
             transfer.deserializeNBT(pouch.getTag().getCompound(INV_TAG));
@@ -112,7 +120,7 @@ public class PatternBoxBehavior implements IItemUIFactory {
         WidgetGroup group = new WidgetGroup(0, 0, WIDTH, HEIGHT);
         group.addWidget(new LabelWidget(LEFT, 6, () -> Component.translatable("item.gtlcore.pattern_box").getString()));
 
-        // 36 pattern slots: 4 rows x 9 columns.
+        // One page of pattern slots: 4 rows x 9 columns.
         int[] page = { 0 };
         WidgetGroup patternPage = new WidgetGroup(0, 0, WIDTH, PATTERN_TOP + ROWS * SLOT_SIZE);
         rebuildPatternPage(patternPage, inventory, page);
@@ -365,8 +373,10 @@ public class PatternBoxBehavior implements IItemUIFactory {
 
     private static void rebuildPatternPage(WidgetGroup patternPage, ItemStackTransfer inventory, int[] page) {
         patternPage.clearAllWidgets();
-        int startSlot = page[0] * VISIBLE_SLOT_COUNT;
-        int endSlot = Math.min(startSlot + VISIBLE_SLOT_COUNT, SLOT_COUNT);
+        int pageCount = getPageCount();
+        page[0] = Math.min(page[0], pageCount - 1);
+        int startSlot = page[0] * SLOTS_PER_PAGE;
+        int endSlot = Math.min(startSlot + SLOTS_PER_PAGE, inventory.getSlots());
         for (int i = startSlot; i < endSlot; i++) {
             int slotInPage = i - startSlot;
             int row = slotInPage / COLS;
@@ -383,10 +393,10 @@ public class PatternBoxBehavior implements IItemUIFactory {
                         rebuildPatternPage(patternPage, inventory, page);
                     }
                 }));
-        patternPage.addWidget(new LabelWidget(PAGE_LABEL_X, PAGE_LABEL_Y, (page[0] + 1) + " / " + MAX_PAGE));
+        patternPage.addWidget(new LabelWidget(PAGE_LABEL_X, PAGE_LABEL_Y, (page[0] + 1) + " / " + pageCount));
         patternPage.addWidget(new ButtonWidget(NEXT_PAGE_BUTTON_X, PAGE_BUTTON_Y, PAGE_BUTTON_SIZE, PAGE_BUTTON_SIZE,
                 new GuiTextureGroup(GuiTextures.BUTTON, new TextTexture(">>")), clickData -> {
-                    if (page[0] < MAX_PAGE - 1) {
+                    if (page[0] < pageCount - 1) {
                         page[0]++;
                         rebuildPatternPage(patternPage, inventory, page);
                     }

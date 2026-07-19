@@ -654,6 +654,15 @@ public class MachineRecipe {
                 .save(provider);
 
         ASSEMBLER_RECIPES
+                .recipeBuilder(GTLCore.id("me_input_assembly"))
+                .inputItems(GTLMachines.GTAEMachines.ITEM_IMPORT_BUS_ME)
+                .inputItems(GTLMachines.GTAEMachines.FLUID_IMPORT_HATCH_ME)
+                .inputFluids(GTMaterials.SolderingAlloy.getFluid(144))
+                .outputItems(GTLMachines.ME_INPUT_ASSEMBLY)
+                .duration(100).EUt(VA[EV])
+                .save(provider);
+
+        ASSEMBLER_RECIPES
                 .recipeBuilder(GTLCore.id("heat_sensor"))
                 .inputItems(GTLMachines.GTAEMachines.STOCKING_IMPORT_BUS_ME, 2)
                 .inputItems(GTLMachines.GTAEMachines.STOCKING_IMPORT_HATCH_ME, 2)

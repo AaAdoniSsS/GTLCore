@@ -316,7 +316,8 @@ public class GTLItems {
             .item("pattern_box", ComponentItem::create)
             .properties(stack -> stack.stacksTo(1))
             .onRegister(attach(PatternBoxBehavior.INSTANCE, new TooltipBehavior(lines -> {
-                lines.add(Component.translatable("tooltip.gtlcore.pattern_box_open").withStyle(ChatFormatting.GRAY));
+                lines.add(Component.translatable("tooltip.gtlcore.pattern_box_open", PatternBoxBehavior.getSlotCount())
+                        .withStyle(ChatFormatting.GRAY));
                 lines.add(Component.translatable("tooltip.gtlcore.pattern_box_extract").withStyle(ChatFormatting.GRAY));
                 lines.add(Component.translatable("tooltip.gtlcore.pattern_box_insert").withStyle(ChatFormatting.GRAY));
             })))

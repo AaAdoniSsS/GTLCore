@@ -180,11 +180,15 @@ public final class WirelessAePackets {
                 if (!data.getFrequencies().contains(packet.frequency)) {
                     return;
                 }
-                data.setFavoriteNetwork(packet.frequency);
+                boolean removeFavorite = packet.frequency.equals(data.getFavoriteNetwork());
+                String networkName = data.getNetworkName(packet.frequency);
+                data.setFavoriteNetwork(removeFavorite ? null : packet.frequency);
                 player.displayClientMessage(
                         Component.translatable(
-                                "message.gtlcore.wireless_bookmark.saved",
-                                data.getNetworkName(packet.frequency)),
+                                removeFavorite ?
+                                        "message.gtlcore.wireless_bookmark.favorite_removed" :
+                                        "message.gtlcore.wireless_bookmark.saved",
+                                networkName),
                         true);
             });
             context.setPacketHandled(true);
@@ -553,7 +557,7 @@ public final class WirelessAePackets {
         UUID wiredNetwork = WirelessAeNetworkRuntime.findWiredNetworkFrequency(level.getServer(), target);
         UUID connectedNetwork = wiredNetwork == null ? WirelessAeNetworkRuntime.findConnectedNetworkFrequency(level.getServer(), target) : wiredNetwork;
         List<TargetNetworkEntry> entries = new ArrayList<>();
-        for (WirelessAeSavedData.NetworkInfo network : data.getNetworkInfo()) {
+        for (WirelessAeSavedData.NetworkInfo network : data.getNetworkInfo(level.getServer())) {
             boolean connected = network.frequency().equals(connectedNetwork);
             boolean disconnectable = wiredNetwork == null && connected && network.frequency().equals(currentNetwork) && WirelessAeNetworkRuntime.hasWirelessConnection(network.frequency(), target);
             entries.add(new TargetNetworkEntry(

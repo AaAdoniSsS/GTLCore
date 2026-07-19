@@ -77,6 +77,7 @@ public final class WirelessAeNetworkRuntime {
             "me_stocking_input_bus",
             "me_output_bus",
             "me_input_hatch",
+            "me_input_assembly",
             "me_stocking_input_hatch",
             "me_output_hatch",
             "tag_filter_me_stock_bus_part_machine",
@@ -96,6 +97,7 @@ public final class WirelessAeNetworkRuntime {
             "me_stocking_input_bus",
             "me_output_bus",
             "me_input_hatch",
+            "me_input_assembly",
             "me_stocking_input_hatch",
             "me_output_hatch",
             "tag_filter_me_stock_bus_part_machine",
@@ -438,7 +440,7 @@ public final class WirelessAeNetworkRuntime {
         }
 
         WirelessAeSavedData data = WirelessAeSavedData.get(server);
-        for (WirelessAeSavedData.NetworkInfo network : data.getNetworkInfo()) {
+        for (WirelessAeSavedData.NetworkInfo network : data.getNetworkInfo(server)) {
             WirelessNetworkCoreBlockEntity core = getLoadedCoreCached(server, network.frequency());
             if (core == null) {
                 continue;

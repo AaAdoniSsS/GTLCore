@@ -1,5 +1,6 @@
 package org.gtlcore.gtlcore.mixin.ae2.crafting;
 
+import org.gtlcore.gtlcore.config.AE2CalculationMode;
 import org.gtlcore.gtlcore.integration.ae2.crafting.ICraftingCalculation;
 import org.gtlcore.gtlcore.integration.ae2.crafting.ICraftingTreeNode;
 import org.gtlcore.gtlcore.integration.ae2.crafting.ICraftingTreeProcess;
@@ -26,6 +27,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -37,6 +39,9 @@ public abstract class CraftingTreeProcessMixin implements ICraftingTreeProcess {
     @Shadow(remap = false)
     @Final
     private appeng.crafting.CraftingCalculation job;
+    @Shadow(remap = false)
+    @Final
+    private CraftingTreeNode parent;
     @Shadow(remap = false)
     private boolean containerItems;
     @Shadow(remap = false)
@@ -58,7 +63,6 @@ public abstract class CraftingTreeProcessMixin implements ICraftingTreeProcess {
     private CraftingTreeNode[] gTLCore$childNodes;
     @Unique
     private long[] gTLCore$childMultipliers;
-    @Unique
     private GenericStack[] gTLCore$outputs;
 
     @Inject(method = "<init>", at = @At("TAIL"))
@@ -90,20 +94,29 @@ public abstract class CraftingTreeProcessMixin implements ICraftingTreeProcess {
     public void ultraFastRequest(CraftingSimulationState inv, long times) throws CraftBranchFailure, InterruptedException {
         ICraftingCalculation calculation = (ICraftingCalculation) this.job;
         calculation.gtlcore$handlePausing();
+        boolean maxFast = calculation.gtlcore$getCalculationMode() == AE2CalculationMode.MAX_FAST;
+        if (maxFast) {
+            calculation.gtlcore$getMaxFastMetrics().recordBaselineProcess(times);
+        }
 
-        gTLCore$runUltraFastRequest(inv, times, calculation);
+        gTLCore$runUltraFastRequest(inv, times, calculation, maxFast);
     }
 
     @Unique
     private void gTLCore$runUltraFastRequest(CraftingSimulationState inv, long times,
-                                             ICraftingCalculation calculation)
-                                                                               throws CraftBranchFailure,
-                                                                               InterruptedException {
+                                             ICraftingCalculation calculation, boolean maxFast)
+                                                                                                throws CraftBranchFailure,
+                                                                                                InterruptedException {
         var containerItems = this.containerItems ? new KeyCounter() : null;
 
         for (int i = 0; i < this.gTLCore$childNodes.length; i++) {
-            ((ICraftingTreeNode) this.gTLCore$childNodes[i]).ultraFastRequest(inv,
-                    NumberUtils.saturatedMultiply(this.gTLCore$childMultipliers[i], times), containerItems);
+            ICraftingTreeNode child = (ICraftingTreeNode) this.gTLCore$childNodes[i];
+            long childRequest = NumberUtils.saturatedMultiply(this.gTLCore$childMultipliers[i], times);
+            if (maxFast) {
+                child.gtlcore$maxFastChildRequest(inv, childRequest, containerItems);
+            } else {
+                child.ultraFastRequest(inv, childRequest, containerItems);
+            }
         }
 
         onSucceed(inv, times, containerItems);
@@ -166,24 +179,77 @@ public abstract class CraftingTreeProcessMixin implements ICraftingTreeProcess {
         return this.limitQty;
     }
 
+    @Override
+    @Unique
+    public boolean gtlcore$hasContainerItems() {
+        return this.containerItems;
+    }
+
+    @Override
+    @Unique
+    public CraftingTreeNode[] gtlcore$getChildNodes() {
+        return this.gTLCore$childNodes;
+    }
+
+    @Override
+    @Unique
+    public long[] gtlcore$getChildMultipliers() {
+        return this.gTLCore$childMultipliers;
+    }
+
+    @Override
+    @Unique
+    public void gtlcore$completeMaxFast(CraftingSimulationState inv, long times) {
+        onSucceed(inv, times, null);
+        ((ICraftingCalculation) this.job).gtlcore$clearTemplateCache();
+    }
+
+    @Override
+    @Unique
+    public boolean gtlcore$notRecursive(IPatternDetails details) {
+        return notRecursive(details);
+    }
+
+    @Override
+    @Unique
+    public CraftingTreeNode gtlcore$getMaxFastParentNode() {
+        return this.parent;
+    }
+
+    @Shadow(remap = false)
+    abstract boolean notRecursive(IPatternDetails details);
+
     @Unique
     private void gTLCore$cacheChildRequests() {
         if (this.gTLCore$childNodes != null) {
             return;
         }
 
-        List<Object> mergeKeys = new ArrayList<>(this.nodes.size());
+        if (this.nodes.isEmpty()) {
+            this.gTLCore$childNodes = new CraftingTreeNode[0];
+            this.gTLCore$childMultipliers = new long[0];
+            return;
+        }
+
+        if (this.nodes.size() == 1) {
+            var entry = this.nodes.entrySet().iterator().next();
+            this.gTLCore$childNodes = new CraftingTreeNode[] { entry.getKey() };
+            this.gTLCore$childMultipliers = new long[] { entry.getValue() };
+            return;
+        }
+
+        Map<Object, Integer> mergeIndexes = new HashMap<>(this.nodes.size());
         List<CraftingTreeNode> childNodes = new ArrayList<>(this.nodes.size());
         List<Long> childMultipliers = new ArrayList<>(this.nodes.size());
 
         for (var entry : this.nodes.entrySet()) {
             ICraftingTreeNode childNode = (ICraftingTreeNode) entry.getKey();
             Object mergeKey = childNode.gtlcore$getRequestMergeKey();
-            int index = mergeKeys.indexOf(mergeKey);
-            if (index >= 0) {
+            Integer index = mergeIndexes.get(mergeKey);
+            if (index != null) {
                 childMultipliers.set(index, NumberUtils.saturatedAdd(childMultipliers.get(index), entry.getValue()));
             } else {
-                mergeKeys.add(mergeKey);
+                mergeIndexes.put(mergeKey, childNodes.size());
                 childNodes.add(entry.getKey());
                 childMultipliers.add(entry.getValue());
             }

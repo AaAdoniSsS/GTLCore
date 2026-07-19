@@ -10,6 +10,7 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.saveddata.SavedData;
 
@@ -151,6 +152,11 @@ public class WirelessAeSavedData extends SavedData {
         return networks;
     }
 
+    public List<NetworkInfo> getNetworkInfo(MinecraftServer server) {
+        pruneMissingCoreNetworks(server);
+        return getNetworkInfo();
+    }
+
     public UUID getFavoriteNetwork() {
         return this.favoriteNetwork != null && this.networks.containsKey(this.favoriteNetwork) ? this.favoriteNetwork : null;
     }
@@ -266,9 +272,54 @@ public class WirelessAeSavedData extends SavedData {
         return removedFrom;
     }
 
+    public Set<UUID> removeNetworksAtCore(GlobalPos core) {
+        Set<UUID> removed = new HashSet<>();
+        this.networks.entrySet().removeIf(entry -> {
+            if (core.equals(entry.getValue().core)) {
+                removed.add(entry.getKey());
+                return true;
+            }
+            return false;
+        });
+        if (!removed.isEmpty()) {
+            if (removed.contains(this.favoriteNetwork)) {
+                this.favoriteNetwork = null;
+            }
+            setDirty();
+        }
+        return removed;
+    }
+
     public void removeNetwork(UUID frequency) {
         if (this.networks.remove(frequency) != null) {
             if (frequency.equals(this.favoriteNetwork)) {
+                this.favoriteNetwork = null;
+            }
+            setDirty();
+        }
+    }
+
+    private void pruneMissingCoreNetworks(MinecraftServer server) {
+        Set<UUID> removed = new HashSet<>();
+        this.networks.entrySet().removeIf(entry -> {
+            GlobalPos core = entry.getValue().core;
+            if (core == null) {
+                removed.add(entry.getKey());
+                return true;
+            }
+
+            ServerLevel level = server.getLevel(core.dimension());
+            if (level == null || !level.hasChunkAt(core.pos())) {
+                return false;
+            }
+            if (!level.getBlockState(core.pos()).is(GTLWirelessAeContent.WIRELESS_NETWORK_CORE.get())) {
+                removed.add(entry.getKey());
+                return true;
+            }
+            return false;
+        });
+        if (!removed.isEmpty()) {
+            if (removed.contains(this.favoriteNetwork)) {
                 this.favoriteNetwork = null;
             }
             setDirty();
