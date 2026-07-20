@@ -1,7 +1,7 @@
 package org.gtlcore.gtlcore.integration.jade.provider;
 
 import org.gtlcore.gtlcore.common.machine.multiblock.part.ae.MEMolecularAssemblerIOPartMachine;
-import org.gtlcore.gtlcore.utils.NumberUtils;
+import org.gtlcore.gtlcore.integration.ae2.MEFluidUnits;
 
 import com.gregtechceu.gtceu.GTCEu;
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
@@ -72,7 +72,7 @@ public class MEMAIOProvider implements IBlockComponentProvider, IServerDataProvi
                     var fluid = fluidKey.toStack(Ints.saturatedCast(count));
                     iTooltip.add(GTElementHelper.smallFluid(JadeFluidObject.of(fluid.getFluid(), count)));
                     Component text = Component.literal(" ")
-                            .append(count < 1000L ? count + "mB" : NumberUtils.formatLong(count / 1000) + "B")
+                            .append(MEFluidUnits.formatDisplayAmount(count))
                             .append(" ")
                             .append(wrapInSquareBrackets(fluid.getDisplayName()).withStyle(ChatFormatting.WHITE))
                             .withStyle(ChatFormatting.WHITE);

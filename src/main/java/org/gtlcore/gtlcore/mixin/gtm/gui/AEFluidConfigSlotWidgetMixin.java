@@ -1,6 +1,6 @@
 package org.gtlcore.gtlcore.mixin.gtm.gui;
 
-import org.gtlcore.gtlcore.utils.NumberUtils;
+import org.gtlcore.gtlcore.integration.ae2.MEFluidUnits;
 
 import com.gregtechceu.gtceu.integration.ae2.gui.widget.slot.AEFluidConfigSlotWidget;
 
@@ -21,11 +21,7 @@ public abstract class AEFluidConfigSlotWidgetMixin {
                index = 1,
                remap = false)
     public String configFormat(String str, @Local(ordinal = 0) GenericStack stack) {
-        long amount = stack.amount();
-        if (amount < 1000) {
-            return amount + "mB";
-        }
-        return NumberUtils.formatLong(amount / 1000) + "B";
+        return MEFluidUnits.formatDisplayAmount(stack.amount());
     }
 
     @ModifyArg(method = "drawInBackground",
@@ -33,10 +29,6 @@ public abstract class AEFluidConfigSlotWidgetMixin {
                index = 1,
                remap = false)
     public String stockFormat(String str, @Local(ordinal = 1) GenericStack stack) {
-        long amount = stack.amount();
-        if (amount < 1000) {
-            return amount + "mB";
-        }
-        return NumberUtils.formatLong(amount / 1000) + "B";
+        return MEFluidUnits.formatDisplayAmount(stack.amount());
     }
 }

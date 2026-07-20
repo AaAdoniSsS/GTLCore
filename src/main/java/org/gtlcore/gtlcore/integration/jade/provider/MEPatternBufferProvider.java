@@ -1,7 +1,7 @@
 package org.gtlcore.gtlcore.integration.jade.provider;
 
 import org.gtlcore.gtlcore.common.machine.multiblock.part.ae.MEPatternBufferPartMachineBase;
-import org.gtlcore.gtlcore.utils.NumberUtils;
+import org.gtlcore.gtlcore.integration.ae2.MEFluidUnits;
 import org.gtlcore.gtlcore.utils.Registries;
 
 import com.gregtechceu.gtceu.GTCEu;
@@ -82,7 +82,7 @@ public class MEPatternBufferProvider implements IBlockComponentProvider, IServer
             if (fluid != null && amount > 0) {
                 iTooltip.add(GTElementHelper.smallFluid(JadeFluidObject.of(fluid)));
                 Component text = Component.literal(" ")
-                        .append(amount < 1000L ? amount + "mB" : NumberUtils.formatLong(amount / 1000) + "B")
+                        .append(MEFluidUnits.formatDisplayAmount(amount))
                         .withStyle(ChatFormatting.DARK_PURPLE)
                         .append(Component.literal(" ").withStyle(ChatFormatting.WHITE))
                         .append(fluid.getFluidType().getDescription().copy().withStyle(ChatFormatting.DARK_AQUA));
@@ -113,7 +113,7 @@ public class MEPatternBufferProvider implements IBlockComponentProvider, IServer
                     var fluid = fluidKey.toStack(Ints.saturatedCast(count));
                     iTooltip.add(GTElementHelper.smallFluid(JadeFluidObject.of(fluid.getFluid(), count)));
                     Component text = Component.literal(" ")
-                            .append(count < 1000L ? count + "mB" : NumberUtils.formatLong(count / 1000) + "B")
+                            .append(MEFluidUnits.formatDisplayAmount(count))
                             .append(" ")
                             .append(wrapInSquareBrackets(fluid.getDisplayName()).withStyle(ChatFormatting.WHITE))
                             .withStyle(ChatFormatting.WHITE);

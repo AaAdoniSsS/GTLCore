@@ -141,7 +141,7 @@ public class MEDualInputHatchPartMachine extends MEInputBusPartMachine implement
                 "gtceu.gui.me_network.online" :
                 "gtceu.gui.me_network.offline"));
         group.addWidget(new AEDualConfigWidget(
-                3, 10, this.aeItemHandler, this.aeFluidHandler, this::setPage, this.page));
+                3, 10, this.aeItemHandler, this.aeFluidHandler, this::setPage, this.page, true));
         return group;
     }
 

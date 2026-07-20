@@ -1,5 +1,6 @@
 package org.gtlcore.gtlcore.client.gui.widget;
 
+import org.gtlcore.gtlcore.integration.ae2.MEFluidUnits;
 import org.gtlcore.gtlcore.utils.Registries;
 
 import com.gregtechceu.gtceu.api.gui.GuiTextures;
@@ -30,7 +31,6 @@ import net.minecraftforge.api.distmarker.OnlyIn;
 
 import appeng.api.stacks.AEFluidKey;
 import appeng.api.stacks.AEItemKey;
-import appeng.api.stacks.AmountFormat;
 import appeng.api.stacks.GenericStack;
 import com.google.common.collect.Lists;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -50,6 +50,8 @@ import static com.lowdragmc.lowdraglib.gui.widget.PhantomFluidWidget.drainFrom;
  * @author EasterFG on 2025/3/7
  */
 public class AEDualConfigSlotWidget extends Widget implements IGhostItemTarget, IGhostFluidTarget {
+
+    private static final int COMPACT_AMOUNT_MAX_LENGTH = 4;
 
     protected AEDualConfigWidget parentWidget;
     protected int index;
@@ -81,9 +83,11 @@ public class AEDualConfigSlotWidget extends Widget implements IGhostItemTarget, 
                 hoverStringList.add(Component.translatable("gtceu.gui.config_slot"));
                 if (this.parentWidget.isAutoPull()) {
                     hoverStringList.add(Component.translatable("gtceu.gui.config_slot.auto_pull_managed"));
-                } else {
+                } else if (this.parentWidget.isAmountEditingEnabled()) {
                     hoverStringList.add(Component.translatable("gtceu.gui.config_slot.set"));
                     hoverStringList.add(Component.translatable("gtceu.gui.config_slot.scroll"));
+                } else {
+                    hoverStringList.add(Component.translatable("gtceu.gui.config_slot.set_only"));
                 }
                 hoverStringList.add(Component.translatable("gtceu.gui.config_slot.remove"));
                 graphics.renderTooltip(Minecraft.getInstance().font, hoverStringList, Optional.empty(), mouseX, mouseY);
@@ -154,8 +158,8 @@ public class AEDualConfigSlotWidget extends Widget implements IGhostItemTarget, 
                     DrawerHelper.drawFluidForGui(graphics, stack, config.amount(), stackX, stackY, 16, 16);
                 }
             }
-            if (!this.parentWidget.isAutoPull()) {
-                String amount = TextFormattingUtil.formatLongToCompactString(config.amount(), 4);
+            if (this.parentWidget.isAmountEditingEnabled() && !this.parentWidget.isAutoPull()) {
+                String amount = formatAmount(config);
                 drawStringFixedCorner(graphics, amount, stackX + 17, stackY + 17, 16777215, true, 0.5f);
             }
         }
@@ -172,7 +176,7 @@ public class AEDualConfigSlotWidget extends Widget implements IGhostItemTarget, 
                 }
             }
             if (stock.amount() > 0) {
-                drawStringFixedCorner(graphics, stock.what().formatAmount(stock.amount(), AmountFormat.SLOT),
+                drawStringFixedCorner(graphics, formatAmount(stock),
                         stackX + 17, stackY + 18 + 17, 16777215, true, 0.5f);
             }
             if (mouseOverConfig(mouseX, mouseY)) {
@@ -181,6 +185,13 @@ public class AEDualConfigSlotWidget extends Widget implements IGhostItemTarget, 
                 drawSelectionOverlay(graphics, stackX, stackY + 18, 16, 16);
             }
         }
+    }
+
+    private static String formatAmount(GenericStack stack) {
+        if (stack.what() instanceof AEFluidKey) {
+            return MEFluidUnits.formatDisplayAmount(stack.amount());
+        }
+        return TextFormattingUtil.formatLongToCompactString(stack.amount(), COMPACT_AMOUNT_MAX_LENGTH);
     }
 
     @OnlyIn(Dist.CLIENT)
@@ -213,8 +224,10 @@ public class AEDualConfigSlotWidget extends Widget implements IGhostItemTarget, 
                 } else if (!item.isEmpty()) {
                     writeClientAction(ITEM_UPDATE_ID, buf -> buf.writeItem(item));
                 }
-                this.parentWidget.enableAmount(this.getIndex());
-                this.select = true;
+                if (this.parentWidget.isAmountEditingEnabled()) {
+                    this.parentWidget.enableAmount(this.getIndex());
+                    this.select = true;
+                }
             }
         }
         return false;
