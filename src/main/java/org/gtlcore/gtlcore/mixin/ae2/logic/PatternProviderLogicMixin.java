@@ -24,6 +24,7 @@ import appeng.api.config.Actionable;
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.implementations.blockentities.ICraftingMachine;
 import appeng.api.networking.IManagedGridNode;
+import appeng.api.parts.IPartHost;
 import appeng.api.stacks.AEFluidKey;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
@@ -232,6 +233,20 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
                     hasUnlimitedMachine = true;
                 }
                 continue;
+            }
+
+            // MAE2 1.x pattern P2P tunnels are plain parts on the adjacent cable:
+            // no ICraftingMachine and no external storage, so findAdapter below
+            // would miss them entirely. Detect the part like MAE2 1.x itself does.
+            if (targetBlockEntity instanceof IPartHost partHost) {
+                var part = partHost.getPart(direction.getOpposite());
+                if (part != null && MAE2Compat.isLegacyPatternP2PTunnel(part)) {
+                    hasP2PTunnel = true;
+                    p2pMaxOperations = Math.min(p2pMaxOperations,
+                            MAE2Compat.getLegacyPatternP2PMaxOperations(part, requestedOperations,
+                                    level, baseInputs, isBlocking(), patternInputs, this));
+                    continue;
+                }
             }
 
             var target = findAdapter(direction);
