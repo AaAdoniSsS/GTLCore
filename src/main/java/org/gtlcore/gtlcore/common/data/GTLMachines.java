@@ -497,8 +497,8 @@ public class GTLMachines {
     public static final MachineDefinition VIRTUAL_INGREDIENT_SUPPLY_MACHINE = REGISTRATE
             .machine("virtual_ingredient_supply_machine", VirtualIngredientSupplyMachine::new)
             .rotationState(RotationState.ALL)
-            .tier(MV)
-            .renderer(() -> new OverlayTieredMachineRenderer(MV, GTCEu.id("block/machine/part/me_pattern_buffer_proxy")))
+            .tier(LuV)
+            .renderer(() -> new OverlayTieredMachineRenderer(LuV, GTCEu.id("block/machine/part/me_pattern_buffer_proxy")))
             // Deliberately not under the block's own descriptionId: GTCEu's TooltipsHandler auto-appends every
             // "<descriptionId>.tooltip.N" it finds for anything named block.gtceu.*, so keeping them there would
             // print the whole block twice.
