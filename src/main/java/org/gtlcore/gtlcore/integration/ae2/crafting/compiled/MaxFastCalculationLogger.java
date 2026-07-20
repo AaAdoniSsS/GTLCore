@@ -1,6 +1,7 @@
 package org.gtlcore.gtlcore.integration.ae2.crafting.compiled;
 
 import org.gtlcore.gtlcore.GTLCore;
+import org.gtlcore.gtlcore.config.ConfigHolder;
 
 import net.minecraftforge.fml.loading.FMLPaths;
 
@@ -44,7 +45,14 @@ public final class MaxFastCalculationLogger {
 
     private MaxFastCalculationLogger() {}
 
+    static boolean isEnabled() {
+        return ConfigHolder.INSTANCE == null || ConfigHolder.INSTANCE.enableMaxFastCalculationLogging;
+    }
+
     public static void info(String message, Object... arguments) {
+        if (!isEnabled()) {
+            return;
+        }
         try {
             Logger dedicatedLogger = getLogger();
             if (dedicatedLogger != null) {

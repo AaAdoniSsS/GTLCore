@@ -81,6 +81,9 @@ public class ConfigHolder {
     @Configurable.Comment("AE2合成计算模式: LEGACY(原版), FAST(快速), ULTRA_FAST(极快), MAX_FAST(需求聚合)")
     public AE2CalculationMode ae2CalculationMode = AE2CalculationMode.ULTRA_FAST;
     @Configurable
+    @Configurable.Comment("是否启用 MAX_FAST 独立计算性能日志")
+    public boolean enableMaxFastCalculationLogging = false;
+    @Configurable
     @Configurable.Comment("新放置的普通 AE2 / 扩展样板供应器是否默认开启智能翻倍（ME 样板总成仍强制开启）")
     public boolean enableAe2PatternProviderAutoExpand = false;
     @Configurable

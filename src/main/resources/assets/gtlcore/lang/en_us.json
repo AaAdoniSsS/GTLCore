@@ -98,6 +98,7 @@
   "config.gtlcore.option.disableDrift": "Disable Flight Inertia",
   "config.gtlcore.option.durationMultiplier": "Recipe Duration Multiplier",
   "config.gtlcore.option.enablePrimitiveVoidOre": "Enable Primitive Void Ore Miner",
+  "config.gtlcore.option.enableMaxFastCalculationLogging": "Enable MAX_FAST Calculation Performance Logging",
   "config.gtlcore.option.enableSkyBlokeMode": "Enable Skyblock Mode",
   "config.gtlcore.option.enableSmoothAnimations": "Enable Smooth Animations",
   "config.gtlcore.option.enableUltimateMEStocking": "Enable Ultimate ME Stocking Pull Mode",

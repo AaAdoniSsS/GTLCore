@@ -742,6 +742,9 @@ public final class MaxFastMetrics {
 
     public void logSummary(AEKey output, long requestedAmount, CalculationStrategy strategy, Level level,
                            @Nullable ICraftingPlan plan, @Nullable Throwable failure) {
+        if (!MaxFastCalculationLogger.isEnabled()) {
+            return;
+        }
         boolean planAvailable = plan != null;
         GenericStack finalOutput = planAvailable ? plan.finalOutput() : null;
         long plannedAmount = finalOutput != null ? finalOutput.amount() : UNAVAILABLE_VALUE;
