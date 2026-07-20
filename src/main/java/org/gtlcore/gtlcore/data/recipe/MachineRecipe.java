@@ -107,7 +107,6 @@ public class MachineRecipe {
                 .inputItems(FLUID_REGULATOR_UHV, 4)
                 .outputItems(AdvancedMultiBlockMachine.ADVANCED_INFINITE_DRILLER)
                 .duration(400).EUt(V[UEV]).save(provider);
-        
 
         ASSEMBLER_RECIPES.recipeBuilder("block_bus")
                 .inputItems(CONVEYOR_MODULE_LuV, 2)
