@@ -102,6 +102,7 @@ public class VirtualIngredientSupplyMachine extends MetaMachine
 
             ItemStack wrapper;
             if (GTLItems.VIRTUAL_INGREDIENT.isIn(stack)) {
+                if (!VirtualIngredientBehavior.isBound(stack)) continue;
                 // Sealed in place: an editable wrapper here would turn one locked copy into unlimited real material.
                 VirtualIngredientBehavior.mark(stack);
                 wrapper = stack.copyWithCount(1);
@@ -124,28 +125,18 @@ public class VirtualIngredientSupplyMachine extends MetaMachine
 
     @Override
     public boolean isPreferredStorageFor(AEKey what, IActionSource source) {
-        return what instanceof AEItemKey itemKey && GTLItems.VIRTUAL_INGREDIENT.isIn(itemKey.getReadOnlyStack());
+        return what instanceof AEItemKey itemKey && isOwnWrapper(itemKey);
     }
 
     @Override
     public long insert(AEKey what, long amount, Actionable mode, IActionSource source) {
-        if (amount <= 0 || !(what instanceof AEItemKey itemKey)) return 0;
-        ItemStack stack = itemKey.getReadOnlyStack();
-        if (!GTLItems.VIRTUAL_INGREDIENT.isIn(stack)) return 0;
-
-        // Sealed wrappers are ours coming back; swallow them instead of letting them pile up in the network.
-        if (VirtualIngredientBehavior.isMarked(stack)) return amount;
-
-        return store(stack, mode.isSimulate()) ? amount : 0;
+        if (amount <= 0 || !(what instanceof AEItemKey itemKey) || !isOwnWrapper(itemKey)) return 0;
+        return amount;
     }
 
-    private boolean store(ItemStack stack, boolean simulate) {
-        for (int slot = 0; slot < inventory.getSlots(); slot++) {
-            if (inventory.storage.insertItem(slot, stack.copyWithCount(1), simulate).isEmpty()) {
-                return true;
-            }
-        }
-        return false;
+    private static boolean isOwnWrapper(AEItemKey itemKey) {
+        ItemStack stack = itemKey.getReadOnlyStack();
+        return GTLItems.VIRTUAL_INGREDIENT.isIn(stack) && VirtualIngredientBehavior.isMarked(stack);
     }
 
     @Override
