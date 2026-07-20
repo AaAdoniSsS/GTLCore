@@ -39,7 +39,6 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
@@ -164,21 +163,19 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
     }
 
     /**
-     * Records which direction each {@link PatternProviderTarget} created during pushPattern
-     * belongs to, so that {@code adapterAcceptsAll} can validate the actual neighbor instead
-     * of guessing from the stale {@code sendDirection} field (which is only updated after a
-     * successful push). Adapters are fresh instances per call, so identity keys are safe.
+     * Records which direction each {@link PatternProviderTarget} belongs to, so that
+     * {@code adapterAcceptsAll} can validate the actual neighbor instead of guessing from
+     * the stale {@code sendDirection} field (which is only updated after a successful push).
+     * Hooking the return of findAdapter (rather than its call site in pushPattern) keeps this
+     * compatible with mods like MAE2 1.x that overwrite pushPattern entirely: the recorded
+     * instance is exactly the one the caller will use, and no call-site matching is needed.
      */
-    @Redirect(method = "pushPattern",
-              at = @At(value = "INVOKE",
-                       target = "Lappeng/helpers/patternprovider/PatternProviderLogic;findAdapter(Lnet/minecraft/core/Direction;)Lappeng/helpers/patternprovider/PatternProviderTarget;"),
-              remap = false)
-    private PatternProviderTarget gtlcore$recordTargetDirection(PatternProviderLogic self, Direction direction) {
-        var target = findAdapter(direction);
+    @Inject(method = "findAdapter", at = @At("RETURN"), remap = false)
+    private void gtlcore$recordTargetDirection(Direction direction, CallbackInfoReturnable<PatternProviderTarget> cir) {
+        var target = cir.getReturnValue();
         if (target != null) {
             gtlcore$targetDirections().put(target, direction);
         }
-        return target;
     }
 
     @Inject(method = "adapterAcceptsAll", at = @At("HEAD"), remap = false, cancellable = true)
