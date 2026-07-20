@@ -24,6 +24,7 @@ import appeng.api.config.Actionable;
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.implementations.blockentities.ICraftingMachine;
 import appeng.api.networking.IManagedGridNode;
+import appeng.api.parts.IPartHost;
 import appeng.api.stacks.AEFluidKey;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
@@ -39,7 +40,6 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
@@ -164,21 +164,19 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
     }
 
     /**
-     * Records which direction each {@link PatternProviderTarget} created during pushPattern
-     * belongs to, so that {@code adapterAcceptsAll} can validate the actual neighbor instead
-     * of guessing from the stale {@code sendDirection} field (which is only updated after a
-     * successful push). Adapters are fresh instances per call, so identity keys are safe.
+     * Records which direction each {@link PatternProviderTarget} belongs to, so that
+     * {@code adapterAcceptsAll} can validate the actual neighbor instead of guessing from
+     * the stale {@code sendDirection} field (which is only updated after a successful push).
+     * Hooking the return of findAdapter (rather than its call site in pushPattern) keeps this
+     * compatible with mods like MAE2 1.x that overwrite pushPattern entirely: the recorded
+     * instance is exactly the one the caller will use, and no call-site matching is needed.
      */
-    @Redirect(method = "pushPattern",
-              at = @At(value = "INVOKE",
-                       target = "Lappeng/helpers/patternprovider/PatternProviderLogic;findAdapter(Lnet/minecraft/core/Direction;)Lappeng/helpers/patternprovider/PatternProviderTarget;"),
-              remap = false)
-    private PatternProviderTarget gtlcore$recordTargetDirection(PatternProviderLogic self, Direction direction) {
-        var target = findAdapter(direction);
+    @Inject(method = "findAdapter", at = @At("RETURN"), remap = false)
+    private void gtlcore$recordTargetDirection(Direction direction, CallbackInfoReturnable<PatternProviderTarget> cir) {
+        var target = cir.getReturnValue();
         if (target != null) {
             gtlcore$targetDirections().put(target, direction);
         }
-        return target;
     }
 
     @Inject(method = "adapterAcceptsAll", at = @At("HEAD"), remap = false, cancellable = true)
@@ -235,6 +233,20 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
                     hasUnlimitedMachine = true;
                 }
                 continue;
+            }
+
+            // MAE2 1.x pattern P2P tunnels are plain parts on the adjacent cable:
+            // no ICraftingMachine and no external storage, so findAdapter below
+            // would miss them entirely. Detect the part like MAE2 1.x itself does.
+            if (targetBlockEntity instanceof IPartHost partHost) {
+                var part = partHost.getPart(direction.getOpposite());
+                if (part != null && MAE2Compat.isLegacyPatternP2PTunnel(part)) {
+                    hasP2PTunnel = true;
+                    p2pMaxOperations = Math.min(p2pMaxOperations,
+                            MAE2Compat.getLegacyPatternP2PMaxOperations(part, requestedOperations,
+                                    level, baseInputs, isBlocking(), patternInputs, this));
+                    continue;
+                }
             }
 
             var target = findAdapter(direction);
