@@ -77,7 +77,7 @@ public class ConfigHolder {
     public AE2CalculationMode ae2CalculationMode = AE2CalculationMode.ULTRA_FAST;
     @Configurable
     @Configurable.Comment("新放置的普通 AE2 / 扩展样板供应器是否默认开启智能翻倍（ME 样板总成仍强制开启）")
-    public boolean enableAe2PatternProviderAutoExpand = false;
+    public boolean ae2PatternProviderAutoExpandDefault = false;
     @Configurable
     @Configurable.Comment("编写多方块结构样板过滤的仓室")
     public String[] filterHatch = new String[] { "input_bus", "output_bus", "item_import_bus", "item_export_bus", "input_hatch", "output_hatch", "energy_input_hatch", "energy_output_hatch", "laser_target_hatch", "laser_source_hatch", "computation_transmitter_hatch", "computation_receiver_hatch", "data_transmitter_hatch", "data_receiver_hatch", "maintenance", "muffler", "rotor_holder" };

@@ -97,7 +97,7 @@
   "config.gtlcore.option.cellType": "AE Storage Cell Type Multiplier",
   "config.gtlcore.option.disableDrift": "Disable Flight Inertia",
   "config.gtlcore.option.durationMultiplier": "Recipe Duration Multiplier",
-  "config.gtlcore.option.enableAe2PatternProviderAutoExpand": "Enable Smart Multiplication for newly placed AE2 Pattern Providers by default",
+  "config.gtlcore.option.ae2PatternProviderAutoExpandDefault": "Enable Smart Multiplication for newly placed AE2 Pattern Providers by default",
   "config.gtlcore.option.enablePrimitiveVoidOre": "Enable Primitive Void Ore Miner",
   "config.gtlcore.option.enableSkyBlokeMode": "Enable Skyblock Mode",
   "config.gtlcore.option.enableSmoothAnimations": "Enable Smooth Animations",

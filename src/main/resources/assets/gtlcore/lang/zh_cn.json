@@ -97,7 +97,7 @@
   "config.gtlcore.option.cellType": "AE磁盘存储类型倍数",
   "config.gtlcore.option.disableDrift": "禁用飞行惯性",
   "config.gtlcore.option.durationMultiplier": "配方时间乘数",
-  "config.gtlcore.option.enableAe2PatternProviderAutoExpand": "新放置的AE2样板供应器默认开启智能翻倍",
+  "config.gtlcore.option.ae2PatternProviderAutoExpandDefault": "新放置的AE2样板供应器默认开启智能翻倍",
   "config.gtlcore.option.enablePrimitiveVoidOre": "启用原始虚空矿机",
   "config.gtlcore.option.enableSkyBlokeMode": "启用空岛模式",
   "config.gtlcore.option.enableSmoothAnimations": "启用平滑渲染",

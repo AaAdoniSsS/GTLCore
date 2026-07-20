@@ -125,7 +125,7 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
 
     @Unique
     private static boolean isPatternProviderAutoExpandEnabledByDefault() {
-        return ConfigHolder.INSTANCE != null && ConfigHolder.INSTANCE.enableAe2PatternProviderAutoExpand;
+        return ConfigHolder.INSTANCE != null && ConfigHolder.INSTANCE.ae2PatternProviderAutoExpandDefault;
     }
 
     @Inject(method = "exportSettings", at = @At("TAIL"), remap = false)
@@ -252,7 +252,11 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
         }
 
         if (!hasAdapter && !hasP2PTunnel) {
-            return requestedOperations;
+            // No usable target this tick (nothing adjacent, or every target was skipped
+            // by blocking mode). Vanilla pushPattern will reject the push with the same
+            // side/target view, so only extract a single operation's worth of inputs
+            // instead of churning the whole remaining batch in and out every tick.
+            return 1;
         }
 
         long result = hasP2PTunnel ? p2pMaxOperations : maxOperations;
