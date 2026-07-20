@@ -2,6 +2,7 @@ package org.gtlcore.gtlcore.mixin.ae2.logic;
 
 import org.gtlcore.gtlcore.api.crafting.IAutoExpandSettings;
 import org.gtlcore.gtlcore.config.ConfigHolder;
+import org.gtlcore.gtlcore.integration.ae2.AEUtils;
 import org.gtlcore.gtlcore.integration.ae2.compat.MAE2Compat;
 import org.gtlcore.gtlcore.integration.ae2.crafting.IPatternProviderAutoExpand;
 import org.gtlcore.gtlcore.utils.NumberUtils;
@@ -38,6 +39,7 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
@@ -60,9 +62,6 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
     @Shadow(remap = false)
     @Final
     private Set<AEKey> patternInputs;
-
-    @Shadow(remap = false)
-    private Direction sendDirection;
 
     @Shadow(remap = false)
     private Set<Direction> getActiveSides() {
@@ -126,7 +125,7 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
 
     @Unique
     private static boolean isPatternProviderAutoExpandEnabledByDefault() {
-        return ConfigHolder.INSTANCE != null && ConfigHolder.INSTANCE.enableAe2PatternProviderAutoExpand;
+        return ConfigHolder.INSTANCE != null && ConfigHolder.INSTANCE.ae2PatternProviderAutoExpandDefault;
     }
 
     @Inject(method = "exportSettings", at = @At("TAIL"), remap = false)
@@ -147,6 +146,41 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
         patternInputs.remove(AEItemKey.of(GTItems.INTEGRATED_CIRCUIT.get()));
     }
 
+    @Unique
+    private Map<PatternProviderTarget, Direction> gtlcore$targetDirections;
+
+    @Unique
+    private Map<PatternProviderTarget, Direction> gtlcore$targetDirections() {
+        if (gtlcore$targetDirections == null) {
+            gtlcore$targetDirections = new IdentityHashMap<>();
+        }
+        return gtlcore$targetDirections;
+    }
+
+    @Inject(method = "pushPattern", at = @At("HEAD"), remap = false)
+    private void gtlcore$clearTargetDirections(IPatternDetails patternDetails, KeyCounter[] inputHolder,
+                                               CallbackInfoReturnable<Boolean> cir) {
+        gtlcore$targetDirections().clear();
+    }
+
+    /**
+     * Records which direction each {@link PatternProviderTarget} created during pushPattern
+     * belongs to, so that {@code adapterAcceptsAll} can validate the actual neighbor instead
+     * of guessing from the stale {@code sendDirection} field (which is only updated after a
+     * successful push). Adapters are fresh instances per call, so identity keys are safe.
+     */
+    @Redirect(method = "pushPattern",
+              at = @At(value = "INVOKE",
+                       target = "Lappeng/helpers/patternprovider/PatternProviderLogic;findAdapter(Lnet/minecraft/core/Direction;)Lappeng/helpers/patternprovider/PatternProviderTarget;"),
+              remap = false)
+    private PatternProviderTarget gtlcore$recordTargetDirection(PatternProviderLogic self, Direction direction) {
+        var target = findAdapter(direction);
+        if (target != null) {
+            gtlcore$targetDirections().put(target, direction);
+        }
+        return target;
+    }
+
     @Inject(method = "adapterAcceptsAll", at = @At("HEAD"), remap = false, cancellable = true)
     private void gtlcore$requireFullTargetCapacity(PatternProviderTarget target, KeyCounter[] inputHolder,
                                                    CallbackInfoReturnable<Boolean> cir) {
@@ -155,7 +189,7 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
         }
 
         BlockEntity targetBE = null;
-        Direction side = sendDirection;
+        Direction side = gtlcore$targetDirections().get(target);
         if (side != null) {
             targetBE = host.getBlockEntity().getLevel().getBlockEntity(host.getBlockEntity().getBlockPos().relative(side));
         }
@@ -218,7 +252,11 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
         }
 
         if (!hasAdapter && !hasP2PTunnel) {
-            return requestedOperations;
+            // No usable target this tick (nothing adjacent, or every target was skipped
+            // by blocking mode). Vanilla pushPattern will reject the push with the same
+            // side/target view, so only extract a single operation's worth of inputs
+            // instead of churning the whole remaining batch in and out every tick.
+            return 1;
         }
 
         long result = hasP2PTunnel ? p2pMaxOperations : maxOperations;
@@ -321,7 +359,6 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
         long remaining = amount;
         int slots = handler.getSlots();
         ItemStack representative = itemKey.toStack();
-        int maxStack = representative.getMaxStackSize();
 
         for (int i = 0; i < slots && remaining > 0; i++) {
             ItemStack current = handler.getStackInSlot(i);
@@ -329,18 +366,17 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
                 continue;
             }
 
-            int capacity = Math.min(maxStack, handler.getSlotLimit(i));
-            int free = capacity - current.getCount();
-            if (free <= 0) {
+            // Simulate inserting the whole remainder into this slot. This respects both
+            // filters and unlimited-capacity slots (e.g. gtmthings huge buses), instead of
+            // clamping per-slot capacity to the item's vanilla max stack size.
+            int chunk = (int) Math.min(remaining, Integer.MAX_VALUE);
+            ItemStack remainder = handler.insertItem(i, itemKey.toStack(chunk), true);
+            int accepted = remainder.isEmpty() ? chunk : Math.max(0, chunk - remainder.getCount());
+            if (accepted <= 0) {
                 continue;
             }
 
-            // Verify the slot actually accepts this item (respects filters, etc.).
-            if (!handler.insertItem(i, itemKey.toStack(1), true).isEmpty()) {
-                continue;
-            }
-
-            remaining -= free;
+            remaining -= accepted;
         }
 
         return remaining <= 0;
@@ -376,12 +412,9 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
 
     @Unique
     private boolean gtlcore$targetAcceptsAll(PatternProviderTarget target, KeyCounter baseInputs, long operations) {
-        // Per-AEKeyType total capacity check (fluids on ME networks, fallback, etc.).
-        Map<AEKeyType, Long> requiredByType = new IdentityHashMap<>();
-        Map<AEKeyType, Long> capacityByType = new IdentityHashMap<>();
-
-        // For items we additionally enforce a slot-aware bound, because single-slot
-        // inventories cannot mix different item types in the same slot.
+        // Per-key capacity check: each key must fit its own required amount.
+        // Aggregating per AEKeyType with a min() capacity would let a single
+        // special-stack item (e.g. maxStackSize=1) cap the whole pattern.
         long requiredItemSlots = 0;
         long availableItemSlots = 0;
 
@@ -392,21 +425,17 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
             }
 
             AEKey key = input.getKey();
-            AEKeyType type = key.getType();
             long available = target.insert(key, Long.MAX_VALUE, Actionable.SIMULATE);
-            requiredByType.merge(type, amount, NumberUtils::saturatedAdd);
-            capacityByType.merge(type, available, Long::min);
+            if (amount > available) {
+                return false;
+            }
 
-            if (type == AEKeyType.items() && key instanceof AEItemKey itemKey) {
+            // For items we additionally enforce a slot-aware bound, because single-slot
+            // inventories cannot mix different item types in the same slot.
+            if (key.getType() == AEKeyType.items() && key instanceof AEItemKey itemKey) {
                 int maxStack = Math.max(1, itemKey.getItem().getMaxStackSize());
                 requiredItemSlots = NumberUtils.saturatedAdd(requiredItemSlots, gtlcore$ceilDiv(amount, maxStack));
                 availableItemSlots = Math.max(availableItemSlots, gtlcore$ceilDiv(available, maxStack));
-            }
-        }
-
-        for (var entry : requiredByType.entrySet()) {
-            if (entry.getValue() > capacityByType.getOrDefault(entry.getKey(), 0L)) {
-                return false;
             }
         }
 
@@ -426,6 +455,11 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
         var combinedInputs = new KeyCounter();
         for (var inputList : inputHolder) {
             for (var input : inputList) {
+                // Programmed circuits only configure the circuit slot (always accepted,
+                // overwritten in place), so they must not participate in capacity checks.
+                if (AEUtils.isIntegratedCircuit(input.getKey())) {
+                    continue;
+                }
                 combinedInputs.add(input.getKey(), input.getLongValue());
             }
         }
@@ -438,6 +472,10 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
         for (var input : pattern.getInputs()) {
             var possibleInputs = input.getPossibleInputs();
             if (possibleInputs.length == 0) {
+                continue;
+            }
+            // See above: circuits are exempt from expansion capacity checks.
+            if (AEUtils.isIntegratedCircuit(possibleInputs[0].what())) {
                 continue;
             }
             baseInputs.add(possibleInputs[0].what(), input.getMultiplier());
