@@ -108,6 +108,15 @@ public class MachineRecipe {
                 .outputItems(AdvancedMultiBlockMachine.ADVANCED_INFINITE_DRILLER)
                 .duration(400).EUt(V[UEV]).save(provider);
 
+        ASSEMBLER_RECIPES.recipeBuilder("virtual_ingredient")
+                .inputItems(ROBOT_ARM_IV, 2)
+                .inputItems(FLUID_REGULATOR_IV, 2)
+                .inputItems(TagPrefix.plate, Duranium, 4)
+                .inputItems(CustomTags.LuV_CIRCUITS, 2)
+                .inputFluids(SolderingAlloy.getFluid(1440))
+                .outputItems(GTLItems.VIRTUAL_INGREDIENT)
+                .duration(200).EUt(VA[EV]).save(provider);
+
         ASSEMBLER_RECIPES.recipeBuilder("block_bus")
                 .inputItems(CONVEYOR_MODULE_LuV, 2)
                 .inputItems(ROBOT_ARM_LuV, 2)
