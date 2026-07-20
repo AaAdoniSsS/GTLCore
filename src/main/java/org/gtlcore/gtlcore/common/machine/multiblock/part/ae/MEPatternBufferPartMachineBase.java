@@ -478,6 +478,12 @@ public abstract class MEPatternBufferPartMachineBase extends MEIOPartMachine
         private final ObjectSet<AEFluidKey> virtualFluidSupply = new ObjectOpenHashSet<>();
 
         /**
+         * A pattern carrying a wrapped circuit has no circuit left for {@code processPatternWithCircuit} to recover,
+         * so unlike a real one this is the only record of it and has to outlive a reload on its own.
+         */
+        private int virtualCircuitConfig = -1;
+
+        /**
          * Kept apart from the pushed ones: these live as long as the wrapper sits in the slot, not as long as the
          * pattern.
          */
@@ -539,7 +545,8 @@ public abstract class MEPatternBufferPartMachineBase extends MEIOPartMachine
                         if (IntCircuitBehaviour.isIntegratedCircuit(payload)) {
                             // Circuits are stripped out of the item map and matched against the slot's cached
                             // configuration, so a virtual one has to land in that channel or nothing consults it.
-                            cacheManager.setCircuitCache(IntCircuitBehaviour.getCircuitConfiguration(payload));
+                            virtualCircuitConfig = IntCircuitBehaviour.getCircuitConfiguration(payload);
+                            cacheManager.setCircuitCache(virtualCircuitConfig);
                         } else {
                             virtualItemSupply.add(payloadItem);
                         }
@@ -717,6 +724,7 @@ public abstract class MEPatternBufferPartMachineBase extends MEIOPartMachine
             // Tied to the pattern that vouched for them, so they go when its contents do.
             virtualItemSupply.clear();
             virtualFluidSupply.clear();
+            virtualCircuitConfig = -1;
             cacheManager.clearAllCaches();
         }
 
@@ -869,6 +877,7 @@ public abstract class MEPatternBufferPartMachineBase extends MEIOPartMachine
                 for (AEFluidKey key : virtualFluidSupply) list.add(key.toTag());
                 tag.put("virtualFluidSupply", list);
             }
+            if (virtualCircuitConfig >= 0) tag.putInt("virtualCircuit", virtualCircuitConfig);
 
             return tag;
         }
@@ -897,6 +906,10 @@ public abstract class MEPatternBufferPartMachineBase extends MEIOPartMachine
                 AEFluidKey key = AEFluidKey.fromTag(virtualFluids.getCompound(i));
                 if (key != null) virtualFluidSupply.add(key);
             }
+
+            virtualCircuitConfig = tag.contains("virtualCircuit", Tag.TAG_INT) ? tag.getInt("virtualCircuit") : -1;
+            // A pattern holding a real circuit re-registers it by itself and outranks this.
+            if (virtualCircuitConfig >= 0) cacheManager.setCircuitCache(virtualCircuitConfig);
         }
     }
 }
