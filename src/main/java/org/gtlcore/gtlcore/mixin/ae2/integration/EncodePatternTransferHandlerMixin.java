@@ -1,11 +1,14 @@
 package org.gtlcore.gtlcore.mixin.ae2.integration;
 
+import org.gtlcore.gtlcore.client.gui.EncodePatternErrorModify;
 import org.gtlcore.gtlcore.client.gui.PatterEncodingTermMenuModify;
+import org.gtlcore.gtlcore.integration.ae2.pattern.VirtualIngredientEncoding;
 
 import com.gregtechceu.gtceu.api.recipe.GTRecipe;
 import com.gregtechceu.gtceu.integration.jei.multipage.MultiblockInfoWrapper;
 import com.gregtechceu.gtceu.integration.jei.recipe.GTRecipeWrapper;
 
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -59,6 +62,48 @@ public class EncodePatternTransferHandlerMixin {
             return;
         }
         menuModify.gTLCore$setQuickUploadRecipeType(null);
+    }
+
+    /**
+     * Advertises the control-click alternative on the transfer button. The line itself is appended by
+     * {@link EncodePatternErrorRendererMixin}, which is the only place AE's own tooltip is reachable.
+     */
+    @Inject(method = "transferRecipe(Lappeng/menu/me/items/PatternEncodingTermMenu;Ljava/lang/Object;Lmezz/jei/api/gui/ingredient/IRecipeSlotsView;Lnet/minecraft/world/entity/player/Player;ZZ)Lmezz/jei/api/recipe/transfer/IRecipeTransferError;",
+            at = @At("RETURN"),
+            remap = false)
+    private void gtlcore$hintVirtualIngredients(PatternEncodingTermMenu menu, Object recipeBase,
+                                                IRecipeSlotsView recipeSlots, Player player, boolean maxTransfer,
+                                                boolean doTransfer,
+                                                CallbackInfoReturnable<IRecipeTransferError> cir) {
+        if (doTransfer || !(cir.getReturnValue() instanceof EncodePatternErrorModify error)) return;
+        error.gTLCore$setVirtualIngredientHint(!VirtualIngredientEncoding.notConsumedKeys(recipeBase).isEmpty());
+    }
+
+    /**
+     * Replaces every non-consumed input with a virtual ingredient when the player holds control. Done here rather
+     * than in the ingredient converters because only the recipe knows which inputs are non-consumed.
+     */
+    @ModifyArg(method = "transferRecipe(Lappeng/menu/me/items/PatternEncodingTermMenu;Ljava/lang/Object;Lmezz/jei/api/gui/ingredient/IRecipeSlotsView;Lnet/minecraft/world/entity/player/Player;ZZ)Lmezz/jei/api/recipe/transfer/IRecipeTransferError;",
+               at = @At(value = "INVOKE",
+                        target = "Lappeng/integration/modules/jeirei/EncodingHelper;encodeProcessingRecipe(Lappeng/menu/me/items/PatternEncodingTermMenu;Ljava/util/List;Ljava/util/List;)V"),
+               index = 1,
+               remap = false)
+    public List<List<GenericStack>> gtlcore$virtualiseNotConsumedInputs(List<List<GenericStack>> genericIngredients,
+                                                                        @Local(name = "recipeBase") Object recipeBase) {
+        if (!Screen.hasControlDown()) return genericIngredients;
+        var notConsumed = VirtualIngredientEncoding.notConsumedKeys(recipeBase);
+        if (notConsumed.isEmpty()) return genericIngredients;
+
+        var rewritten = new ObjectArrayList<List<GenericStack>>(genericIngredients.size());
+        for (List<GenericStack> slot : genericIngredients) {
+            var options = new ObjectArrayList<GenericStack>(slot.size());
+            for (GenericStack option : slot) {
+                GenericStack wrapped = VirtualIngredientEncoding.wrapIfNotConsumed(option, notConsumed);
+                options.add(wrapped == null ? option : wrapped);
+            }
+            rewritten.add(options);
+        }
+        return rewritten;
     }
 
     @ModifyArg(method = "transferRecipe(Lappeng/menu/me/items/PatternEncodingTermMenu;Ljava/lang/Object;Lmezz/jei/api/gui/ingredient/IRecipeSlotsView;Lnet/minecraft/world/entity/player/Player;ZZ)Lmezz/jei/api/recipe/transfer/IRecipeTransferError;",

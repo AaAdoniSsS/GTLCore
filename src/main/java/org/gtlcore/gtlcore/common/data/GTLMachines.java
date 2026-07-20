@@ -4,6 +4,7 @@ import org.gtlcore.gtlcore.GTLCore;
 import org.gtlcore.gtlcore.api.machine.PerformanceMonitorMachine;
 import org.gtlcore.gtlcore.api.machine.multiblock.GTLPartAbility;
 import org.gtlcore.gtlcore.common.data.machines.*;
+import org.gtlcore.gtlcore.common.machine.VirtualIngredientSupplyMachine;
 import org.gtlcore.gtlcore.common.machine.generator.LightningRodMachine;
 import org.gtlcore.gtlcore.common.machine.generator.MagicEnergyMachine;
 import org.gtlcore.gtlcore.common.machine.multiblock.electric.CoilWorkableElectricMultipleRecipesMultiblockMachine;
@@ -493,6 +494,20 @@ public class GTLMachines {
             .tooltipBuilder(GTL_ADD)
             .register();
 
+    public static final MachineDefinition VIRTUAL_INGREDIENT_SUPPLY_MACHINE = REGISTRATE
+            .machine("virtual_ingredient_supply_machine", VirtualIngredientSupplyMachine::new)
+            .rotationState(RotationState.ALL)
+            .tier(LuV)
+            .renderer(() -> new OverlayTieredMachineRenderer(LuV, GTCEu.id("block/machine/part/me_pattern_buffer_proxy")))
+            // Deliberately not under the block's own descriptionId: GTCEu's TooltipsHandler auto-appends every
+            // "<descriptionId>.tooltip.N" it finds for anything named block.gtceu.*, so keeping them there would
+            // print the whole block twice.
+            .tooltips(Component.translatable("block.gtlcore.virtual_ingredient_supply_machine.tooltip.0"),
+                    Component.translatable("block.gtlcore.virtual_ingredient_supply_machine.tooltip.1"),
+                    Component.translatable("block.gtlcore.virtual_ingredient_supply_machine.tooltip.2"))
+            .tooltipBuilder(GTL_ADD)
+            .register();
+
     public final static MachineDefinition[] HUGE_FLUID_IMPORT_HATCH = registerHugeFluidHatches("huge_input_hatch", "Huge Input Hatch", "fluid_hatch.import", "fluid_hatch.import", IO.IN, PartAbility.IMPORT_FLUIDS);
 
     public final static MachineDefinition[] HUGE_FLUID_EXPORT_HATCH = registerHugeFluidHatches("huge_output_hatch", "Huge Output Hatch", "fluid_hatch.export", "fluid_hatch.export", IO.OUT, PartAbility.EXPORT_FLUIDS);
@@ -609,6 +624,20 @@ public class GTLMachines {
                     Component.translatable("gtceu.machine.me.copy_paste.tooltip"),
                     Component.translatable("gtceu.universal.enabled"))
             .compassNode("fluid_hatch")
+            .register();
+
+    public static final MachineDefinition ME_INPUT_ASSEMBLY = REGISTRATE
+            .machine("me_input_assembly", MEDualInputHatchPartMachine::new)
+            .tier(EV)
+            .abilities(PartAbility.IMPORT_ITEMS, PartAbility.IMPORT_FLUIDS)
+            .rotationState(RotationState.ALL)
+            .renderer(() -> new OverlayTieredMachineRenderer(EV, GTCEu.id("block/machine/part/me_pattern_buffer")))
+            .tooltips(
+                    Component.translatable("gtceu.machine.dual_hatch.import.tooltip"),
+                    Component.translatable("gtlcore.machine.me.dual_import.tooltip"),
+                    Component.translatable("gtceu.machine.me.copy_paste.tooltip"),
+                    Component.translatable("gtceu.universal.enabled"))
+            .compassNode("dual_hatch")
             .register();
 
     public static final MachineDefinition ME_DUAL_HATCH_STOCK_PART_MACHINE = REGISTRATE

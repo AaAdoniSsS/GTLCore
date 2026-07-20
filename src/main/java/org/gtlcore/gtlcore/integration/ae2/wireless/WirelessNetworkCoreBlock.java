@@ -9,6 +9,7 @@ import com.gregtechceu.gtceu.api.item.tool.ToolHelper;
 import com.lowdragmc.lowdraglib.client.renderer.IRenderer;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.GlobalPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
@@ -26,6 +27,8 @@ import net.minecraft.world.level.material.MapColor;
 import net.minecraft.world.phys.BlockHitResult;
 
 import org.jetbrains.annotations.NotNull;
+
+import java.util.UUID;
 
 public class WirelessNetworkCoreBlock extends MetaMachineBlock {
 
@@ -77,6 +80,11 @@ public class WirelessNetworkCoreBlock extends MetaMachineBlock {
     public void onRemove(BlockState state, @NotNull Level level, @NotNull BlockPos pos, BlockState newState, boolean isMoving) {
         if (!state.is(newState.getBlock()) && !level.isClientSide && level instanceof ServerLevel serverLevel && level.getBlockEntity(pos) instanceof WirelessNetworkCoreBlockEntity core) {
             core.removeNetwork(serverLevel.getServer());
+        } else if (!state.is(newState.getBlock()) && !level.isClientSide && level instanceof ServerLevel serverLevel) {
+            for (UUID frequency : WirelessAeSavedData.get(serverLevel.getServer())
+                    .removeNetworksAtCore(GlobalPos.of(serverLevel.dimension(), pos))) {
+                WirelessAeNetworkRuntime.disconnectFrequency(frequency);
+            }
         }
         super.onRemove(state, level, pos, newState, isMoving);
     }

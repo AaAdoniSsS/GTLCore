@@ -30,15 +30,12 @@ import snownee.jade.api.view.ViewGroup;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
-import java.util.WeakHashMap;
 
 public final class MEStockingFluidJadeHelper {
 
     private static final String FLUID_ID_TAG = "fluid";
     private static final String FLUID_DATA_TAG = "tag";
     private static final int DISPLAY_FLUID_AMOUNT = 1;
-    private static final Map<MetaMachine, List<CompoundTag>> LAST_VALID_VIEWS = Collections.synchronizedMap(new WeakHashMap<>());
 
     private MEStockingFluidJadeHelper() {}
 
@@ -55,12 +52,6 @@ public final class MEStockingFluidJadeHelper {
             views = createFluidViews(fluidTransfer);
         }
 
-        if (views.isEmpty()) {
-            views = LAST_VALID_VIEWS.getOrDefault(machine, Collections.emptyList());
-        } else {
-            views = List.copyOf(views);
-            LAST_VALID_VIEWS.put(machine, views);
-        }
         if (views.isEmpty()) {
             return Collections.emptyList();
         }

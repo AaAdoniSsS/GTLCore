@@ -25,8 +25,8 @@ public class WirelessNetworkBookmarkScreen extends AbstractContainerScreen<Wirel
     private static final int SCROLLBAR_WIDTH = 6;
     private static final int SCROLLBAR_GAP = 4;
 
-    private final UUID favoriteNetwork;
-    private final String favoriteName;
+    private UUID favoriteNetwork;
+    private String favoriteName;
     private int scrollOffset;
     private boolean draggingScrollbar;
 
@@ -202,9 +202,11 @@ public class WirelessNetworkBookmarkScreen extends AbstractContainerScreen<Wirel
         int index = this.scrollOffset + (int) (relativeY / ROW_HEIGHT);
         if (index >= 0 && index < this.menu.getNetworks().size()) {
             WirelessNetworkBookmarkMenu.Entry entry = this.menu.getNetworks().get(index);
+            boolean removeFavorite = entry.frequency().equals(this.favoriteNetwork);
+            this.favoriteNetwork = removeFavorite ? null : entry.frequency();
+            this.favoriteName = removeFavorite ? null : entry.name();
             WirelessAePackets.CHANNEL.sendToServer(
                     new WirelessAePackets.SetFavoriteNetworkPacket(this.menu.getPos(), entry.frequency()));
-            this.onClose();
         }
         return true;
     }

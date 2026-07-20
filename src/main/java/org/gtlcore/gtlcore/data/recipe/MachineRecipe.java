@@ -55,6 +55,7 @@ import static org.gtlcore.gtlcore.common.data.GTLRecipeTypes.SPACE_COSMIC_PROBE_
 import static org.gtlcore.gtlcore.integration.ae2.wireless.GTLWirelessAeContent.WIRELESS_NETWORK_BOOKMARK;
 import static org.gtlcore.gtlcore.integration.ae2.wireless.GTLWirelessAeContent.WIRELESS_NETWORK_CORE;
 import static org.gtlcore.gtlcore.integration.wildcard.WildcardPatternCompatImpl.ME_WILDCARD_PATTERN_BUFFER;
+import static org.gtlcore.gtlcore.utils.Registries.getItem;
 
 public class MachineRecipe {
 
@@ -106,6 +107,16 @@ public class MachineRecipe {
                 .inputItems(FLUID_REGULATOR_UHV, 4)
                 .outputItems(AdvancedMultiBlockMachine.ADVANCED_INFINITE_DRILLER)
                 .duration(400).EUt(V[UEV]).save(provider);
+
+        // Shape follows GTOCore's virtual_item_supply_machine recipe, with its programmable cover swapped for steel
+        // plate and its virtual item inputs dropped: nothing in this family may cost a virtual ingredient to build.
+        ASSEMBLER_RECIPES.recipeBuilder("virtual_ingredient")
+                .inputItems(ROBOT_ARM_MV, 2)
+                .inputItems(TagPrefix.plate, GTMaterials.Steel, 4)
+                .inputItems(CustomTags.HV_CIRCUITS, 2)
+                .inputFluids(SolderingAlloy.getFluid(L))
+                .outputItems(GTLItems.VIRTUAL_INGREDIENT)
+                .duration(200).EUt(VA[MV]).save(provider);
 
         ASSEMBLER_RECIPES.recipeBuilder("block_bus")
                 .inputItems(CONVEYOR_MODULE_LuV, 2)
@@ -636,6 +647,16 @@ public class MachineRecipe {
                 .save(provider);
 
         ASSEMBLER_RECIPES
+                .recipeBuilder(GTLCore.id("me_input_assembly"))
+                .inputItems(GTLMachines.GTAEMachines.ITEM_IMPORT_BUS_ME, 2)
+                .inputItems(GTLMachines.GTAEMachines.FLUID_IMPORT_HATCH_ME, 2)
+                .inputItems(CustomTags.EV_CIRCUITS)
+                .inputFluids(GTMaterials.SolderingAlloy.getFluid(1440))
+                .outputItems(GTLMachines.ME_INPUT_ASSEMBLY)
+                .duration(100).EUt(VA[HV])
+                .save(provider);
+
+        ASSEMBLER_RECIPES
                 .recipeBuilder(GTLCore.id("heat_sensor"))
                 .inputItems(GTLMachines.GTAEMachines.STOCKING_IMPORT_BUS_ME, 2)
                 .inputItems(GTLMachines.GTAEMachines.STOCKING_IMPORT_HATCH_ME, 2)
@@ -654,7 +675,7 @@ public class MachineRecipe {
                 .inputItems(ChemicalHelper.get(plateDouble, GTLMaterials.Starmetal), 32)
                 .inputItems(AdvancedMultiBlockMachine.SPACE_PROBE_SURFACE_RECEPTION, 8)
                 .inputItems(GTLBlocks.ADVANCED_FUSION_COIL, 16)
-                .inputItems(Registries.getItem("kubejs:awakened_core"), 16)
+                .inputItems(getItem("kubejs:awakened_core"), 16)
                 .inputItems(ChemicalHelper.get(GTLTagPrefix.nanoswarm, GTLMaterials.BlackDwarfMatter), 64)
                 .inputItems(ChemicalHelper.get(GTLTagPrefix.nanoswarm, GTLMaterials.WhiteDwarfMatter), 64)
                 .inputItems(GTLItems.INSANELY_ULTIMATE_BATTERY)
@@ -743,7 +764,7 @@ public class MachineRecipe {
                 .inputItems(ChemicalHelper.get(gearSmall, GTLMaterials.Vibramantium), 32)
                 .inputItems(ChemicalHelper.get(rod, GTLMaterials.Vibramantium), 16)
                 .inputItems(ChemicalHelper.get(screw, GTLMaterials.Vibramantium), 16)
-                .inputItems(Registries.getItem("kubejs:x_ray_laser"), 1)
+                .inputItems(getItem("kubejs:x_ray_laser"), 1)
                 .inputFluids(SolderingAlloy.getFluid(16000))
                 .inputFluids(GTLMaterials.MutatedLivingSolder.getFluid(16000))
                 .inputFluids(GTLMaterials.Photopolymer.getFluid(8000))
@@ -764,7 +785,7 @@ public class MachineRecipe {
                 .inputItems(GTLMachines.NEUTRON_ACCELERATOR[UEV], 8)
                 .inputItems(GTLMachines.NEUTRON_ACCELERATOR[UIV], 8)
                 .inputItems(GTLItems.EXTREMELY_ULTIMATE_BATTERY)
-                .inputItems(Registries.getItem("kubejs:wyvern_core"), 4)
+                .inputItems(getItem("kubejs:wyvern_core"), 4)
                 .inputFluids(GTLMaterials.SuperMutatedLivingSolder.getFluid(16000))
                 .inputFluids(GTLMaterials.MutatedLivingSolder.getFluid(16000))
                 .inputFluids(GTMaterials.Oganesson.getFluid(1296))
@@ -782,9 +803,9 @@ public class MachineRecipe {
                     .inputItems(EMITTER_UHV, 4)
                     .inputItems(CIRCUIT.getIngredient(UEV), 16)
                     .inputItems(TAG_FILTER_ME_STOCK_BUS_PART_MACHINE, 4)
-                    .inputItems(Registries.getItem("kubejs:low_frequency_laser"), 8)
-                    .inputItems(Registries.getItem("kubejs:medium_frequency_laser"), 8)
-                    .inputItems(Registries.getItem("kubejs:high_frequency_laser"), 8)
+                    .inputItems(getItem("kubejs:low_frequency_laser"), 8)
+                    .inputItems(getItem("kubejs:medium_frequency_laser"), 8)
+                    .inputItems(getItem("kubejs:high_frequency_laser"), 8)
                     .inputItems(ORE_DICTIONARY_FILTER, 32)
                     .inputItems(TAG_FLUID_FILTER, 32)
                     .inputItems(plate, Kevlar, 8)
@@ -842,7 +863,7 @@ public class MachineRecipe {
     private static void space_probe(Material material, int grade, int amount, int circuit, Consumer<FinishedRecipe> provider) {
         SPACE_COSMIC_PROBE_RECEIVERS_RECIPES
                 .recipeBuilder(GTLCore.id("space_cosmic_probe_receivers_" + material.getName()))
-                .notConsumable(Registries.getItem("kubejs:space_probe_mk" + grade))
+                .notConsumable(getItem("kubejs:space_probe_mk" + grade))
                 .outputFluids(material.getFluid(amount))
                 .EUt((long) (VA[UEV] * Math.pow(4, grade)))
                 .duration(200)

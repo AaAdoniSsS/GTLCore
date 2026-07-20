@@ -45,6 +45,11 @@ public class ConfigHolder {
     @Configurable.Range(min = 36, max = 360)
     public int exPatternProvider = 36;
     @Configurable
+    @Configurable.Comment("Pattern box pages; each page stores 36 encoded patterns")
+    @Configurable.Range(min = 1, max = 10)
+    @Configurable.Synchronized
+    public int patternBoxPages = 2;
+    @Configurable
     public boolean enablePrimitiveVoidOre = false;
     @Configurable
     @Configurable.Comment("连锁黑名单,支持通配符*")
@@ -73,8 +78,11 @@ public class ConfigHolder {
     @Configurable.Range(min = 1, max = 16)
     public int ae2StorageServiceUpdateInterval = 8;
     @Configurable
-    @Configurable.Comment("AE2合成计算模式: LEGACY(原版), FAST(快速), ULTRA_FAST(极快)")
+    @Configurable.Comment("AE2合成计算模式: LEGACY(原版), FAST(快速), ULTRA_FAST(极快), MAX_FAST(需求聚合)")
     public AE2CalculationMode ae2CalculationMode = AE2CalculationMode.ULTRA_FAST;
+    @Configurable
+    @Configurable.Comment("是否启用 MAX_FAST 独立计算性能日志")
+    public boolean enableMaxFastCalculationLogging = false;
     @Configurable
     @Configurable.Comment("新放置的普通 AE2 / 扩展样板供应器是否默认开启智能翻倍（ME 样板总成仍强制开启）")
     public boolean ae2PatternProviderAutoExpandDefault = false;
