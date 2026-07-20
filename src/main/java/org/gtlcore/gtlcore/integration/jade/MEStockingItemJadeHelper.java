@@ -52,13 +52,14 @@ public final class MEStockingItemJadeHelper {
     }
 
     private static @Nullable ExportOnlyAEItemList getStockingItemHandler(MetaMachine machine) {
-        ExportOnlyAEItemList itemHandler = null;
         if (machine instanceof MEInputBusPartMachine) {
-            itemHandler = ((MEInputBusPartMachineAccessor) machine).gtlcore$getAeItemHandler();
-        } else if (machine instanceof MEDualHatchStockPartMachine) {
-            itemHandler = ((MEDualHatchStockPartMachineAccessor) machine).gtlcore$getAeItemHandler();
+            return ((MEInputBusPartMachineAccessor) machine).gtlcore$getAeItemHandler();
         }
 
+        ExportOnlyAEItemList itemHandler = null;
+        if (machine instanceof MEDualHatchStockPartMachine) {
+            itemHandler = ((MEDualHatchStockPartMachineAccessor) machine).gtlcore$getAeItemHandler();
+        }
         if (itemHandler instanceof IOptimizedMEList optimized && optimized.isStocking()) {
             return itemHandler;
         }

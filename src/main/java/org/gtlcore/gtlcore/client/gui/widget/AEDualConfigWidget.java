@@ -37,6 +37,7 @@ public class AEDualConfigWidget extends WidgetGroup {
     private final ExportOnlyAEItemList aeItem;
     private final ExportOnlyAEFluidList aeFluid;
     private final IntConsumer pageSetter;
+    private final boolean amountEditingEnabled;
 
     public static final int CONFIG_SIZE = 16;
     protected int page;
@@ -46,10 +47,16 @@ public class AEDualConfigWidget extends WidgetGroup {
     private static final int UPDATE_ID = 1001;
 
     public AEDualConfigWidget(int x, int y, ExportOnlyAEItemList aeItem, ExportOnlyAEFluidList aeFluid, IntConsumer pageSetter, int page) {
+        this(x, y, aeItem, aeFluid, pageSetter, page, false);
+    }
+
+    public AEDualConfigWidget(int x, int y, ExportOnlyAEItemList aeItem, ExportOnlyAEFluidList aeFluid,
+                              IntConsumer pageSetter, int page, boolean amountEditingEnabled) {
         super(new Position(x, y), new Size(CONFIG_SIZE / 2 * 18, 18 * 4 + 2 + 19));
         this.aeItem = aeItem;
         this.aeFluid = aeFluid;
         this.pageSetter = pageSetter;
+        this.amountEditingEnabled = amountEditingEnabled;
         this.offset = aeItem.getSize();
         this.page = page;
         this.MAX_PAGE = Math.max(1, offset / CONFIG_SIZE);
@@ -110,7 +117,8 @@ public class AEDualConfigWidget extends WidgetGroup {
     @OnlyIn(Dist.CLIENT)
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (this.amountSetWidget.isVisible() && this.amountSetWidget.getAmountText().mouseClicked(mouseX, mouseY, button)) {
+        if (this.amountEditingEnabled && this.amountSetWidget.isVisible() &&
+                this.amountSetWidget.getAmountText().mouseClicked(mouseX, mouseY, button)) {
             return true;
         }
         for (Widget w : this.widgets) {
@@ -123,6 +131,9 @@ public class AEDualConfigWidget extends WidgetGroup {
     }
 
     public void enableAmount(int index) {
+        if (!this.amountEditingEnabled) {
+            return;
+        }
         this.amountSetWidget.setSlotIndex(index);
         this.amountSetWidget.setVisible(true);
         this.amountSetWidget.getAmountText().setVisible(true);
@@ -132,6 +143,10 @@ public class AEDualConfigWidget extends WidgetGroup {
         this.amountSetWidget.setSlotIndex(-1);
         this.amountSetWidget.setVisible(false);
         this.amountSetWidget.getAmountText().setVisible(false);
+    }
+
+    public boolean isAmountEditingEnabled() {
+        return this.amountEditingEnabled;
     }
 
     @Override

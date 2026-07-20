@@ -62,7 +62,7 @@ public class AEDualAmountSetWidget extends Widget {
         GuiTextures.BACKGROUND.draw(graphics, mouseX, mouseY, position.x, position.y, WIDGET_WIDTH, WIDGET_HEIGHT);
         DrawerHelper.drawStringSized(
                 graphics,
-                "Amount",
+                isFluidSelected() ? "Amount (mB)" : "Amount",
                 position.x + TEXT_X,
                 position.y + TEXT_Y,
                 0x404040,
@@ -77,6 +77,14 @@ public class AEDualAmountSetWidget extends Widget {
                 position.y + INPUT_Y,
                 INPUT_WIDTH,
                 INPUT_HEIGHT);
+    }
+
+    private boolean isFluidSelected() {
+        if (this.index < 0) {
+            return false;
+        }
+        var config = this.parentWidget.getConfig(this.index).getConfig();
+        return config != null && config.what() instanceof appeng.api.stacks.AEFluidKey;
     }
 
     private String getAmountStr() {

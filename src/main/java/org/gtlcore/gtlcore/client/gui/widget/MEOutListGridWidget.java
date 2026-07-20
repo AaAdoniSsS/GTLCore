@@ -1,5 +1,7 @@
 package org.gtlcore.gtlcore.client.gui.widget;
 
+import org.gtlcore.gtlcore.integration.ae2.MEFluidUnits;
+
 import com.gregtechceu.gtceu.api.gui.GuiTextures;
 import com.gregtechceu.gtceu.client.TooltipsHandler;
 
@@ -260,7 +262,7 @@ public class MEOutListGridWidget extends DraggableScrollableWidgetGroup {
                 } else if (key instanceof AEFluidKey fluidKey) {
                     FluidStack fs = FluidStack.create(fluidKey.getFluid(), amt, fluidKey.getTag());
                     DrawerHelper.drawFluidForGui(graphics, fs, amt, stackX, stackY, 16, 16);
-                    String amountStr = String.format("x%,d", amt);
+                    String amountStr = MEFluidUnits.formatDisplayAmount(amt);
                     drawText(graphics, amountStr, stackX + 20, stackY + 5, 1, 0xFFFFFFFF);
                 }
             }
