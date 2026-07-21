@@ -1,0 +1,6 @@
+{
+  "parent": "item/generated",
+  "textures": {
+    "layer0": "gtlcore:item/wireless_throughput_monitor_terminal"
+  }
+}

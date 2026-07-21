@@ -73,6 +73,13 @@ final class WirelessAeStyle {
         drawNineSlice(graphics, TEXT_FIELD, x, y, width, 20, 120, 20, 3);
     }
 
+    static void drawSlotGroupOutline(GuiGraphics graphics, int x, int y, int width, int height) {
+        graphics.fill(x, y, x + width, y + 1, PANEL_HIGHLIGHT);
+        graphics.fill(x, y, x + 1, y + height, PANEL_HIGHLIGHT);
+        graphics.fill(x + width - 1, y, x + width, y + height, PANEL_HIGHLIGHT);
+        graphics.fill(x, y + height - 1, x + width, y + height, PANEL_HIGHLIGHT);
+    }
+
     static void drawSeparator(GuiGraphics graphics, int x, int y, int width) {
         drawTiledRegion(graphics, SEPARATOR, x, y, width, 2, 0, 0, 120, 2, 120, 2);
     }
@@ -164,7 +171,11 @@ final class WirelessAeStyle {
     }
 
     static Button button(int x, int y, int width, Component message, Button.OnPress onPress) {
-        return new Ae2Button(x, y, width, 20, message, onPress, Accent.NONE);
+        return button(x, y, width, 20, message, onPress);
+    }
+
+    static Button button(int x, int y, int width, int height, Component message, Button.OnPress onPress) {
+        return new Ae2Button(x, y, width, height, message, onPress, Accent.NONE);
     }
 
     static Button selectedButton(int x, int y, int width, int height, Component message, Button.OnPress onPress) {

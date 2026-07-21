@@ -4,6 +4,10 @@ import org.gtlcore.gtlcore.GTLCore;
 import org.gtlcore.gtlcore.common.data.GTLCreativeModeTabs;
 import org.gtlcore.gtlcore.integration.ae2.pattern.PatternQuickUploadSelectionMenu;
 import org.gtlcore.gtlcore.integration.ae2.throughput.METhroughputMonitorPart;
+import org.gtlcore.gtlcore.integration.ae2.throughput.ThroughputMonitorTerminalMenu;
+import org.gtlcore.gtlcore.integration.ae2.throughput.ThroughputMonitorTerminalPart;
+import org.gtlcore.gtlcore.integration.ae2.throughput.WirelessThroughputMonitorMenuHost;
+import org.gtlcore.gtlcore.integration.ae2.throughput.WirelessThroughputMonitorTerminalItem;
 
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.BlockItem;
@@ -16,9 +20,14 @@ import net.minecraftforge.event.BuildCreativeModeTabContentsEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.registries.DeferredRegister;
 import net.minecraftforge.registries.ForgeRegistries;
+import net.minecraftforge.registries.RegisterEvent;
 import net.minecraftforge.registries.RegistryObject;
 
+import appeng.api.features.GridLinkables;
 import appeng.items.parts.PartItem;
+import appeng.items.tools.powered.WirelessTerminalItem;
+import appeng.menu.MenuOpener;
+import de.mari_023.ae2wtlib.wut.WUTHandler;
 
 public final class GTLWirelessAeContent {
 
@@ -26,6 +35,7 @@ public final class GTLWirelessAeContent {
     private static final DeferredRegister<Item> ITEMS = DeferredRegister.create(ForgeRegistries.ITEMS, GTLCore.MOD_ID);
     private static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITY_TYPES = DeferredRegister.create(ForgeRegistries.BLOCK_ENTITY_TYPES, GTLCore.MOD_ID);
     private static final DeferredRegister<MenuType<?>> MENU_TYPES = DeferredRegister.create(ForgeRegistries.MENU_TYPES, GTLCore.MOD_ID);
+    private static final MenuType<ThroughputMonitorTerminalMenu> WIRELESS_THROUGHPUT_MONITOR_TERMINAL_MENU_TYPE = IForgeMenuType.create(ThroughputMonitorTerminalMenu::createWirelessClientMenu);
 
     public static final RegistryObject<Block> WIRELESS_NETWORK_CORE = BLOCKS.register(
             "wireless_network_core",
@@ -53,6 +63,17 @@ public final class GTLWirelessAeContent {
     public static final RegistryObject<Item> THROUGHPUT_MONITOR_CONFIGURATOR = ITEMS.register(
             "throughput_monitor_configurator",
             () -> new Item(new Item.Properties()));
+
+    public static final RegistryObject<PartItem<ThroughputMonitorTerminalPart>> THROUGHPUT_MONITOR_TERMINAL = ITEMS.register(
+            "throughput_monitor_terminal",
+            () -> new PartItem<>(
+                    new Item.Properties(),
+                    ThroughputMonitorTerminalPart.class,
+                    ThroughputMonitorTerminalPart::new));
+
+    public static final RegistryObject<WirelessThroughputMonitorTerminalItem> WIRELESS_THROUGHPUT_MONITOR_TERMINAL = ITEMS.register(
+            "wireless_throughput_monitor_terminal",
+            WirelessThroughputMonitorTerminalItem::new);
 
     public static final RegistryObject<BlockEntityType<WirelessNetworkCoreBlockEntity>> WIRELESS_NETWORK_CORE_BE = BLOCK_ENTITY_TYPES.register(
             "wireless_network_core",
@@ -84,14 +105,44 @@ public final class GTLWirelessAeContent {
             "pattern_quick_upload_selection",
             () -> IForgeMenuType.create(PatternQuickUploadSelectionMenu::new));
 
+    public static final RegistryObject<MenuType<ThroughputMonitorTerminalMenu>> THROUGHPUT_MONITOR_TERMINAL_MENU = MENU_TYPES.register(
+            "throughput_monitor_terminal",
+            () -> IForgeMenuType.create(ThroughputMonitorTerminalMenu::createWiredClientMenu));
+
+    public static final RegistryObject<MenuType<ThroughputMonitorTerminalMenu>> WIRELESS_THROUGHPUT_MONITOR_TERMINAL_MENU = MENU_TYPES.register(
+            "wireless_throughput_monitor_terminal",
+            () -> WIRELESS_THROUGHPUT_MONITOR_TERMINAL_MENU_TYPE);
+
     private GTLWirelessAeContent() {}
 
     public static void register(IEventBus modBus) {
+        ThroughputMonitorTerminalPart.registerModels();
         BLOCKS.register(modBus);
         ITEMS.register(modBus);
         BLOCK_ENTITY_TYPES.register(modBus);
         MENU_TYPES.register(modBus);
+        modBus.addListener(GTLWirelessAeContent::onRegisterEvent);
         modBus.addListener(GTLWirelessAeContent::addCreativeTabItems);
+    }
+
+    private static void onRegisterEvent(RegisterEvent event) {
+        if (!event.getRegistryKey().equals(ForgeRegistries.ITEMS.getRegistryKey())) {
+            return;
+        }
+
+        WirelessThroughputMonitorTerminalItem item = WIRELESS_THROUGHPUT_MONITOR_TERMINAL.get();
+        GridLinkables.register(item, WirelessTerminalItem.LINKABLE_HANDLER);
+        MenuOpener.addOpener(
+                WIRELESS_THROUGHPUT_MONITOR_TERMINAL_MENU_TYPE,
+                ThroughputMonitorTerminalMenu::openWireless);
+        WUTHandler.addTerminal(
+                WirelessThroughputMonitorTerminalItem.TERMINAL_NAME,
+                item::tryOpen,
+                WirelessThroughputMonitorMenuHost::new,
+                WIRELESS_THROUGHPUT_MONITOR_TERMINAL_MENU_TYPE,
+                item,
+                WirelessThroughputMonitorTerminalItem.HOTKEY_NAME,
+                item.getDescriptionId());
     }
 
     private static void addCreativeTabItems(BuildCreativeModeTabContentsEvent event) {
@@ -100,6 +151,8 @@ public final class GTLWirelessAeContent {
             event.accept(WIRELESS_NETWORK_BOOKMARK_ITEM);
             event.accept(THROUGHPUT_MONITOR);
             event.accept(THROUGHPUT_MONITOR_CONFIGURATOR);
+            event.accept(THROUGHPUT_MONITOR_TERMINAL);
+            event.accept(WIRELESS_THROUGHPUT_MONITOR_TERMINAL);
         }
     }
 }
