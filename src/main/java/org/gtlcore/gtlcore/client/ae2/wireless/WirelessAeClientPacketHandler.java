@@ -1,8 +1,11 @@
 package org.gtlcore.gtlcore.client.ae2.wireless;
 
 import org.gtlcore.gtlcore.client.ae2.MeInventoryAmountClient;
+import org.gtlcore.gtlcore.integration.ae2.throughput.ThroughputMonitorTerminalMenu;
 import org.gtlcore.gtlcore.integration.ae2.wireless.MeInventoryAmountPackets;
 import org.gtlcore.gtlcore.integration.ae2.wireless.WirelessAePackets;
+
+import net.minecraft.client.Minecraft;
 
 public final class WirelessAeClientPacketHandler {
 
@@ -18,5 +21,23 @@ public final class WirelessAeClientPacketHandler {
 
     public static void handleMeInventoryAmount(MeInventoryAmountPackets.Response packet) {
         MeInventoryAmountClient.receive(packet);
+    }
+
+    public static void handleThroughputMonitorTerminal(
+                                                       WirelessAePackets.SyncThroughputMonitorTerminalPacket packet) {
+        if (Minecraft.getInstance().player != null &&
+                Minecraft.getInstance().player.containerMenu instanceof ThroughputMonitorTerminalMenu menu &&
+                menu.containerId == packet.containerId()) {
+            menu.setEntries(packet.entries());
+        }
+    }
+
+    public static void handleThroughputMonitorSources(
+                                                      WirelessAePackets.SyncThroughputMonitorSourcesPacket packet) {
+        if (Minecraft.getInstance().player != null &&
+                Minecraft.getInstance().player.containerMenu instanceof ThroughputMonitorTerminalMenu menu &&
+                menu.containerId == packet.containerId()) {
+            menu.setSourceEntries(packet.key(), packet.sources());
+        }
     }
 }

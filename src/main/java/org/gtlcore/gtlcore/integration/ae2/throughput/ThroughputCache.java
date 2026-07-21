@@ -1,7 +1,5 @@
 package org.gtlcore.gtlcore.integration.ae2.throughput;
 
-import org.gtlcore.gtlcore.utils.NumberUtils;
-
 import appeng.hooks.ticking.TickHandler;
 
 import java.util.ArrayDeque;
@@ -38,8 +36,8 @@ final class ThroughputCache {
             return;
         }
 
-        long inserted = amountDelta > 0 ? amountDelta : 0L;
-        long extracted = amountDelta < 0 ? -amountDelta : 0L;
+        double inserted = amountDelta > 0 ? amountDelta : 0.0D;
+        double extracted = amountDelta < 0 ? -(double) amountDelta : 0.0D;
 
         if (startTick == NO_TIMESTAMP) {
             startTick = timestamp;
@@ -51,8 +49,8 @@ final class ThroughputCache {
             changes.removeFirst();
             changes.addFirst(
                     new CacheEntry(
-                            NumberUtils.saturatedAdd(first.inserted, inserted),
-                            NumberUtils.saturatedAdd(first.extracted, extracted),
+                            first.inserted + inserted,
+                            first.extracted + extracted,
                             timestamp));
             return;
         }
@@ -95,8 +93,8 @@ final class ThroughputCache {
         long windowTicks = secondsToTicks(sampleWindowSeconds);
         long firstTick = Math.max(startTick, currentTick - windowTicks);
         long elapsedTicks = Math.max(1L, currentTick - firstTick);
-        long inserted = 0L;
-        long extracted = 0L;
+        double inserted = 0.0D;
+        double extracted = 0.0D;
 
         for (CacheEntry change : changes) {
             if (change.timestamp < firstTick) {
@@ -104,8 +102,8 @@ final class ThroughputCache {
             }
 
             if (change.timestamp <= currentTick) {
-                inserted = NumberUtils.saturatedAdd(inserted, change.inserted);
-                extracted = NumberUtils.saturatedAdd(extracted, change.extracted);
+                inserted += change.inserted;
+                extracted += change.extracted;
             }
         }
 
@@ -121,5 +119,5 @@ final class ThroughputCache {
         private static final ThroughputSample EMPTY = new ThroughputSample(0.0D, 0.0D);
     }
 
-    private record CacheEntry(long inserted, long extracted, long timestamp) {}
+    private record CacheEntry(double inserted, double extracted, long timestamp) {}
 }

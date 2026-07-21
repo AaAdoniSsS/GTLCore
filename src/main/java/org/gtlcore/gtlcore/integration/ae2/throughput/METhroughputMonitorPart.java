@@ -1,6 +1,7 @@
 package org.gtlcore.gtlcore.integration.ae2.throughput;
 
 import org.gtlcore.gtlcore.GTLCore;
+import org.gtlcore.gtlcore.integration.ae2.MEFluidUnits;
 import org.gtlcore.gtlcore.integration.ae2.wireless.GTLWirelessAeContent;
 
 import net.minecraft.client.Minecraft;
@@ -29,6 +30,7 @@ import appeng.api.networking.ticking.TickRateModulation;
 import appeng.api.networking.ticking.TickingRequest;
 import appeng.api.orientation.BlockOrientation;
 import appeng.api.parts.IPartItem;
+import appeng.api.stacks.AEFluidKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.AmountFormat;
 import appeng.api.storage.MEStorage;
@@ -100,14 +102,26 @@ public class METhroughputMonitorPart extends StorageMonitorPart implements IGrid
         }
 
         String sign = lastReportedValue > 0.0D ? "+" : lastReportedValue == 0.0D ? "" : "-";
-        double absoluteValue = Math.abs(lastReportedValue);
-        String valueText = absoluteValue > WHOLE_AMOUNT_THRESHOLD || absoluteValue == 0.0D ? displayed.formatAmount(Math.round(absoluteValue), AmountFormat.SLOT) : String.format(Locale.ROOT, SMALL_AMOUNT_FORMAT, absoluteValue);
+        String valueText = formatThroughputAmount(displayed, Math.abs(lastReportedValue));
 
         return Component.translatable(workRoutine.translationKey, sign, valueText);
     }
 
+    public static String formatThroughputAmount(AEKey key, double absoluteValue) {
+        if (key instanceof AEFluidKey) {
+            return MEFluidUnits.formatDisplayAmount(absoluteValue);
+        }
+        return absoluteValue > WHOLE_AMOUNT_THRESHOLD || absoluteValue == 0.0D ?
+                key.formatAmount(Math.round(absoluteValue), AmountFormat.SLOT) :
+                String.format(Locale.ROOT, SMALL_AMOUNT_FORMAT, absoluteValue);
+    }
+
     public double getThroughput() {
         return lastReportedValue;
+    }
+
+    public double getThroughputPerSecond() {
+        return lastReportedValue / workRoutine.displayTicks * ThroughputCache.TICKS_PER_SECOND;
     }
 
     @Override

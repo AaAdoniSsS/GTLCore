@@ -39,6 +39,13 @@ ordering = "AFTER"
 side = "BOTH"
 
 [[dependencies.${mod_id}]]
+modId = "ae2wtlib"
+mandatory = true
+versionRange = "[15.3.3,16)"
+ordering = "AFTER"
+side = "BOTH"
+
+[[dependencies.${mod_id}]]
 modId = "ad_astra"
 mandatory = true
 versionRange = "[${ad_astra_version},)"

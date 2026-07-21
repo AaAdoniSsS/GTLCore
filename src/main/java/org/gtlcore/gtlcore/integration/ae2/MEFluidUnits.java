@@ -12,9 +12,18 @@ public final class MEFluidUnits {
     private MEFluidUnits() {}
 
     public static String formatDisplayAmount(long amountMb) {
-        if (amountMb < FluidType.BUCKET_VOLUME) {
-            return NumberUtils.formatLong(amountMb) + MILLIBUCKET_SUFFIX;
+        return formatDisplayAmount((double) amountMb);
+    }
+
+    public static String formatDisplayAmount(double amountMb) {
+        boolean negative = amountMb < 0.0D;
+        double absoluteAmount = Math.abs(amountMb);
+        String formattedAmount;
+        if (absoluteAmount < FluidType.BUCKET_VOLUME) {
+            formattedAmount = NumberUtils.formatDouble(absoluteAmount) + MILLIBUCKET_SUFFIX;
+        } else {
+            formattedAmount = NumberUtils.formatDouble(absoluteAmount / FluidType.BUCKET_VOLUME) + BUCKET_SUFFIX;
         }
-        return NumberUtils.formatDouble((double) amountMb / FluidType.BUCKET_VOLUME) + BUCKET_SUFFIX;
+        return negative ? "-" + formattedAmount : formattedAmount;
     }
 }

@@ -3,6 +3,8 @@ package org.gtlcore.gtlcore.integration.ae2.wireless;
 import org.gtlcore.gtlcore.GTLCore;
 import org.gtlcore.gtlcore.client.gui.PatterEncodingTermMenuModify;
 import org.gtlcore.gtlcore.integration.ae2.pattern.PatternQuickUploadSelectionMenu;
+import org.gtlcore.gtlcore.integration.ae2.throughput.ThroughputMonitorTerminalMenu;
+import org.gtlcore.gtlcore.integration.ae2.throughput.ThroughputMonitorUpdateInterval;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -28,6 +30,8 @@ import net.minecraftforge.network.NetworkRegistry;
 import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
+import appeng.api.stacks.AEKey;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -35,7 +39,7 @@ import java.util.function.Supplier;
 
 public final class WirelessAePackets {
 
-    private static final String PROTOCOL_VERSION = "3";
+    private static final String PROTOCOL_VERSION = "6";
     private static int nextPacketId;
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
@@ -110,6 +114,34 @@ public final class WirelessAePackets {
                 SelectPatternQuickUploadTargetPacket::decode,
                 SelectPatternQuickUploadTargetPacket::handle,
                 java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
+        CHANNEL.registerMessage(
+                nextPacketId++,
+                SyncThroughputMonitorTerminalPacket.class,
+                SyncThroughputMonitorTerminalPacket::encode,
+                SyncThroughputMonitorTerminalPacket::decode,
+                SyncThroughputMonitorTerminalPacket::handle,
+                java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT));
+        CHANNEL.registerMessage(
+                nextPacketId++,
+                SetThroughputMonitorSourceTrackingPacket.class,
+                SetThroughputMonitorSourceTrackingPacket::encode,
+                SetThroughputMonitorSourceTrackingPacket::decode,
+                SetThroughputMonitorSourceTrackingPacket::handle,
+                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
+        CHANNEL.registerMessage(
+                nextPacketId++,
+                SetThroughputMonitorUpdateIntervalPacket.class,
+                SetThroughputMonitorUpdateIntervalPacket::encode,
+                SetThroughputMonitorUpdateIntervalPacket::decode,
+                SetThroughputMonitorUpdateIntervalPacket::handle,
+                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
+        CHANNEL.registerMessage(
+                nextPacketId++,
+                SyncThroughputMonitorSourcesPacket.class,
+                SyncThroughputMonitorSourcesPacket::encode,
+                SyncThroughputMonitorSourcesPacket::decode,
+                SyncThroughputMonitorSourcesPacket::handle,
+                java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT));
         MeInventoryAmountPackets.register(CHANNEL, () -> nextPacketId++);
         JeiWirelessTerminalOrderPackets.register(CHANNEL, () -> nextPacketId++);
     }
@@ -517,6 +549,129 @@ public final class WirelessAePackets {
                     menu.select(player, packet.index);
                 } else if (player != null && player.containerMenu instanceof PatterEncodingTermMenuModify menuModify) {
                     menuModify.gTLCore$selectQuickUploadTarget(packet.index);
+                }
+            });
+            context.setPacketHandled(true);
+        }
+    }
+
+    public record SyncThroughputMonitorTerminalPacket(
+                                                      int containerId,
+                                                      List<ThroughputMonitorTerminalMenu.Entry> entries) {
+
+        private static void encode(SyncThroughputMonitorTerminalPacket packet, FriendlyByteBuf buffer) {
+            buffer.writeVarInt(packet.containerId);
+            ThroughputMonitorTerminalMenu.writeEntries(buffer, packet.entries);
+        }
+
+        private static SyncThroughputMonitorTerminalPacket decode(FriendlyByteBuf buffer) {
+            return new SyncThroughputMonitorTerminalPacket(
+                    buffer.readVarInt(),
+                    ThroughputMonitorTerminalMenu.readEntries(buffer));
+        }
+
+        private static void handle(SyncThroughputMonitorTerminalPacket packet,
+                                   Supplier<NetworkEvent.Context> contextSupplier) {
+            NetworkEvent.Context context = contextSupplier.get();
+            context.enqueueWork(() -> {
+                try {
+                    Class.forName("org.gtlcore.gtlcore.client.ae2.wireless.WirelessAeClientPacketHandler")
+                            .getMethod("handleThroughputMonitorTerminal", SyncThroughputMonitorTerminalPacket.class)
+                            .invoke(null, packet);
+                } catch (ReflectiveOperationException | RuntimeException ignored) {
+                    // Client-only handler is not present on dedicated servers.
+                }
+            });
+            context.setPacketHandled(true);
+        }
+    }
+
+    public record SetThroughputMonitorSourceTrackingPacket(int containerId, AEKey key, boolean track) {
+
+        private static void encode(SetThroughputMonitorSourceTrackingPacket packet, FriendlyByteBuf buffer) {
+            buffer.writeVarInt(packet.containerId);
+            AEKey.writeKey(buffer, packet.key);
+            buffer.writeBoolean(packet.track);
+        }
+
+        private static SetThroughputMonitorSourceTrackingPacket decode(FriendlyByteBuf buffer) {
+            return new SetThroughputMonitorSourceTrackingPacket(
+                    buffer.readVarInt(),
+                    AEKey.readKey(buffer),
+                    buffer.readBoolean());
+        }
+
+        private static void handle(SetThroughputMonitorSourceTrackingPacket packet,
+                                   Supplier<NetworkEvent.Context> contextSupplier) {
+            NetworkEvent.Context context = contextSupplier.get();
+            context.enqueueWork(() -> {
+                ServerPlayer player = context.getSender();
+                if (player != null && player.containerMenu instanceof ThroughputMonitorTerminalMenu menu &&
+                        menu.containerId == packet.containerId) {
+                    menu.trackSources(player, packet.key, packet.track);
+                }
+            });
+            context.setPacketHandled(true);
+        }
+    }
+
+    public record SetThroughputMonitorUpdateIntervalPacket(
+                                                           int containerId,
+                                                           ThroughputMonitorUpdateInterval updateInterval) {
+
+        private static void encode(SetThroughputMonitorUpdateIntervalPacket packet, FriendlyByteBuf buffer) {
+            buffer.writeVarInt(packet.containerId);
+            buffer.writeEnum(packet.updateInterval);
+        }
+
+        private static SetThroughputMonitorUpdateIntervalPacket decode(FriendlyByteBuf buffer) {
+            return new SetThroughputMonitorUpdateIntervalPacket(
+                    buffer.readVarInt(),
+                    buffer.readEnum(ThroughputMonitorUpdateInterval.class));
+        }
+
+        private static void handle(SetThroughputMonitorUpdateIntervalPacket packet,
+                                   Supplier<NetworkEvent.Context> contextSupplier) {
+            NetworkEvent.Context context = contextSupplier.get();
+            context.enqueueWork(() -> {
+                ServerPlayer player = context.getSender();
+                if (player != null && player.containerMenu instanceof ThroughputMonitorTerminalMenu menu &&
+                        menu.containerId == packet.containerId) {
+                    menu.setUpdateInterval(player, packet.updateInterval);
+                }
+            });
+            context.setPacketHandled(true);
+        }
+    }
+
+    public record SyncThroughputMonitorSourcesPacket(
+                                                     int containerId,
+                                                     AEKey key,
+                                                     List<ThroughputMonitorTerminalMenu.SourceEntry> sources) {
+
+        private static void encode(SyncThroughputMonitorSourcesPacket packet, FriendlyByteBuf buffer) {
+            buffer.writeVarInt(packet.containerId);
+            AEKey.writeKey(buffer, packet.key);
+            ThroughputMonitorTerminalMenu.writeSourceEntries(buffer, packet.sources);
+        }
+
+        private static SyncThroughputMonitorSourcesPacket decode(FriendlyByteBuf buffer) {
+            return new SyncThroughputMonitorSourcesPacket(
+                    buffer.readVarInt(),
+                    AEKey.readKey(buffer),
+                    ThroughputMonitorTerminalMenu.readSourceEntries(buffer));
+        }
+
+        private static void handle(SyncThroughputMonitorSourcesPacket packet,
+                                   Supplier<NetworkEvent.Context> contextSupplier) {
+            NetworkEvent.Context context = contextSupplier.get();
+            context.enqueueWork(() -> {
+                try {
+                    Class.forName("org.gtlcore.gtlcore.client.ae2.wireless.WirelessAeClientPacketHandler")
+                            .getMethod("handleThroughputMonitorSources", SyncThroughputMonitorSourcesPacket.class)
+                            .invoke(null, packet);
+                } catch (ReflectiveOperationException | RuntimeException ignored) {
+                    // Client-only handler is not present on dedicated servers.
                 }
             });
             context.setPacketHandled(true);
