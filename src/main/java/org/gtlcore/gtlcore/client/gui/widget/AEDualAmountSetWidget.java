@@ -9,6 +9,9 @@ import com.lowdragmc.lowdraglib.utils.Position;
 
 import net.minecraft.network.FriendlyByteBuf;
 
+import lombok.Getter;
+import org.jetbrains.annotations.NotNull;
+
 public class AEDualAmountSetWidget extends Widget {
 
     private static final int SET_SLOT_ID = 0;
@@ -21,6 +24,7 @@ public class AEDualAmountSetWidget extends Widget {
     private static final int INPUT_HEIGHT = 14;
 
     private int index = -1;
+    @Getter
     private final TextFieldWidget amountText;
     private final AEDualConfigWidget parentWidget;
 
@@ -40,11 +44,9 @@ public class AEDualAmountSetWidget extends Widget {
 
     public void setSlotIndex(int index) {
         this.index = index;
-        writeClientAction(SET_SLOT_ID, buffer -> buffer.writeVarInt(index));
-    }
-
-    public TextFieldWidget getAmountText() {
-        return this.amountText;
+        if (isRemote()) {
+            writeClientAction(SET_SLOT_ID, buffer -> buffer.writeVarInt(index));
+        }
     }
 
     @Override
@@ -56,7 +58,7 @@ public class AEDualAmountSetWidget extends Widget {
     }
 
     @Override
-    public void drawInBackground(net.minecraft.client.gui.GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
+    public void drawInBackground(net.minecraft.client.gui.@NotNull GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
         super.drawInBackground(graphics, mouseX, mouseY, partialTicks);
         Position position = getPosition();
         GuiTextures.BACKGROUND.draw(graphics, mouseX, mouseY, position.x, position.y, WIDGET_WIDTH, WIDGET_HEIGHT);
