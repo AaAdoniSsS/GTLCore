@@ -195,6 +195,7 @@
   "item.gtlcore.cell_component_4m": "4M Storage Component",
   "item.gtlcore.cell_component_64m": "64M Storage Component",
   "item.gtlcore.cfg_copy": "Configuration Copy Tool",
+  "tooltip.gtlcore.cfg_copy": "Right-click on the normal machine/hatch to configure the output surface and circuit settings, then right-click again to apply the configuration.",
   "item.gtlcore.compressed_pufferfish": "Large Fish",
   "item.gtlcore.contaminated_petri_dish": "Contaminated Petri Dish",
   "item.gtlcore.conversion_simulate_card": "Conversion Simulation Card",

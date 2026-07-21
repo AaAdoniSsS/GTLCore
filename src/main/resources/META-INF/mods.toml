@@ -76,7 +76,7 @@ side = "BOTH"
 [[dependencies.${mod_id}]]
 modId = "extendedae"
 mandatory = false
-versionRange = "[1.4,8,)"
+versionRange = "[1.4.8,)"
 ordering = "AFTER"
 side = "BOTH"
 

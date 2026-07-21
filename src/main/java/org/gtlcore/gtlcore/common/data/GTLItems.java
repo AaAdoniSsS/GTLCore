@@ -287,7 +287,9 @@ public class GTLItems {
 
     public static ItemEntry<ComponentItem> CFG_COPY = REGISTRATE
             .item("cfg_copy", ComponentItem::create)
-            .onRegister(attach(ConfigurationCopyBehavior.INSTANCE))
+            .onRegister(attach(ConfigurationCopyBehavior.INSTANCE, new TooltipBehavior(lines -> {
+                lines.add(Component.translatable("tooltip.gtlcore.cfg_copy"));
+            })))
             .model(NonNullBiConsumer.noop())
             .register();
 

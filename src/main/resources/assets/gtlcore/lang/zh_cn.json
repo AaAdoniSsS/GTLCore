@@ -192,6 +192,7 @@
   "item.gtlcore.cell_component_4m": "4M 存储组件",
   "item.gtlcore.cell_component_64m": "64M 存储组件",
   "item.gtlcore.cfg_copy": "配置复制工具",
+  "tooltip.gtlcore.cfg_copy": "潜行右键小机器/仓室记录输出面设置以及电路设置，右键应用配置",
   "item.gtlcore.compressed_pufferfish": "大鱼",
   "item.gtlcore.contaminated_petri_dish": "污染的培养皿",
   "item.gtlcore.conversion_simulate_card": "转换模拟卡",
