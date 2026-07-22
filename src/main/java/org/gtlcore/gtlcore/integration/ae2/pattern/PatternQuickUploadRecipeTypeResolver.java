@@ -6,9 +6,11 @@ import org.gtlcore.gtlcore.api.recipe.ingredient.LongIngredient;
 import com.gregtechceu.gtceu.api.capability.recipe.FluidRecipeCapability;
 import com.gregtechceu.gtceu.api.capability.recipe.ItemRecipeCapability;
 import com.gregtechceu.gtceu.api.recipe.GTRecipe;
+import com.gregtechceu.gtceu.api.recipe.GTRecipeType;
 import com.gregtechceu.gtceu.api.recipe.content.Content;
 import com.gregtechceu.gtceu.api.recipe.ingredient.FluidIngredient;
 import com.gregtechceu.gtceu.api.recipe.ingredient.SizedIngredient;
+import com.gregtechceu.gtceu.api.registry.GTRegistries;
 import com.gregtechceu.gtceu.common.data.GTRecipeTypes;
 
 import com.lowdragmc.lowdraglib.side.fluid.FluidStack;
@@ -37,6 +39,7 @@ import it.unimi.dsi.fastutil.objects.Object2LongMaps;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
 
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 
 public final class PatternQuickUploadRecipeTypeResolver {
@@ -56,6 +59,34 @@ public final class PatternQuickUploadRecipeTypeResolver {
             return Set.of();
         }
         return findRecipeTypeIds(player.server.getRecipeManager(), processingPattern);
+    }
+
+    /**
+     * Translates a vanilla recipe type id into the GT recipe types accepting it as a proxy. A GT recipe type
+     * declaring a vanilla proxy (currently only {@code gtceu:electric_furnace} on {@code minecraft:smelting}) runs
+     * those recipes through its own lookup, so a pattern carrying the vanilla id belongs on machines of the proxying
+     * type. The vanilla id itself is only kept when it still names a target on its own, as it does for the molecular
+     * assembler.
+     */
+    public static Set<ResourceLocation> expandProxiedRecipeTypeIds(ResourceLocation recipeTypeId) {
+        if (recipeTypeId == null) {
+            return Set.of();
+        }
+        Set<ResourceLocation> recipeTypeIds = new LinkedHashSet<>();
+        for (GTRecipeType gtRecipeType : GTRegistries.RECIPE_TYPES.values()) {
+            if (gtRecipeType.registryName == null) {
+                continue;
+            }
+            for (RecipeType<?> proxiedType : gtRecipeType.getProxyRecipes().keySet()) {
+                if (recipeTypeId.equals(recipeTypeId(proxiedType))) {
+                    recipeTypeIds.add(gtRecipeType.registryName);
+                }
+            }
+        }
+        if (recipeTypeIds.isEmpty() || isMolecularRecipeTypeId(recipeTypeId)) {
+            recipeTypeIds.add(recipeTypeId);
+        }
+        return recipeTypeIds;
     }
 
     public static boolean isMolecularRecipeTypeId(ResourceLocation recipeTypeId) {
@@ -106,6 +137,23 @@ public final class PatternQuickUploadRecipeTypeResolver {
             if (!recipeSignature.isEmpty() && patternSignature.matchesScaled(recipeSignature)) {
                 matchedRecipes++;
                 recipeTypeIds.add(gtRecipe.recipeType.registryName);
+            }
+        }
+        // Proxied vanilla recipes are converted on datapack reload and only ever live in their recipe type,
+        // never in the recipe manager, so the loop above cannot see them.
+        for (GTRecipeType gtRecipeType : GTRegistries.RECIPE_TYPES.values()) {
+            if (gtRecipeType.registryName == null || gtRecipeType == GTRecipeTypes.DUMMY_RECIPES) {
+                continue;
+            }
+            for (List<GTRecipe> proxiedRecipes : gtRecipeType.getProxyRecipes().values()) {
+                for (GTRecipe proxiedRecipe : proxiedRecipes) {
+                    checkedRecipes++;
+                    PatternSignature recipeSignature = PatternSignature.fromRecipe(proxiedRecipe);
+                    if (!recipeSignature.isEmpty() && patternSignature.matchesScaled(recipeSignature)) {
+                        matchedRecipes++;
+                        recipeTypeIds.add(gtRecipeType.registryName);
+                    }
+                }
             }
         }
         GTLCore.LOGGER.debug("{} resolver checkedRecipes={} matchedRecipes={} recipeTypes={}",

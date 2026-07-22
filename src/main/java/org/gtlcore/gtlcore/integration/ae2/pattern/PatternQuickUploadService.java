@@ -35,6 +35,7 @@ import appeng.api.stacks.AEItemKey;
 import appeng.blockentity.crafting.IMolecularAssemblerSupportedPattern;
 import appeng.crafting.pattern.AEProcessingPattern;
 import appeng.helpers.patternprovider.PatternContainer;
+import com.glodblock.github.extendedae.common.tileentities.matrix.TileAssemblerMatrixPattern;
 import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Method;
@@ -128,9 +129,8 @@ public final class PatternQuickUploadService {
         if (patternStack.isEmpty()) {
             return -1;
         }
-        ServerLevel targetLevel = player.server.getLevel(targetLevelKey);
-        MetaMachine machine = targetLevel == null ? null : MetaMachine.getMachine(targetLevel, targetPos);
-        if (!(machine instanceof PatternContainer container)) {
+        PatternContainer container = resolvePatternContainer(player.server.getLevel(targetLevelKey), targetPos);
+        if (container == null) {
             GTLCore.LOGGER.debug("{} insert rejected: no pattern container at {} {}",
                     LOG_PREFIX,
                     targetLevelKey.location(),
@@ -155,9 +155,8 @@ public final class PatternQuickUploadService {
         if (patternStack.isEmpty()) {
             return false;
         }
-        ServerLevel targetLevel = player.server.getLevel(targetLevelKey);
-        MetaMachine machine = targetLevel == null ? null : MetaMachine.getMachine(targetLevel, targetPos);
-        if (!(machine instanceof PatternContainer container)) {
+        PatternContainer container = resolvePatternContainer(player.server.getLevel(targetLevelKey), targetPos);
+        if (container == null) {
             GTLCore.LOGGER.debug("{} undo rejected: no pattern container at {} {}",
                     LOG_PREFIX,
                     targetLevelKey.location(),
@@ -178,9 +177,8 @@ public final class PatternQuickUploadService {
         if (patternStack.isEmpty() || slot < 0) {
             return false;
         }
-        ServerLevel targetLevel = player.server.getLevel(targetLevelKey);
-        MetaMachine machine = targetLevel == null ? null : MetaMachine.getMachine(targetLevel, targetPos);
-        if (!(machine instanceof PatternContainer container)) {
+        PatternContainer container = resolvePatternContainer(player.server.getLevel(targetLevelKey), targetPos);
+        if (container == null) {
             GTLCore.LOGGER.debug("{} undo rejected: no pattern container at {} {}",
                     LOG_PREFIX,
                     targetLevelKey.location(),
@@ -324,23 +322,40 @@ public final class PatternQuickUploadService {
                     patternStack, recipeTypeIds, targets, seen);
             return;
         }
-        if (!(patternDetails instanceof IMolecularAssemblerSupportedPattern) ||
-                !(container instanceof MEMolecularAssemblerIOPartMachine molecularAssembler)) {
+        if (!(patternDetails instanceof IMolecularAssemblerSupportedPattern)) {
             return;
         }
-        Level level = molecularAssembler.getLevel();
-        if (level == null) {
-            GTLCore.LOGGER.debug("{} skipped grid molecular assembler with no level at {}",
+        if (container instanceof MEMolecularAssemblerIOPartMachine molecularAssembler) {
+            Level level = molecularAssembler.getLevel();
+            if (level == null) {
+                GTLCore.LOGGER.debug("{} skipped grid molecular assembler with no level at {}",
+                        LOG_PREFIX,
+                        molecularAssembler.getPos());
+                return;
+            }
+            GTLCore.LOGGER.debug("{} found grid molecular assembler at {} {}",
                     LOG_PREFIX,
+                    level.dimension().location(),
                     molecularAssembler.getPos());
+            collectTargetsFromMolecularAssembler(grid, level.dimension(), molecularAssembler,
+                    patternStack, recipeTypeIds, targets, seen);
             return;
         }
-        GTLCore.LOGGER.debug("{} found grid molecular assembler at {} {}",
-                LOG_PREFIX,
-                level.dimension().location(),
-                molecularAssembler.getPos());
-        collectTargetsFromMolecularAssembler(grid, level.dimension(), molecularAssembler,
-                patternStack, recipeTypeIds, targets, seen);
+        if (container instanceof TileAssemblerMatrixPattern matrixPattern) {
+            Level level = matrixPattern.getLevel();
+            if (level == null) {
+                GTLCore.LOGGER.debug("{} skipped grid assembler matrix with no level at {}",
+                        LOG_PREFIX,
+                        matrixPattern.getBlockPos());
+                return;
+            }
+            GTLCore.LOGGER.debug("{} found grid assembler matrix at {} {}",
+                    LOG_PREFIX,
+                    level.dimension().location(),
+                    matrixPattern.getBlockPos());
+            collectTargetsFromAssemblerMatrix(level.dimension(), matrixPattern, patternStack, recipeTypeIds, targets,
+                    seen);
+        }
     }
 
     private static void collectTargetsFromLoadedMultiblocks(ServerLevel level, IGrid grid, ItemStack patternStack,
@@ -551,6 +566,64 @@ public final class PatternQuickUploadService {
         }
     }
 
+    /**
+     * Every pattern block of a matrix reports the same terminal group, so the shared collapsing pass folds them back
+     * into one target holding all insertable positions.
+     */
+    private static void collectTargetsFromAssemblerMatrix(ResourceKey<Level> levelKey,
+                                                          TileAssemblerMatrixPattern matrixPattern,
+                                                          ItemStack patternStack,
+                                                          Set<ResourceLocation> recipeTypeIds,
+                                                          List<Target> targets,
+                                                          Set<TargetKey> seen) {
+        BlockPos matrixPos = matrixPattern.getBlockPos();
+        if (!matrixPattern.isVisibleInTerminal()) {
+            GTLCore.LOGGER.debug("{} skipped assembler matrix {} {}: hidden in terminal",
+                    LOG_PREFIX,
+                    levelKey.location(),
+                    matrixPos);
+            return;
+        }
+        if (!matrixPattern.isFormed()) {
+            GTLCore.LOGGER.debug("{} skipped assembler matrix {} {}: not formed",
+                    LOG_PREFIX,
+                    levelKey.location(),
+                    matrixPos);
+            return;
+        }
+        if (!canInsert(matrixPattern, patternStack)) {
+            GTLCore.LOGGER.debug("{} skipped assembler matrix {} {}: no insertable pattern slot",
+                    LOG_PREFIX,
+                    levelKey.location(),
+                    matrixPos);
+            return;
+        }
+        for (ResourceLocation recipeTypeId : recipeTypeIds) {
+            if (!PatternQuickUploadRecipeTypeResolver.isMolecularRecipeTypeId(recipeTypeId)) {
+                continue;
+            }
+            TargetKey key = new TargetKey(levelKey, matrixPos, recipeTypeId);
+            if (seen.add(key)) {
+                var terminalGroup = matrixPattern.getTerminalGroup();
+                AEItemKey icon = terminalGroup.icon();
+                targets.add(new Target(
+                        levelKey,
+                        matrixPos,
+                        terminalGroup.name(),
+                        recipeTypeId,
+                        PatternQuickUploadMetadata.recipeTypeName(recipeTypeId),
+                        icon,
+                        icon == null ? null : icon.getId()));
+                GTLCore.LOGGER.debug("{} accepted assembler matrix target {} {} recipeType={} name={}",
+                        LOG_PREFIX,
+                        levelKey.location(),
+                        matrixPos,
+                        recipeTypeId,
+                        terminalGroup.name().getString());
+            }
+        }
+    }
+
     private static boolean hasFormedController(Iterable<IMultiController> controllers) {
         for (IMultiController controller : controllers) {
             if (controller != null && controller.isFormed()) {
@@ -675,6 +748,20 @@ public final class PatternQuickUploadService {
         } catch (ReflectiveOperationException | RuntimeException ignored) {
             return null;
         }
+    }
+
+    /**
+     * Targets are either GT machines or plain AE block entities such as the assembler matrix pattern block.
+     */
+    @Nullable
+    private static PatternContainer resolvePatternContainer(@Nullable ServerLevel level, BlockPos pos) {
+        if (level == null) {
+            return null;
+        }
+        if (MetaMachine.getMachine(level, pos) instanceof PatternContainer container) {
+            return container;
+        }
+        return level.getBlockEntity(pos) instanceof PatternContainer container ? container : null;
     }
 
     private static boolean canInsert(PatternContainer container, ItemStack patternStack) {

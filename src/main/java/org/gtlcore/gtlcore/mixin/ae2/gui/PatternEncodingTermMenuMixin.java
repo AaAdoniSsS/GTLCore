@@ -411,7 +411,8 @@ public abstract class PatternEncodingTermMenuMixin extends MEStorageMenu impleme
             GTLCore.LOGGER.debug("{} using pending recipe type {}",
                     GTLCORE$QUICK_UPLOAD_LOG,
                     this.gTLCore$pendingQuickUploadRecipeTypeId);
-            recipeTypeIds.add(this.gTLCore$pendingQuickUploadRecipeTypeId);
+            recipeTypeIds.addAll(PatternQuickUploadRecipeTypeResolver
+                    .expandProxiedRecipeTypeIds(this.gTLCore$pendingQuickUploadRecipeTypeId));
             if (consumePendingRecipeType) {
                 this.gTLCore$pendingQuickUploadRecipeTypeId = null;
             }
