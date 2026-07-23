@@ -24,6 +24,7 @@ import com.lowdragmc.lowdraglib.syncdata.annotation.DescSynced;
 import com.lowdragmc.lowdraglib.syncdata.annotation.Persisted;
 import com.lowdragmc.lowdraglib.syncdata.field.ManagedFieldHolder;
 
+import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Player;
@@ -43,6 +44,7 @@ import it.unimi.dsi.fastutil.objects.Object2LongMaps;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.EnumSet;
 import java.util.List;
 
 /**
@@ -190,6 +192,14 @@ public class VirtualIngredientSupplyMachine extends MetaMachine
     }
 
     // ==================== Persistence ====================
+
+    @Override
+    public void loadCustomPersistedData(@NotNull CompoundTag tag) {
+        super.loadCustomPersistedData(tag);
+        if (tag.getCompound("ForgeData").getBoolean("isAllFacing")) {
+            getMainNode().setExposedOnSides(EnumSet.allOf(Direction.class));
+        }
+    }
 
     // Runs before saveToItem, which then stores the emptied inventory, so the material drops once rather than twice.
     @Override
