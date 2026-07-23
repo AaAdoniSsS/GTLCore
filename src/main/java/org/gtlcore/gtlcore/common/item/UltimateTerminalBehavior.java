@@ -4,7 +4,6 @@ import org.gtlcore.gtlcore.api.gui.BlockMapSelectorWidget;
 import org.gtlcore.gtlcore.api.gui.ExtendLabelWidget;
 import org.gtlcore.gtlcore.api.pattern.AdvancedBlockPattern;
 
-import com.gregtechceu.gtceu.api.block.MetaMachineBlock;
 import com.gregtechceu.gtceu.api.gui.GuiTextures;
 import com.gregtechceu.gtceu.api.item.component.IItemUIFactory;
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
@@ -25,8 +24,10 @@ import com.lowdragmc.lowdraglib.utils.BlockInfo;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.GlobalPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -39,6 +40,7 @@ import net.minecraft.world.level.block.Block;
 
 import com.hepdd.gtmthings.api.gui.widget.TerminalInputWidget;
 import it.unimi.dsi.fastutil.objects.*;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -56,6 +58,11 @@ import static org.gtlcore.gtlcore.common.block.BlockMap.*;
  */
 
 public class UltimateTerminalBehavior implements IItemUIFactory {
+
+    private static final String ACTIVE_BLOCK_TYPE_TAG = "blocks";
+    private static final String ACTIVE_TIER_TAG = "Tier";
+    private static final String TIER_SELECTIONS_TAG = "TierSelections";
+    private static final int BLOCK_SELECTOR_GAP = 4;
 
     public UltimateTerminalBehavior() {}
 
@@ -88,7 +95,7 @@ public class UltimateTerminalBehavior implements IItemUIFactory {
                     metaMachine instanceof IMultiController controller) {
                 var autoBuildSetting = getAutoBuildSetting(context.getPlayer().getMainHandItem());
                 if (autoBuildSetting.isDismantleMode()) {
-                    dismantleMultiblock(controller, context.getPlayer());
+                    dismantleMultiblock(controller, context.getPlayer(), autoBuildSetting);
                 } else {
                     if (!controller.isFormed()) {
                         Objects.requireNonNull(getAdvancedBlockPattern(controller.getPattern())).autoBuild(context.getPlayer(), controller.getMultiblockState(), autoBuildSetting);
@@ -107,7 +114,6 @@ public class UltimateTerminalBehavior implements IItemUIFactory {
         var autoBuildSetting = new AutoBuildSetting();
         var tag = mainHandItem.getOrCreateTag();
         if (!tag.isEmpty()) {
-            autoBuildSetting.setTier(tag.getInt("Tier"));
             autoBuildSetting.setRepeatCount(tag.getInt("RepeatCount"));
             autoBuildSetting.setNoHatchMode(tag.getBoolean("NoHatchMode"));
             autoBuildSetting.setReplaceMode(tag.getBoolean("ReplaceMode"));
@@ -122,10 +128,11 @@ public class UltimateTerminalBehavior implements IItemUIFactory {
                 ResourceKey<net.minecraft.world.level.Level> dimension = ResourceKey.create(Registries.DIMENSION, new ResourceLocation(AEPos.getString("dim")));
                 autoBuildSetting.setBoundAE(GlobalPos.of(dimension, new BlockPos(x, y, z)));
             }
-            String block = tag.getString("blocks");
-            if (!block.isEmpty()) {
-                autoBuildSetting.tierBlock = tierBlockMap.get(block).get();
-                autoBuildSetting.blocks = new ObjectOpenHashSet<>(autoBuildSetting.tierBlock);
+            for (var entry : tierBlockMap.object2ObjectEntrySet()) {
+                Block selectedBlock = getSelectedTierBlock(tag, entry.getKey());
+                if (selectedBlock != null) {
+                    autoBuildSetting.addTierSelection(entry.getValue().get(), selectedBlock);
+                }
             }
         }
         return autoBuildSetting;
@@ -178,40 +185,99 @@ public class UltimateTerminalBehavior implements IItemUIFactory {
                         .setTexture(new GuiTextureGroup(GuiTextures.BUTTON, new TextTexture("OFF")),
                                 new GuiTextureGroup(GuiTextures.BUTTON, new TextTexture("ON"))));
 
-        var blockLabel = new ExtendLabelWidget(47, 26, getBlockComponent(handItem));
-        var blockMap = new BlockMapSelectorWidget(group.getSizeHeight() + 4, contain.getSizeWidth(), (s, i) -> {
-            if (s != null && i != null) {
-                CompoundTag tag = handItem.getOrCreateTag();
-                tag.putString("blocks", s);
-                tag.putInt("Tier", i);
-                handItem.setTag(tag);
-                blockLabel.setComponent(Component.literal("(").append(getBlock(s))
-                        .append(Component.literal(" : "))
-                        .append(tierBlockMap.get(s).get()[i].getName())
-                        .append(Component.literal(")")));
-            }
-        });
+        var blockMap = new BlockMapSelectorWidget(
+                group.getSizeWidth() + BLOCK_SELECTOR_GAP, 0, group.getSizeWidth(), (s, i) -> {
+                    if (s != null && i != null) {
+                        setTierSelection(handItem, s, i);
+                    }
+                }, (s, i) -> isTierSelected(handItem, s, i));
         blockMap.setInit(handItem);
         var open = new SwitchWidget(14, 26, 30, 16, (c, f) -> blockMap.showType(f))
                 .setHoverTooltips(Component.translatable("gui.gtlcore.open.config.map"));
-        contain.addWidget(open).addWidget(blockLabel);
+        contain.addWidget(open);
         group.addWidget(contain).addWidget(blockMap).setBackground(GuiTextures.BACKGROUND_INVERSE);
         return group;
     }
 
-    private static Component getBlockComponent(ItemStack itemStack) {
-        var tag = itemStack.getOrCreateTag();
-        if (!tag.isEmpty()) {
-            var block = tag.getString("blocks");
-            if (!block.isEmpty()) {
-                int tier = tag.getInt("Tier");
-                return Component.literal("(").append(getBlock(block))
-                        .append(Component.literal(" : "))
-                        .append(tierBlockMap.get(block).get()[tier].getName())
-                        .append(Component.literal(")"));
+    private static boolean isTierSelected(ItemStack itemStack, String blockType, int tier) {
+        var lazyTierBlocks = tierBlockMap.get(blockType);
+        if (lazyTierBlocks == null) {
+            return false;
+        }
+        Block[] tierBlocks = lazyTierBlocks.get();
+        return tier >= 0 && tier < tierBlocks.length &&
+                tierBlocks[tier] == getSelectedTierBlock(itemStack.getOrCreateTag(), blockType);
+    }
+
+    private static Block setTierSelection(ItemStack itemStack, String blockType, int tier) {
+        var lazyTierBlocks = tierBlockMap.get(blockType);
+        if (lazyTierBlocks == null) {
+            return null;
+        }
+        Block[] tierBlocks = lazyTierBlocks.get();
+        if (tier < 0 || tier >= tierBlocks.length) {
+            return null;
+        }
+
+        CompoundTag tag = itemStack.getOrCreateTag();
+        CompoundTag selections = tag.contains(TIER_SELECTIONS_TAG, Tag.TAG_COMPOUND) ?
+                tag.getCompound(TIER_SELECTIONS_TAG) : new CompoundTag();
+        String activeBlockType = tag.getString(ACTIVE_BLOCK_TYPE_TAG);
+        if (!activeBlockType.isEmpty() && !selections.contains(activeBlockType, Tag.TAG_STRING)) {
+            Block activeBlock = getSelectedTierBlock(tag, activeBlockType);
+            if (activeBlock != null) {
+                selections.putString(activeBlockType, BuiltInRegistries.BLOCK.getKey(activeBlock).toString());
             }
         }
-        return Component.literal("");
+
+        Block selectedBlock = tierBlocks[tier];
+        selections.putString(blockType, BuiltInRegistries.BLOCK.getKey(selectedBlock).toString());
+        tag.put(TIER_SELECTIONS_TAG, selections);
+        tag.putString(ACTIVE_BLOCK_TYPE_TAG, blockType);
+        tag.putInt(ACTIVE_TIER_TAG, tier);
+        itemStack.setTag(tag);
+        return selectedBlock;
+    }
+
+    private static Block getSelectedTierBlock(CompoundTag tag, String blockType) {
+        var lazyTierBlocks = tierBlockMap.get(blockType);
+        if (lazyTierBlocks == null) {
+            return null;
+        }
+        Block[] tierBlocks = lazyTierBlocks.get();
+        if (tierBlocks.length == 0) {
+            return null;
+        }
+
+        if (tag.contains(TIER_SELECTIONS_TAG, Tag.TAG_COMPOUND)) {
+            CompoundTag selections = tag.getCompound(TIER_SELECTIONS_TAG);
+            if (selections.contains(blockType, Tag.TAG_STRING)) {
+                ResourceLocation blockId = ResourceLocation.tryParse(selections.getString(blockType));
+                if (blockId == null) {
+                    return null;
+                }
+                Block selectedBlock = BuiltInRegistries.BLOCK.getOptional(blockId).orElse(null);
+                return containsBlock(tierBlocks, selectedBlock) ? selectedBlock : null;
+            }
+        }
+
+        if (!blockType.equals(tag.getString(ACTIVE_BLOCK_TYPE_TAG))) {
+            return null;
+        }
+        int tier = Math.max(0, Math.min(tag.getInt(ACTIVE_TIER_TAG), tierBlocks.length - 1));
+        return tierBlocks[tier];
+    }
+
+    private static boolean containsBlock(Block[] tierBlocks, Block selectedBlock) {
+        if (selectedBlock == null) {
+            return false;
+        }
+        for (Block tierBlock : tierBlocks) {
+            if (tierBlock == selectedBlock) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static int getRepeatCount(ItemStack itemStack) {
@@ -280,7 +346,8 @@ public class UltimateTerminalBehavior implements IItemUIFactory {
         itemStack.setTag(tag);
     }
 
-    private void dismantleMultiblock(IMultiController controller, Player player) {
+    private void dismantleMultiblock(IMultiController controller, Player player,
+                                     AutoBuildSetting autoBuildSetting) {
         var level = player.level();
         // 仅在服务端执行
         if (level.isClientSide()) return;
@@ -291,28 +358,21 @@ public class UltimateTerminalBehavior implements IItemUIFactory {
         AdvancedBlockPattern advancedPattern = getAdvancedBlockPattern(pattern);
         if (advancedPattern == null) return;
 
-        // 获取当前手持终端的设置
-        ItemStack handItem = player.getMainHandItem();
-        AutoBuildSetting setting = getAutoBuildSetting(handItem);
-        boolean isFlipped = setting.isFlipped();
-        int repeatCountSetting = setting.getRepeatCount();
-        boolean aeMode = setting.isAeMode();
-        GlobalPos boundAEPos = setting.getBoundAE();
-        advancedPattern.dismantleMultiblock(controller, player, repeatCountSetting, isFlipped, aeMode, boundAEPos);
+        advancedPattern.dismantleMultiblock(controller, player, autoBuildSetting);
     }
 
     @Setter
     @Getter
     public static class AutoBuildSetting {
 
-        Block[] tierBlock;
-        Set<Block> blocks = Collections.emptySet();
-        private int tier, repeatCount;
+        @Getter(AccessLevel.NONE)
+        private final Object2ObjectMap<Block, Block> tierReplacements = new Object2ObjectOpenHashMap<>();
+        private final Set<Block> blocks = new ObjectOpenHashSet<>();
+        private int repeatCount;
         private boolean noHatchMode, replaceMode, isFlipped, dismantleMode, aeMode;
         private GlobalPos boundAE;
 
         public AutoBuildSetting() {
-            this.tier = 0;
             this.repeatCount = 0;
             this.noHatchMode = true;
             this.replaceMode = false;
@@ -321,13 +381,20 @@ public class UltimateTerminalBehavior implements IItemUIFactory {
             this.aeMode = false;
         }
 
+        private void addTierSelection(Block[] tierBlocks, Block selectedBlock) {
+            for (Block tierBlock : tierBlocks) {
+                this.tierReplacements.put(tierBlock, selectedBlock);
+                this.blocks.add(tierBlock);
+            }
+        }
+
         public List<ItemStack> apply(BlockInfo[] blockInfos) {
             List<ItemStack> candidates = new ObjectArrayList<>();
             if (blockInfos != null) {
                 for (var info : blockInfos) {
-                    if (this.tierBlock != null && this.tier >= 0 && blockInfos.length > 1 &&
-                            this.blocks.contains(info.getBlockState().getBlock())) {
-                        candidates.add(tierBlock[Math.min(this.tier, blockInfos.length - 1)].asItem().getDefaultInstance());
+                    Block selectedTierBlock = this.tierReplacements.get(info.getBlockState().getBlock());
+                    if (selectedTierBlock != null && blockInfos.length > 1) {
+                        candidates.add(selectedTierBlock.asItem().getDefaultInstance());
                         return candidates;
                     }
                     if (info.getBlockState().getBlock() instanceof LiquidBlock liquidBlock) {
@@ -344,10 +411,13 @@ public class UltimateTerminalBehavior implements IItemUIFactory {
             if (!this.noHatchMode) return true;
             if (blockInfos != null && blockInfos.length > 0) {
                 var blockInfo = blockInfos[0];
-                return !(blockInfo.getBlockState().getBlock() instanceof MetaMachineBlock machineBlock) ||
-                        !Hatch.Set.contains(machineBlock);
+                return !Hatch.Set.contains(blockInfo.getBlockState().getBlock());
             }
             return true;
+        }
+
+        public boolean shouldPreserveDuringDismantle(Block block) {
+            return this.dismantleMode && this.noHatchMode && Hatch.Set.contains(block);
         }
 
         private static final class Hatch {

@@ -1,5 +1,6 @@
 package org.gtlcore.gtlcore.mixin.ae2.gui;
 
+import org.gtlcore.gtlcore.client.ae2.CraftingStatusBulkActionControls;
 import org.gtlcore.gtlcore.integration.ae2.crafting.CraftingDispatchReasonState;
 import org.gtlcore.gtlcore.integration.ae2.crafting.ICraftingDispatchReasonView;
 import org.gtlcore.gtlcore.integration.ae2.crafting.ICraftingStatusReasons;
@@ -31,6 +32,13 @@ public abstract class CraftingStatusScreenMixin implements ICraftingDispatchReas
             if (entry.isDeleted()) {
                 this.gtlcore$dispatchReasonMasks.remove(entry.getSerial());
             }
+        }
+    }
+
+    @Inject(method = "updateBeforeRender", at = @At("TAIL"), remap = false)
+    private void gtlcore$refreshBulkActionButtons(CallbackInfo ci) {
+        if ((Object) this instanceof CraftingStatusBulkActionControls controls) {
+            controls.gtlcore$refreshBulkActionButtons();
         }
     }
 

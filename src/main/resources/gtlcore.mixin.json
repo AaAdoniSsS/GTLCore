@@ -9,6 +9,7 @@
     "ae2.gui.NumberEntryWidgetAccessor",
     "ae2.gui.CraftAmountScreenMixin",
     "ae2.gui.CraftingCPUScreenMixin",
+    "ae2.gui.CraftingStatusSearchScreenMixin",
     "ae2.gui.CraftingStatusScreenMixin",
     "ae2.gui.CraftingStatusTableRendererMixin",
     "ae2.gui.SetProcessingPatternAmountScreenMixin",

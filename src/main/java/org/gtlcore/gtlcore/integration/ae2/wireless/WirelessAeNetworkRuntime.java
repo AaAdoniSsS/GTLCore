@@ -1076,7 +1076,7 @@ public final class WirelessAeNetworkRuntime {
                 return null;
             }
             return invokeGridNode(cluster, "getNode");
-        } catch (ReflectiveOperationException | RuntimeException ignored) {
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
             return null;
         }
     }
@@ -1091,7 +1091,7 @@ public final class WirelessAeNetworkRuntime {
             if (result instanceof IGridNode node) {
                 return node;
             }
-        } catch (ReflectiveOperationException | RuntimeException ignored) {
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
             return null;
         }
         return null;
@@ -1107,7 +1107,7 @@ public final class WirelessAeNetworkRuntime {
             if (result instanceof IManagedGridNode managedGridNode) {
                 return managedGridNode.getNode();
             }
-        } catch (ReflectiveOperationException | RuntimeException ignored) {
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
             return null;
         }
         return null;
@@ -1120,7 +1120,7 @@ public final class WirelessAeNetworkRuntime {
                 return null;
             }
             return method.invoke(target);
-        } catch (ReflectiveOperationException | RuntimeException ignored) {
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
             return null;
         }
     }
@@ -1157,7 +1157,7 @@ public final class WirelessAeNetworkRuntime {
             if (result instanceof BlockPos pos) {
                 return pos;
             }
-        } catch (ReflectiveOperationException | RuntimeException ignored) {
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
             return null;
         }
         return null;
@@ -1241,7 +1241,9 @@ public final class WirelessAeNetworkRuntime {
             Method method = key.type().getMethod(key.methodName());
             method.setAccessible(true);
             return Optional.of(method);
-        } catch (ReflectiveOperationException | RuntimeException ignored) {
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+            // ponytail: LinkageError catches NoClassDefFoundError when a method
+            // signature references a class from an uninstalled optional mod
             return Optional.empty();
         }
     }

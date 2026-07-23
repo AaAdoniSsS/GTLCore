@@ -7,6 +7,7 @@ import org.gtlcore.gtlcore.mixin.gtm.ae.machine.MEInputBusPartMachineAccessor;
 import org.gtlcore.gtlcore.utils.NumberUtils;
 
 import com.gregtechceu.gtceu.api.machine.MetaMachine;
+import com.gregtechceu.gtceu.integration.ae2.machine.MEBusPartMachine;
 import com.gregtechceu.gtceu.integration.ae2.machine.MEInputBusPartMachine;
 import com.gregtechceu.gtceu.integration.ae2.slot.ExportOnlyAEItemList;
 import com.gregtechceu.gtceu.integration.ae2.slot.ExportOnlyAEItemSlot;
@@ -40,7 +41,7 @@ public final class MEStockingItemJadeHelper {
             return null;
         }
 
-        List<ItemStack> views = createItemViews(itemHandler);
+        List<ItemStack> views = createItemViews(machine, itemHandler);
         if (views.isEmpty()) {
             return Collections.emptyList();
         }
@@ -66,7 +67,14 @@ public final class MEStockingItemJadeHelper {
         return null;
     }
 
-    private static List<ItemStack> createItemViews(ExportOnlyAEItemList itemHandler) {
+    private static List<ItemStack> createItemViews(MetaMachine machine, ExportOnlyAEItemList itemHandler) {
+        if (itemHandler instanceof IOptimizedMEList optimized && optimized.isStocking()) {
+            if (machine instanceof MEBusPartMachine meMachine && meMachine.getMainNode().getGrid() == null) {
+                return Collections.emptyList();
+            }
+            return createItemViews(optimized.getMEItemMap());
+        }
+
         Object2LongLinkedOpenHashMap<AEItemKey> amounts = new Object2LongLinkedOpenHashMap<>();
         for (ExportOnlyAEItemSlot slot : itemHandler.getInventory()) {
             GenericStack stock = slot.getStock();
@@ -88,6 +96,26 @@ public final class MEStockingItemJadeHelper {
                 stack.getOrCreateTag().putLong(LONG_AMOUNT_TAG, amount);
                 views.add(stack);
             }
+        }
+        return views;
+    }
+
+    private static List<ItemStack> createItemViews(@Nullable Object2LongMap<ItemStack> amounts) {
+        if (amounts == null || amounts.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<ItemStack> views = new ArrayList<>(amounts.size());
+        for (Object2LongMap.Entry<ItemStack> entry : amounts.object2LongEntrySet()) {
+            long amount = entry.getLongValue();
+            ItemStack stack = entry.getKey();
+            if (amount <= 0L || stack.isEmpty()) {
+                continue;
+            }
+            stack = stack.copy();
+            stack.setCount(1);
+            stack.getOrCreateTag().putLong(LONG_AMOUNT_TAG, amount);
+            views.add(stack);
         }
         return views;
     }
