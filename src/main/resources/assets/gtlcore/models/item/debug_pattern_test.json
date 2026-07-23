@@ -1,6 +1,6 @@
 {
   "parent": "minecraft:item/generated",
   "textures": {
-    "layer0": "expatternprovider:item/pattern_modifier"
+    "layer0": "gtlcore:item/debug_pattern_test"
   }
 }

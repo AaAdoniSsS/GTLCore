@@ -1,7 +1,6 @@
 {
   "parent": "minecraft:item/generated",
   "textures": {
-    "layer0": "ae2:item/memory_card_pins",
-    "layer1": "ae2:item/memory_card_base"
+    "layer0": "gtlcore:item/me_pattern_buffer_cut"
   }
 }
