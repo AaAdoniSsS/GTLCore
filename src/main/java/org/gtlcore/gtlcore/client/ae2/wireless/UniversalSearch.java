@@ -5,7 +5,7 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.util.Locale;
 
-final class UniversalSearch {
+public final class UniversalSearch {
 
     private static final String JECHARACTERS_MATCH_CLASS = "me.towdium.jecharacters.utils.Match";
     private static final MethodType JECHARACTERS_CONTAINS_TYPE = MethodType.methodType(
@@ -17,7 +17,7 @@ final class UniversalSearch {
 
     private UniversalSearch() {}
 
-    static boolean contains(String value, String query) {
+    public static boolean contains(String value, String query) {
         if (query.isEmpty()) {
             return true;
         }

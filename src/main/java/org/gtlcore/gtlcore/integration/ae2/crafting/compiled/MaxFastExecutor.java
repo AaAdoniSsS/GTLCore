@@ -499,15 +499,21 @@ public final class MaxFastExecutor {
                 return GraphCompilation.failure(AggregationFallbackReason.CYCLE, null, -1, nodes.size());
             }
             boolean boundaryTransactionGuard = containsBoundary(nodes);
-            Map<Object, List<AggregatedNode>> nodesByPrimaryKey = indexNodesByPrimaryKey(nodes);
-            if (hasUnsafeOutputFeedback(nodes, nodesByPrimaryKey, level) ||
-                    boundaryTransactionGuard &&
-                            hasUnsafeBarrierOutputFeedback(nodes, analyzedByRequest, nodesByPrimaryKey, level)) {
-                return GraphCompilation.failure(
-                        AggregationFallbackReason.OUTPUT_INPUT_FEEDBACK,
-                        null,
-                        -1,
-                        nodes.size());
+            // ponytail: byproduct feedback only fires when a node emits a key other than
+            // its own. No extra outputs -> execution graph == dependency graph, already
+            // proven acyclic by buildTopologicalOrder above, so both feedback scans and
+            // the primary-key index they need are provably no-ops. Skip them.
+            if (graphHasExtraOutputs(nodes, analyzedByRequest)) {
+                Map<Object, List<AggregatedNode>> nodesByPrimaryKey = indexNodesByPrimaryKey(nodes);
+                if (hasUnsafeOutputFeedback(nodes, nodesByPrimaryKey, level) ||
+                        boundaryTransactionGuard &&
+                                hasUnsafeBarrierOutputFeedback(nodes, analyzedByRequest, nodesByPrimaryKey, level)) {
+                    return GraphCompilation.failure(
+                            AggregationFallbackReason.OUTPUT_INPUT_FEEDBACK,
+                            null,
+                            -1,
+                            nodes.size());
+                }
             }
 
             long logicalNodeCount = countLogicalNodes(nodes, topologicalOrder);
@@ -860,7 +866,7 @@ public final class MaxFastExecutor {
                 if (cycleCandidateGraphEligible && !hasStructurallyExactInputs(candidate.details())) {
                     cycleCandidateGraphEligible = false;
                     if (prefilterCycleCandidates) {
-                        metrics.recordAggregationCycleCandidateGraphPrefilterRejection();
+                        metrics.recordAggregationCycleCandidateGraphPrefilterRejectRootNonExact();
                     }
                 } else if (cycleCandidateGraphEligible && prefilterCycleCandidates) {
                     IdentityHashMap<IPatternDetails, RootCutPrefilterResult> candidatesByPattern = rootCutPrefilterCache.computeIfAbsent(node.key(), ignored -> new IdentityHashMap<>());
@@ -871,7 +877,7 @@ public final class MaxFastExecutor {
                     }
                     if (prefilterResult == RootCutPrefilterResult.REJECT) {
                         cycleCandidateGraphEligible = false;
-                        metrics.recordAggregationCycleCandidateGraphPrefilterRejection();
+                        metrics.recordAggregationCycleCandidateGraphPrefilterRejectDescendant();
                     } else if (prefilterResult == RootCutPrefilterResult.UNKNOWN) {
                         metrics.recordAggregationCycleCandidateGraphPrefilterUnknown();
                     }
@@ -1071,6 +1077,32 @@ public final class MaxFastExecutor {
             return true;
         }
         return !node.candidates().get(0).aggregateSafe();
+    }
+
+    private static boolean graphHasExtraOutputs(List<AggregatedNode> nodes,
+                                                Map<RequestKey, AnalyzedNode> analyzedByRequest) {
+        for (AggregatedNode node : nodes) {
+            if (node.barrier()) {
+                AnalyzedNode analyzed = analyzedByRequest.get(node.requestKey());
+                for (CandidateAnalysis candidate : analyzed.candidates()) {
+                    if (candidate.outputs() != null && emitsOtherKey(candidate.outputs(), node.key())) {
+                        return true;
+                    }
+                }
+            } else if (node.outputs() != null && emitsOtherKey(node.outputs(), node.key())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean emitsOtherKey(GenericStack[] outputs, AEKey key) {
+        for (GenericStack output : outputs) {
+            if (!key.matches(output)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static Map<Object, List<AggregatedNode>> indexNodesByPrimaryKey(List<AggregatedNode> nodes) {

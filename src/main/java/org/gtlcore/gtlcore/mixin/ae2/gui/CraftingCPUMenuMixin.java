@@ -3,15 +3,19 @@ package org.gtlcore.gtlcore.mixin.ae2.gui;
 import org.gtlcore.gtlcore.integration.ae2.crafting.CraftingJobSuspensionState;
 import org.gtlcore.gtlcore.integration.ae2.crafting.ICraftingJobSuspension;
 import org.gtlcore.gtlcore.integration.ae2.crafting.ICraftingJobSuspensionMenu;
+import org.gtlcore.gtlcore.integration.ae2.crafting.ICraftingStatusBulkActions;
 
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.MenuType;
 
+import appeng.api.networking.IGrid;
 import appeng.api.networking.crafting.ICraftingCPU;
 import appeng.me.cluster.implementations.CraftingCPUCluster;
 import appeng.menu.AEBaseMenu;
 import appeng.menu.guisync.GuiSync;
 import appeng.menu.me.crafting.CraftingCPUMenu;
+import appeng.menu.me.crafting.CraftingStatusMenu;
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -20,7 +24,11 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(CraftingCPUMenu.class)
-public abstract class CraftingCPUMenuMixin extends AEBaseMenu implements ICraftingJobSuspensionMenu {
+public abstract class CraftingCPUMenuMixin extends AEBaseMenu implements ICraftingJobSuspensionMenu, ICraftingStatusBulkActions {
+
+    @Shadow(remap = false)
+    @Final
+    private IGrid grid;
 
     @Shadow(remap = false)
     private CraftingCPUCluster cpu;
@@ -41,6 +49,12 @@ public abstract class CraftingCPUMenuMixin extends AEBaseMenu implements ICrafti
     private void gtlcore$registerToggleSchedulingAction(MenuType<?> menuType, int id, Inventory playerInventory,
                                                         Object host, CallbackInfo ci) {
         this.registerClientAction(CraftingJobSuspensionState.ACTION_TOGGLE_SCHEDULING, this::gtlcore$toggleScheduling);
+        if ((Object) this instanceof CraftingStatusMenu) {
+            this.registerClientAction(ICraftingStatusBulkActions.ACTION_SUSPEND_ALL,
+                    this::gtlcore$suspendAllCrafting);
+            this.registerClientAction(ICraftingStatusBulkActions.ACTION_CANCEL_ALL,
+                    this::gtlcore$cancelAllCrafting);
+        }
     }
 
     @Inject(method = "setCPU", at = @At("RETURN"), remap = false)
@@ -83,6 +97,48 @@ public abstract class CraftingCPUMenuMixin extends AEBaseMenu implements ICrafti
             this.cpu.markDirty();
         }
 
+        gtlcore$refreshJobSuspensionSync();
+    }
+
+    @Override
+    @Unique
+    public void gtlcore$suspendAllCrafting() {
+        if (this.isClientSide()) {
+            this.sendClientAction(ICraftingStatusBulkActions.ACTION_SUSPEND_ALL);
+            return;
+        }
+        if (this.grid == null) {
+            return;
+        }
+
+        for (ICraftingCPU craftingCpu : this.grid.getCraftingService().getCpus()) {
+            if (craftingCpu.isBusy() && craftingCpu instanceof CraftingCPUCluster cluster) {
+                ICraftingJobSuspension suspension = (ICraftingJobSuspension) cluster.craftingLogic;
+                if (!suspension.gtlcore$isJobSuspended()) {
+                    suspension.gtlcore$setJobSuspended(true);
+                    cluster.markDirty();
+                }
+            }
+        }
+        gtlcore$refreshJobSuspensionSync();
+    }
+
+    @Override
+    @Unique
+    public void gtlcore$cancelAllCrafting() {
+        if (this.isClientSide()) {
+            this.sendClientAction(ICraftingStatusBulkActions.ACTION_CANCEL_ALL);
+            return;
+        }
+        if (this.grid == null) {
+            return;
+        }
+
+        for (ICraftingCPU craftingCpu : this.grid.getCraftingService().getCpus()) {
+            if (craftingCpu.isBusy()) {
+                craftingCpu.cancelJob();
+            }
+        }
         gtlcore$refreshJobSuspensionSync();
     }
 

@@ -81,6 +81,8 @@ public class ThroughputMonitorTerminalScreen extends AbstractContainerScreen<Thr
     private SettingToggleButton<SortOrder> sortByButton;
     private SettingToggleButton<SortDir> sortDirectionButton;
     private Button updateIntervalButton;
+    private CycleTerminalButton cycleTerminalButton;
+    private boolean cyclingToPreviousTerminal;
     private SortOrder sortOrder = rememberedSortOrder;
     private SortDir sortDirection = rememberedSortDirection;
     private ThroughputMonitorUpdateInterval updateInterval = rememberedUpdateInterval;
@@ -144,20 +146,21 @@ public class ThroughputMonitorTerminalScreen extends AbstractContainerScreen<Thr
         this.addRenderableWidget(this.updateIntervalButton);
         sendUpdateInterval();
         if (this.menu.isUniversalTerminal()) {
-            CycleTerminalButton cycleTerminalButton = new CycleTerminalButton(ignored -> cycleTerminal());
-            cycleTerminalButton.setPosition(
-                    this.leftPos - cycleTerminalButton.getWidth() -
+            this.cycleTerminalButton = new CycleTerminalButton(ignored -> cycleTerminal());
+            this.cycleTerminalButton.setPosition(
+                    this.leftPos - this.cycleTerminalButton.getWidth() -
                             ThroughputMonitorTerminalLayout.UNIVERSAL_TERMINAL_BUTTON_GAP,
                     this.topPos + ThroughputMonitorTerminalLayout.UNIVERSAL_TERMINAL_BUTTON_Y);
-            cycleTerminalButton.setTooltip(Tooltip.create(cycleTerminalButton.getTooltipMessage().get(0)));
-            this.addRenderableWidget(cycleTerminalButton);
+            this.cycleTerminalButton.setTooltip(
+                    Tooltip.create(this.cycleTerminalButton.getTooltipMessage().get(0)));
+            this.addRenderableWidget(this.cycleTerminalButton);
         }
         clampScrollOffset();
     }
 
     @Override
     public boolean isHandlingRightClick() {
-        return false;
+        return this.cyclingToPreviousTerminal;
     }
 
     @Override
@@ -456,6 +459,13 @@ public class ThroughputMonitorTerminalScreen extends AbstractContainerScreen<Thr
         }
         if (button == 1 && this.updateIntervalButton.isMouseOver(mouseX, mouseY)) {
             setUpdateInterval(this.updateInterval.next(true));
+            return true;
+        }
+        if (button == 1 && this.cycleTerminalButton != null &&
+                this.cycleTerminalButton.isMouseOver(mouseX, mouseY)) {
+            this.cyclingToPreviousTerminal = true;
+            cycleTerminal();
+            this.cyclingToPreviousTerminal = false;
             return true;
         }
         if (button == 0 && handleScrollbarClick(mouseX, mouseY)) {

@@ -117,6 +117,8 @@ public final class MaxFastMetrics {
     private long aggregationCandidateGraphAborts;
     private long aggregationCycleCandidateGraphEligibleNodes;
     private long aggregationCycleCandidateGraphPrefilterRejections;
+    private long aggregationCycleCandidateGraphPrefilterRejectRootNonExact;
+    private long aggregationCycleCandidateGraphPrefilterRejectDescendant;
     private long aggregationCycleCandidateGraphPrefilterUnknowns;
     private long aggregationCycleCandidateGraphAttempts;
     private long aggregationCycleCandidateGraphSuccesses;
@@ -403,8 +405,14 @@ public final class MaxFastMetrics {
         this.aggregationCycleCandidateGraphEligibleNodes++;
     }
 
-    public void recordAggregationCycleCandidateGraphPrefilterRejection() {
+    public void recordAggregationCycleCandidateGraphPrefilterRejectRootNonExact() {
         this.aggregationCycleCandidateGraphPrefilterRejections++;
+        this.aggregationCycleCandidateGraphPrefilterRejectRootNonExact++;
+    }
+
+    public void recordAggregationCycleCandidateGraphPrefilterRejectDescendant() {
+        this.aggregationCycleCandidateGraphPrefilterRejections++;
+        this.aggregationCycleCandidateGraphPrefilterRejectDescendant++;
     }
 
     public void recordAggregationCycleCandidateGraphPrefilterUnknown() {
@@ -811,6 +819,8 @@ public final class MaxFastMetrics {
                         "aggregation_candidate_graph_aborts={} " +
                         "aggregation_cycle_candidate_graph_eligible_nodes={} " +
                         "aggregation_cycle_candidate_graph_prefilter_rejections={} " +
+                        "aggregation_cycle_candidate_graph_prefilter_reject_root_non_exact={} " +
+                        "aggregation_cycle_candidate_graph_prefilter_reject_descendant={} " +
                         "aggregation_cycle_candidate_graph_prefilter_unknowns={} " +
                         "aggregation_cycle_candidate_graph_attempts={} " +
                         "aggregation_cycle_candidate_graph_successes={} " +
@@ -969,6 +979,8 @@ public final class MaxFastMetrics {
                 this.aggregationCandidateGraphAborts,
                 this.aggregationCycleCandidateGraphEligibleNodes,
                 this.aggregationCycleCandidateGraphPrefilterRejections,
+                this.aggregationCycleCandidateGraphPrefilterRejectRootNonExact,
+                this.aggregationCycleCandidateGraphPrefilterRejectDescendant,
                 this.aggregationCycleCandidateGraphPrefilterUnknowns,
                 this.aggregationCycleCandidateGraphAttempts,
                 this.aggregationCycleCandidateGraphSuccesses,

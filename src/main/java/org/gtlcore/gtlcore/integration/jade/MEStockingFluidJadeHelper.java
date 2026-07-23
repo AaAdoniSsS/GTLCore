@@ -1,11 +1,13 @@
 package org.gtlcore.gtlcore.integration.jade;
 
+import org.gtlcore.gtlcore.api.machine.trait.MEStock.IOptimizedMEList;
 import org.gtlcore.gtlcore.common.machine.multiblock.part.MEDualHatchStockPartMachine;
 import org.gtlcore.gtlcore.mixin.gtlcore.machine.MEDualHatchStockPartMachineAccessor;
 import org.gtlcore.gtlcore.mixin.gtm.ae.machine.MEInputHatchPartMachineAccessor;
 import org.gtlcore.gtlcore.utils.NumberUtils;
 
 import com.gregtechceu.gtceu.api.machine.MetaMachine;
+import com.gregtechceu.gtceu.integration.ae2.machine.MEBusPartMachine;
 import com.gregtechceu.gtceu.integration.ae2.machine.MEInputHatchPartMachine;
 import com.gregtechceu.gtceu.integration.ae2.slot.ExportOnlyAEFluidList;
 import com.gregtechceu.gtceu.integration.ae2.slot.ExportOnlyAEFluidSlot;
@@ -43,7 +45,7 @@ public final class MEStockingFluidJadeHelper {
         ExportOnlyAEFluidList aeFluidHandler = getAeFluidHandler(machine);
         List<CompoundTag> views;
         if (aeFluidHandler != null) {
-            views = createFluidViews(aeFluidHandler);
+            views = createFluidViews(machine, aeFluidHandler);
         } else {
             IFluidTransfer fluidTransfer = machine.getFluidTransferCap(null, false);
             if (fluidTransfer == null || fluidTransfer.getTanks() == 0) {
@@ -82,7 +84,14 @@ public final class MEStockingFluidJadeHelper {
         return null;
     }
 
-    private static List<CompoundTag> createFluidViews(ExportOnlyAEFluidList fluidHandler) {
+    private static List<CompoundTag> createFluidViews(MetaMachine machine, ExportOnlyAEFluidList fluidHandler) {
+        if (fluidHandler instanceof IOptimizedMEList optimized && optimized.isStocking()) {
+            if (machine instanceof MEBusPartMachine meMachine && meMachine.getMainNode().getGrid() == null) {
+                return Collections.emptyList();
+            }
+            return createFluidViews(optimized.getMEFluidList());
+        }
+
         Object2LongLinkedOpenHashMap<AEFluidKey> amounts = new Object2LongLinkedOpenHashMap<>();
         for (ExportOnlyAEFluidSlot slot : fluidHandler.getInventory()) {
             GenericStack stock = slot.getStock();
@@ -96,6 +105,19 @@ public final class MEStockingFluidJadeHelper {
         for (Object2LongMap.Entry<AEFluidKey> entry : amounts.object2LongEntrySet()) {
             long amount = entry.getLongValue();
             JadeFluidObject fluid = JadeFluidObject.of(entry.getKey().getFluid(), amount, entry.getKey().copyTag());
+            views.add(FluidView.writeDefault(fluid, amount));
+        }
+        return views;
+    }
+
+    private static List<CompoundTag> createFluidViews(List<FluidStack> fluidStacks) {
+        List<CompoundTag> views = new ArrayList<>(fluidStacks.size());
+        for (FluidStack fluidStack : fluidStacks) {
+            if (fluidStack.isEmpty() || fluidStack.getAmount() <= 0L) {
+                continue;
+            }
+            long amount = fluidStack.getAmount();
+            JadeFluidObject fluid = JadeFluidObject.of(fluidStack.getFluid(), amount, fluidStack.getTag());
             views.add(FluidView.writeDefault(fluid, amount));
         }
         return views;

@@ -25,11 +25,9 @@ public abstract class CraftingCPUScreenMixin<T extends AEBaseMenu> extends net.m
     @Unique
     private static final String GTLCORE$CANCEL_WIDGET = "cancel";
     @Unique
-    private static final int GTLCORE$SUSPEND_BUTTON_WIDTH = 50;
+    private static final String GTLCORE$CANCEL_ALL_WIDGET = "cancelAll";
     @Unique
-    private static final int GTLCORE$SUSPEND_BUTTON_HEIGHT = 20;
-    @Unique
-    private static final int GTLCORE$SUSPEND_BUTTON_GAP = 10;
+    private static final int GTLCORE$DEFAULT_SUSPEND_BUTTON_GAP = 10;
 
     @Shadow(remap = false)
     @Final
@@ -50,7 +48,7 @@ public abstract class CraftingCPUScreenMixin<T extends AEBaseMenu> extends net.m
 
         if (this.gtlcore$suspendButton == null) {
             this.gtlcore$suspendButton = Button.builder(Component.empty(), button -> gtlcore$toggleScheduling())
-                    .bounds(0, 0, GTLCORE$SUSPEND_BUTTON_WIDTH, GTLCORE$SUSPEND_BUTTON_HEIGHT)
+                    .bounds(0, 0, 0, 0)
                     .build();
         }
 
@@ -87,8 +85,20 @@ public abstract class CraftingCPUScreenMixin<T extends AEBaseMenu> extends net.m
         var screenWidgets = ((WidgetContainerAccessor) this.widgets).gtlcore$getWidgets();
         AbstractWidget cancelButton = screenWidgets.get(GTLCORE$CANCEL_WIDGET);
         if (cancelButton != null) {
-            this.gtlcore$suspendButton.setX(
-                    cancelButton.getX() - GTLCORE$SUSPEND_BUTTON_WIDTH - GTLCORE$SUSPEND_BUTTON_GAP);
+            int buttonWidth = cancelButton.getWidth();
+            this.gtlcore$suspendButton.setWidth(buttonWidth);
+            this.gtlcore$suspendButton.setHeight(cancelButton.getHeight());
+
+            AbstractWidget cancelAllButton = screenWidgets.get(GTLCORE$CANCEL_ALL_WIDGET);
+            int suspendButtonX;
+            if (cancelAllButton != null) {
+                int availableLeft = cancelAllButton.getX() + cancelAllButton.getWidth();
+                int availableWidth = cancelButton.getX() - availableLeft;
+                suspendButtonX = availableLeft + (availableWidth - buttonWidth) / 2;
+            } else {
+                suspendButtonX = cancelButton.getX() - buttonWidth - GTLCORE$DEFAULT_SUSPEND_BUTTON_GAP;
+            }
+            this.gtlcore$suspendButton.setX(suspendButtonX);
             this.gtlcore$suspendButton.setY(cancelButton.getY());
         }
 

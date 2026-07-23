@@ -40,11 +40,11 @@ public final class ThroughputMonitorTerminalLayout {
     public static final int PLAYER_INVENTORY_HEIGHT = INVENTORY_ROWS * SLOT_SIZE;
     public static final int PLAYER_HOTBAR_HEIGHT = SLOT_SIZE;
     public static final int UNIVERSAL_TERMINAL_BUTTON_GAP = 2;
-    public static final int UNIVERSAL_TERMINAL_BUTTON_Y = TITLE_Y;
     public static final int LEFT_TOOLBAR_GAP = UNIVERSAL_TERMINAL_BUTTON_GAP;
     public static final int LEFT_TOOLBAR_BUTTON_STEP = 18;
-    public static final int SORT_BY_BUTTON_Y = UNIVERSAL_TERMINAL_BUTTON_Y + LEFT_TOOLBAR_BUTTON_STEP;
+    public static final int SORT_BY_BUTTON_Y = TITLE_Y;
     public static final int SORT_DIRECTION_BUTTON_Y = SORT_BY_BUTTON_Y + LEFT_TOOLBAR_BUTTON_STEP;
+    public static final int UNIVERSAL_TERMINAL_BUTTON_Y = SORT_DIRECTION_BUTTON_Y + LEFT_TOOLBAR_BUTTON_STEP;
     public static final int UPDATE_INTERVAL_BUTTON_WIDTH = 32;
     public static final int UPDATE_INTERVAL_BUTTON_HEIGHT = 16;
     public static final int UPDATE_INTERVAL_BUTTON_X = IMAGE_WIDTH - TITLE_X - UPDATE_INTERVAL_BUTTON_WIDTH;

@@ -374,7 +374,8 @@ public class AdvancedBlockPattern extends BlockPattern {
         }));
     }
 
-    public void dismantleMultiblock(IMultiController controller, Player player, int repeatCountSetting, boolean isFlipped, boolean aeMode, @Nullable GlobalPos boundAE) {
+    public void dismantleMultiblock(IMultiController controller, Player player,
+                                    UltimateTerminalBehavior.AutoBuildSetting autoBuildSetting) {
         var level = player.level();
         // 仅在服务端执行
         if (level.isClientSide()) return;
@@ -383,6 +384,10 @@ public class AdvancedBlockPattern extends BlockPattern {
         Direction facing = controller.self().getFrontFacing();
         Direction upwardsFacing = controller.self().getUpwardsFacing();
 
+        int repeatCountSetting = autoBuildSetting.getRepeatCount();
+        boolean isFlipped = autoBuildSetting.isFlipped();
+        boolean aeMode = autoBuildSetting.isAeMode();
+        GlobalPos boundAE = autoBuildSetting.getBoundAE();
         IGrid grid = aeMode ? findBestGrid(level, player, boundAE) : null;
         var aeInventory = grid != null ? grid.getStorageService().getInventory() : null;
         IActionSource source = IActionSource.ofPlayer(player);
@@ -422,6 +427,8 @@ public class AdvancedBlockPattern extends BlockPattern {
                         if (blockState.isAir()) continue;
 
                         if (!isBlockValid(blockState, pos, predicate, worldState)) continue;
+
+                        if (autoBuildSetting.shouldPreserveDuringDismantle(blockState.getBlock())) continue;
 
                         if (!blockState.isAir()) {
                             if (level instanceof ServerLevel serverLevel) {
