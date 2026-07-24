@@ -5,6 +5,7 @@ import org.gtlcore.gtlcore.api.machine.multiblock.GTLPartAbility;
 import org.gtlcore.gtlcore.api.machine.multiblock.MolecularAssemblerMultiblockMachine;
 import org.gtlcore.gtlcore.api.recipe.IGTRecipe;
 import org.gtlcore.gtlcore.common.data.*;
+import org.gtlcore.gtlcore.common.machine.multiblock.electric.TransfiniteComputationArrayMachine;
 import org.gtlcore.gtlcore.utils.Registries;
 
 import com.gregtechceu.gtceu.GTCEu;
@@ -19,6 +20,7 @@ import com.gregtechceu.gtceu.api.machine.multiblock.PartAbility;
 import com.gregtechceu.gtceu.api.machine.multiblock.WorkableElectricMultiblockMachine;
 import com.gregtechceu.gtceu.api.pattern.FactoryBlockPattern;
 import com.gregtechceu.gtceu.api.pattern.Predicates;
+import com.gregtechceu.gtceu.api.pattern.util.RelativeDirection;
 import com.gregtechceu.gtceu.api.recipe.GTRecipe;
 import com.gregtechceu.gtceu.api.recipe.OverclockingLogic;
 import com.gregtechceu.gtceu.api.recipe.RecipeHelper;
@@ -397,5 +399,442 @@ public class AdditionalMultiBlockMachine {
                     .where("G", Predicates.blocks(Registries.getBlock("gtceu:trinium_frame")))
                     .build())
             .workableCasingRenderer(GTCEu.id("block/casings/gcym/large_scale_assembling_casing"), GTCEu.id("block/multiblock/research_station"))
+            .register();
+
+    public static final MultiblockMachineDefinition TRANSFINITE_COMPUTATION_ARRAY = REGISTRATE
+            .multiblock("transfinite_computation_array", TransfiniteComputationArrayMachine::new)
+            .rotationState(RotationState.NON_Y_AXIS)
+            .appearanceBlock(GTLBlocks.IRIDIUM_CASING)
+            .tooltips(Component.translatable("gtlcore.machine.transfinite_computation_array.tooltip.0"))
+            .tooltips(Component.translatable("gtlcore.machine.transfinite_computation_array.tooltip.1"))
+            .tooltips(Component.translatable("gtlcore.machine.transfinite_computation_array.tooltip.2"))
+            .tooltipBuilder(GTLMachines.GTL_ADD)
+            .pattern(definition -> FactoryBlockPattern.start(
+                    RelativeDirection.FRONT, RelativeDirection.UP, RelativeDirection.LEFT)
+                    .aisle(
+                            "    BBBFFEFFBBB    ",
+                            "    KKJ  E  JKK    ",
+                            "         E         ",
+                            "         E         ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ")
+                    .aisle(
+                            "    FBBBBBBBBBF    ",
+                            "     KJJJJJJJK     ",
+                            "     AAAAAAAAA     ",
+                            "      AAAAAAA      ",
+                            "         E         ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ")
+                    .aisle(
+                            "   FBBBBBBBBBBBF   ",
+                            "    OKJBBBBBJKO    ",
+                            "    OAAAAAAAAAO    ",
+                            "     AAAAAAAAA     ",
+                            "       AAAAA       ",
+                            "       EEEEE       ",
+                            "         E         ",
+                            "         E         ",
+                            "         E         ",
+                            "         E         ",
+                            "         E         ",
+                            "         E         ",
+                            "         E         ",
+                            "         E         ",
+                            "         E         ",
+                            "         E         ",
+                            "         E         ",
+                            "       EEEEE       ",
+                            "       AAAAA       ",
+                            "                   ")
+                    .aisle(
+                            "  FBBBBBBBBBBBBBF  ",
+                            "   OJBBBBBBBBBJO   ",
+                            "   OAAAAAAAAAAAO   ",
+                            "    AAAAAAAAAAA    ",
+                            "     AAAAAAAAA     ",
+                            "     EEDDADDEE     ",
+                            "       FDADF       ",
+                            "       FDADF       ",
+                            "       FDADF       ",
+                            "       FDADF       ",
+                            "       FDADF       ",
+                            "       FDADF       ",
+                            "       FDADF       ",
+                            "       FDADF       ",
+                            "       FDADF       ",
+                            "       DDADD       ",
+                            "       LLALL       ",
+                            "     EEDDADDEE     ",
+                            "     AADDWDDAA     ",
+                            "       DDADD       ")
+                    .aisle(
+                            "BFBBBBBBBBBBBBBBBFB",
+                            "K OJBBBBBBBBBBBJO K",
+                            "  OAAAAAAAAAAAAAO  ",
+                            "   AAAAAAAAAAAAA   ",
+                            "    AAAAAAAAAAA    ",
+                            "    HDDCCACCDDH    ",
+                            "    HBGCCACCGBH    ",
+                            "    HBGCCACCGBH    ",
+                            "    HBGCCACCGBH    ",
+                            "    HBGCCACCGBH    ",
+                            "    HBGCCACCGBH    ",
+                            "    HBGCCACCGBH    ",
+                            "    HBGCCACCGBH    ",
+                            "    HBGCCACCGBH    ",
+                            "    HBGCCACCGBH    ",
+                            "    HDDCCACCDDH    ",
+                            "    HLLEEAEELLH    ",
+                            "    HDDAAAAADDH    ",
+                            "    ADDWWWWWDDA    ",
+                            "     DDNNANNDD     ")
+                    .aisle(
+                            "BBBBBBBBBBBBBBBBBBB",
+                            "KKKBBBBBBBBBBBBBKKK",
+                            " AAAAAAAAAAAAAAAAA ",
+                            "  AAAAAAAAAAAAAAA  ",
+                            "   AAAAAAAAAAAAA   ",
+                            "   EDCCWWWWWCCDE   ",
+                            "    BCCWWWWWCCB    ",
+                            "    BCCWWWWWCCB    ",
+                            "    BCCWWWWWCCB    ",
+                            "    BCCWWWWWCCB    ",
+                            "    BCCWWWWWCCB    ",
+                            "    BCCWWWWWCCB    ",
+                            "    BCCWWWWWCCB    ",
+                            "    BCCWWWWWCCB    ",
+                            "    BCCWWWWWCCB    ",
+                            "    DCCWWWWWCCD    ",
+                            "    LEEWWWWWEEL    ",
+                            "   EDAAWWWWWAADE   ",
+                            "   ADWWWWWWWWWDA   ",
+                            "    DNNAAAAANND    ")
+                    .aisle(
+                            "BBBBBBBBBBBBBBBBBBB",
+                            "JJJBBBBBBBBBBBBBJJJ",
+                            " AAAAAAAAAAAAAAAAA ",
+                            " AAAAAAAAAAAAAAAAA ",
+                            "   AAAAAAAAAAAAA   ",
+                            "   EDCWWWWWWWCDE   ",
+                            "    GCWWWWWWWCG    ",
+                            "    GCWWWWWWWCG    ",
+                            "    GCWWWWWWWCG    ",
+                            "    GCWWWWWWWCG    ",
+                            "    GCWWWWWWWCG    ",
+                            "    GCWWWWWWWCG    ",
+                            "    GCWWWWWWWCG    ",
+                            "    GCWWWWWWWCG    ",
+                            "    GCWWWWWWWCG    ",
+                            "    DCWWWWWWWCD    ",
+                            "    LEWWWWWWWEL    ",
+                            "   EDAWWWWWWWADE   ",
+                            "   ADWWWWWWWWWDA   ",
+                            "    DNAPPPPPAND    ")
+                    .aisle(
+                            "FBBBBBBBBBBBBBBBBBF",
+                            " JBBBBBBBBBBBBBBBJ ",
+                            " AAAAAAAAAAAAAAAAA ",
+                            " AAAAAAAAAAAAAAAAA ",
+                            "  AAAAAAAAAAAAAAA  ",
+                            "  EDCWWWWWWWWWCDE  ",
+                            "   FCWWWWWWWWWCF   ",
+                            "   FCWWWWWWWWWCF   ",
+                            "   FCWWWWWWWWWCF   ",
+                            "   FCWWWWWWWWWCF   ",
+                            "   FCWWWWWWWWWCF   ",
+                            "   FCWWWWWWWWWCF   ",
+                            "   FCWWWWWWWWWCF   ",
+                            "   FCWWWWWWWWWCF   ",
+                            "   FCWWWWWWWWWCF   ",
+                            "   DCWWWWWWWWWCD   ",
+                            "   LEWWWWWWWWWEL   ",
+                            "  EDAWWWWWWWWWADE  ",
+                            "  ADWWWWWWWWWWWDA  ",
+                            "   DNAPPQQQPPAND   ")
+                    .aisle(
+                            "FBBBBBBBBBBBBBBBBBF",
+                            " JBBBBBBBBBBBBBBBJ ",
+                            " AAAAAAAAAAAAAAAAU ",
+                            " AAAAAAAAAAAAAAAAU ",
+                            "  AAAAAAAAAAAAAAAU ",
+                            "  EDCWWWWWWWWWCDE  ",
+                            "   DCWWWWWWWWWCD   ",
+                            "   DCWWWWWWWWWCD   ",
+                            "   DCWWWWWWWWWCD   ",
+                            "   DCWWWWWWWWWCD   ",
+                            "   DCWWWWWWWWWCD   ",
+                            "   DCWWWWWWWWWCD   ",
+                            "   DCWWWWWWWWWCD   ",
+                            "   DCWWWWWWWWWCD   ",
+                            "   DCWWWWWWWWWCD   ",
+                            "   DCWWWWWWWWWCD   ",
+                            "   LEWWWWWWWWWEL   ",
+                            "  EDAWWWWWWWWWADE  ",
+                            "  ADWWWWWWWWWWWDA  ",
+                            "   DNAPQQTQQPAND   ")
+                    .aisle(
+                            "EBBBBBBBBBBBBBBBBBF",
+                            "EJBBBBBBBBBBBBBBBJ ",
+                            "EAAAAAAAAAAAAAAAAU ",
+                            "EAAAAAAAAAAAAAAAAS ",
+                            " EAAAAAAAAAAAAAAAU ",
+                            "  EAAWWWWRWWWWAAE  ",
+                            "  EAAWWWWRWWWWAAE  ",
+                            "  EAAWWWWRWWWWAAE  ",
+                            "  EAAWWWWRWWWWAAE  ",
+                            "  EAAWWWWRWWWWAAE  ",
+                            "  EAAWWWWRWWWWAAE  ",
+                            "  EAAWWWWMWWWWAAE  ",
+                            "  EAAWWWWRWWWWAAE  ",
+                            "  EAAWWWWRWWWWAAE  ",
+                            "  EAAWWWWRWWWWAAE  ",
+                            "  EAAWWWWRWWWWAAE  ",
+                            "  EAAWWWWRWWWWAAE  ",
+                            "  EAAWWWWRWWWWAAE  ",
+                            "  AWWWWWWRWWWWWWA  ",
+                            "   AAAPQTTTQPAAA   ")
+                    .aisle(
+                            "FBBBBBBBBBBBBBBBBBF",
+                            " JBBBBBBBBBBBBBBBJ ",
+                            " AAAAAAAAAAAAAAAAU ",
+                            " AAAAAAAAAAAAAAAAU ",
+                            "  AAAAAAAAAAAAAAAU ",
+                            "  EDCWWWWWWWWWCDE  ",
+                            "   DCWWWWWWWWWCD   ",
+                            "   DCWWWWWWWWWCD   ",
+                            "   DCWWWWWWWWWCD   ",
+                            "   DCWWWWWWWWWCD   ",
+                            "   DCWWWWWWWWWCD   ",
+                            "   DCWWWWWWWWWCD   ",
+                            "   DCWWWWWWWWWCD   ",
+                            "   DCWWWWWWWWWCD   ",
+                            "   DCWWWWWWWWWCD   ",
+                            "   DCWWWWWWWWWCD   ",
+                            "   LEWWWWWWWWWEL   ",
+                            "  EDAWWWWWWWWWADE  ",
+                            "  ADWWWWWWWWWWWDA  ",
+                            "   DNAPQQTQQPAND   ")
+                    .aisle(
+                            "FBBBBBBBBBBBBBBBBBF",
+                            " JBBBBBBBBBBBBBBBJ ",
+                            " AAAAAAAAAAAAAAAAA ",
+                            " AAAAAAAAAAAAAAAAA ",
+                            "  AAAAAAAAAAAAAAA  ",
+                            "  EDCWWWWWWWWWCDE  ",
+                            "   FCWWWWWWWWWCF   ",
+                            "   FCWWWWWWWWWCF   ",
+                            "   FCWWWWWWWWWCF   ",
+                            "   FCWWWWWWWWWCF   ",
+                            "   FCWWWWWWWWWCF   ",
+                            "   FCWWWWWWWWWCF   ",
+                            "   FCWWWWWWWWWCF   ",
+                            "   FCWWWWWWWWWCF   ",
+                            "   FCWWWWWWWWWCF   ",
+                            "   DCWWWWWWWWWCD   ",
+                            "   LEWWWWWWWWWEL   ",
+                            "  EDAWWWWWWWWWADE  ",
+                            "  ADWWWWWWWWWWWDA  ",
+                            "   DNAPPQQQPPAND   ")
+                    .aisle(
+                            "BBBBBBBBBBBBBBBBBBB",
+                            "JJJBBBBBBBBBBBBBJJJ",
+                            " AAAAAAAAAAAAAAAAA ",
+                            " AAAAAAAAAAAAAAAAA ",
+                            "   AAAAAAAAAAAAA   ",
+                            "   EDCWWWWWWWCDE   ",
+                            "    GCWWWWWWWCG    ",
+                            "    GCWWWWWWWCG    ",
+                            "    GCWWWWWWWCG    ",
+                            "    GCWWWWWWWCG    ",
+                            "    GCWWWWWWWCG    ",
+                            "    GCWWWWWWWCG    ",
+                            "    GCWWWWWWWCG    ",
+                            "    GCWWWWWWWCG    ",
+                            "    GCWWWWWWWCG    ",
+                            "    DCWWWWWWWCD    ",
+                            "    LEWWWWWWWEL    ",
+                            "   EDAWWWWWWWADE   ",
+                            "   ADWWWWWWWWWDA   ",
+                            "    DNAPPPPPAND    ")
+                    .aisle(
+                            "BBBBBBBBBBBBBBBBBBB",
+                            "KKKBBBBBBBBBBBBBKKK",
+                            " AKAAAAAAAAAAAAAAA ",
+                            "  KAAAAAAAAAAAAAA  ",
+                            "   AAAAAAAAAAAAA   ",
+                            "   EDCCWWWWWCCDE   ",
+                            "    BCCWWWWWCCB    ",
+                            "    BCCWWWWWCCB    ",
+                            "    BCCWWWWWCCB    ",
+                            "    BCCWWWWWCCB    ",
+                            "    BCCWWWWWCCB    ",
+                            "    BCCWWWWWCCB    ",
+                            "    BCCWWWWWCCB    ",
+                            "    BCCWWWWWCCB    ",
+                            "    BCCWWWWWCCB    ",
+                            "    DCCWWWWWCCD    ",
+                            "    LEEWWWWWEEL    ",
+                            "   EDAAWWWWWAADE   ",
+                            "   ADWWWWWWWWWDA   ",
+                            "    DNNAAAAANND    ")
+                    .aisle(
+                            "BFBBBBBBBBBBBBBBBFB",
+                            "K OOBBBBBBBBBBBJO K",
+                            "  OAAAAAAAAAAAAAO  ",
+                            "   AAAAAAAAAAAAA   ",
+                            "    AAAAAAAAAAA    ",
+                            "    HDDCCACCDDH    ",
+                            "    HBGCCACCGBH    ",
+                            "    HBGCCACCGBH    ",
+                            "    HBGCCACCGBH    ",
+                            "    HBGCCACCGBH    ",
+                            "    HBGCCACCGBH    ",
+                            "    HBGCCACCGBH    ",
+                            "    HBGCCACCGBH    ",
+                            "    HBGCCACCGBH    ",
+                            "    HBGCCACCGBH    ",
+                            "    HDDCCACCDDH    ",
+                            "    HLLEEAEELLH    ",
+                            "    HDDAAAAADDH    ",
+                            "    ADDWWWWWDDA    ",
+                            "     DDNNANNDD     ")
+                    .aisle(
+                            "  FBBBBBBBBBBBBBF  ",
+                            "   OOBBBBBBBBBJO   ",
+                            "   OAAAAAAAAAAAO   ",
+                            "    AAAAAAAAAAA    ",
+                            "     AAAAAAAAA     ",
+                            "     EEDDADDEE     ",
+                            "       FDADF       ",
+                            "       FDADF       ",
+                            "       FDADF       ",
+                            "       FDADF       ",
+                            "       FDADF       ",
+                            "       FDADF       ",
+                            "       FDADF       ",
+                            "       FDADF       ",
+                            "       FDADF       ",
+                            "       DDADD       ",
+                            "       LLALL       ",
+                            "     EEDDADDEE     ",
+                            "     AADDWDDAA     ",
+                            "       DDADD       ")
+                    .aisle(
+                            "   FBBBBBBBBBBBF   ",
+                            "    OKJBBBBBJKO    ",
+                            "    OKAAAAAAAAO    ",
+                            "     KAAAAAAAA     ",
+                            "       AAAAA       ",
+                            "       EEEEE       ",
+                            "         E         ",
+                            "         E         ",
+                            "         E         ",
+                            "         E         ",
+                            "         E         ",
+                            "         E         ",
+                            "         E         ",
+                            "         E         ",
+                            "         E         ",
+                            "         E         ",
+                            "         E         ",
+                            "       EEEEE       ",
+                            "       AAAAA       ",
+                            "                   ")
+                    .aisle(
+                            "    FBBBBBBBBBF    ",
+                            "     KJJJJJJJK     ",
+                            "     AAAAAAAAA     ",
+                            "      AAAAAAA      ",
+                            "         E         ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ")
+                    .aisle(
+                            "    BBBFFEFFBBB    ",
+                            "    KKJ  E  JKK    ",
+                            "         E         ",
+                            "         E         ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ",
+                            "                   ")
+                    .where("A", Predicates.blocks(GTLBlocks.IRIDIUM_CASING.get()))
+                    .where("B", Predicates.blocks(GTBlocks.CASING_PALLADIUM_SUBSTATION.get()))
+                    .where("C", Predicates.blocks(Registries.getBlock("mae2:256x_crafting_accelerator")))
+                    .where("D", Predicates.blocks(GTLBlocks.OXIDATION_RESISTANT_HASTELLOY_N_MECHANICAL_CASING.get()))
+                    .where("E", Predicates.blocks(ChemicalHelper.getBlock(TagPrefix.frameGt, GTMaterials.Naquadria)))
+                    .where("F", Predicates.blocks(Registries.getBlock("ae2:smooth_sky_stone_wall")))
+                    .where("G", Predicates.blocks(GTBlocks.CLEANROOM_GLASS.get()))
+                    .where("H", Predicates.blocks(GTBlocks.ADVANCED_COMPUTER_CASING.get()))
+                    .where("J", Predicates.blocks(GTBlocks.COMPUTER_HEAT_VENT.get()))
+                    .where("K", Predicates.blocks(GTBlocks.HIGH_POWER_CASING.get()))
+                    .where("L", Predicates.blocks(GCyMBlocks.HEAT_VENT.get()))
+                    .where("M", Predicates.blocks(GTLBlocks.CRAFTING_STORAGE_MAX.get()).setExactLimit(1))
+                    .where("N", Predicates.blocks(GCyMBlocks.ELECTROLYTIC_CELL.get()))
+                    .where("O", Predicates.blocks(GTLBlocks.IMPROVED_SUPERCONDUCTOR_COIL.get()))
+                    .where("P", Predicates.blocks(GTBlocks.CASING_TEMPERED_GLASS.get()))
+                    .where("Q", Predicates.blocks(Registries.getBlock("gtceu:sterilizing_filter_casing")))
+                    .where("R", Predicates.blocks(Registries.getBlock("ad_astra:glowing_iron_pillar")))
+                    .where("S", Predicates.controller(Predicates.blocks(definition.get())))
+                    .where("T", Predicates.blocks(GTBlocks.CASING_EXTREME_ENGINE_INTAKE.get()))
+                    .where("U", Predicates.blocks(GTLBlocks.IRIDIUM_CASING.get())
+                            .or(abilities(GTLPartAbility.ME_CRAFTING_CPU_INTERFACE).setExactLimit(1)))
+                    .where("W", Predicates.blocks(Blocks.WATER))
+                    .where(" ", Predicates.air())
+                    .build())
+            .workableCasingRenderer(GTLCore.id("block/casings/iridium_casing"),
+                    GTCEu.id("block/multiblock/research_station"))
             .register();
 }

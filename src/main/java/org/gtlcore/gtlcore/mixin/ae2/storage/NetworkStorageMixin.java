@@ -44,11 +44,19 @@ public abstract class NetworkStorageMixin implements ThroughputStorageView {
 
     @Inject(method = "insert", at = @At("HEAD"), remap = false)
     private void gtlcore$beginInsert(AEKey what, long amount, Actionable mode, IActionSource source, CallbackInfoReturnable<Long> cir) {
+        if (!ThroughputMonitorStorageTracker.isTrackingActive() &&
+                !ThroughputMonitorStorageTracker.hasPendingOperation()) {
+            return;
+        }
         ThroughputMonitorStorageTracker.beginInsert((MEStorage) (Object) this, source);
     }
 
     @Inject(method = "insert", at = @At("RETURN"), remap = false)
     private void gtlcore$recordInsert(AEKey what, long amount, Actionable mode, IActionSource source, CallbackInfoReturnable<Long> cir) {
+        if (!ThroughputMonitorStorageTracker.isTrackingActive() &&
+                !ThroughputMonitorStorageTracker.hasPendingOperation()) {
+            return;
+        }
         long inserted = cir.getReturnValue();
         ThroughputMonitorStorageTracker.endInsert(
                 (MEStorage) (Object) this,
@@ -59,11 +67,19 @@ public abstract class NetworkStorageMixin implements ThroughputStorageView {
 
     @Inject(method = "extract", at = @At("HEAD"), remap = false)
     private void gtlcore$beginExtraction(AEKey what, long amount, Actionable mode, IActionSource source, CallbackInfoReturnable<Long> cir) {
+        if (!ThroughputMonitorStorageTracker.isTrackingActive() &&
+                !ThroughputMonitorStorageTracker.hasPendingOperation()) {
+            return;
+        }
         ThroughputMonitorStorageTracker.beginExtraction((MEStorage) (Object) this, source);
     }
 
     @Inject(method = "extract", at = @At("RETURN"), remap = false)
     private void gtlcore$recordExtraction(AEKey what, long amount, Actionable mode, IActionSource source, CallbackInfoReturnable<Long> cir) {
+        if (!ThroughputMonitorStorageTracker.isTrackingActive() &&
+                !ThroughputMonitorStorageTracker.hasPendingOperation()) {
+            return;
+        }
         long extracted = cir.getReturnValue();
         ThroughputMonitorStorageTracker.endExtraction(
                 (MEStorage) (Object) this,

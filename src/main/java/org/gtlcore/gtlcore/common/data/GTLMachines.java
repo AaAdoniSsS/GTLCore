@@ -744,6 +744,19 @@ public class GTLMachines {
                 .compassNode("fluid_hatch")
                 .register();
 
+        public static final MachineDefinition ME_CRAFTING_CPU_INTERFACE = REGISTRATE
+                .machine("me_crafting_cpu_interface", MECraftingCPUInterfacePartMachine::new)
+                .tier(UV)
+                .rotationState(RotationState.ALL)
+                .abilities(GTLPartAbility.ME_CRAFTING_CPU_INTERFACE)
+                .overlayTieredHullRenderer("me_pattern_buffer")
+                .langValue("ME Crafting CPU Interface")
+                .tooltips(
+                        Component.translatable("gtlcore.machine.me_crafting_cpu_interface.tooltip.0"),
+                        Component.translatable("gtceu.universal.disabled"))
+                .tooltipBuilder(GTL_ADD)
+                .register();
+
         public static final MachineDefinition ME_MINI_PATTERN_BUFFER = REGISTRATE
                 .machine("me_mini_pattern_buffer", (h) -> new MEPatternBufferPartMachine(h, 9, IO.IN))
                 .tier(5)

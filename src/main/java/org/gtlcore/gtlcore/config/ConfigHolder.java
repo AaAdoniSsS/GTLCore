@@ -84,6 +84,17 @@ public class ConfigHolder {
     @Configurable.Comment("是否启用 MAX_FAST 独立计算性能日志")
     public boolean enableMaxFastCalculationLogging = false;
     @Configurable
+    @Configurable.Comment("是否将原生 AE2 CPU 与超限演算阵列的慢发配写入独立日志；关闭时不执行性能计时")
+    public boolean enableAe2CraftingDispatchPerformanceLogging = false;
+    @Configurable
+    @Configurable.Comment("单个 AE2 CPU 调度超过此微秒数时记录性能警告")
+    @Configurable.Range(min = 1)
+    public int ae2CraftingDispatchPerformanceWarningMicros = 5000;
+    @Configurable
+    @Configurable.Comment("同一个 AE2 CPU 两次性能警告之间的最短 tick 间隔")
+    @Configurable.Range(min = 1)
+    public int ae2CraftingDispatchPerformanceLogIntervalTicks = 200;
+    @Configurable
     @Configurable.Comment("新放置的普通 AE2 / 扩展样板供应器是否默认开启智能翻倍（ME 样板总成仍强制开启）")
     public boolean ae2PatternProviderAutoExpandDefault = false;
     @Configurable

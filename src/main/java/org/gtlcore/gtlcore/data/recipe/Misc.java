@@ -1,6 +1,7 @@
 package org.gtlcore.gtlcore.data.recipe;
 
 import org.gtlcore.gtlcore.GTLCore;
+import org.gtlcore.gtlcore.common.data.GTLBlocks;
 import org.gtlcore.gtlcore.common.data.GTLItems;
 import org.gtlcore.gtlcore.common.data.GTLMachines;
 import org.gtlcore.gtlcore.common.data.machines.AdditionalMultiBlockMachine;
@@ -279,6 +280,37 @@ public class Misc {
                 .EUt(VA[9]).duration(200)
                 .stationResearch((b) -> b.researchStack(AEBlocks.MOLECULAR_ASSEMBLER.stack())
                         .dataStack(GTItems.TOOL_DATA_MODULE.asStack()).EUt(VA[9]).CWUt(128))
+                .save(provider);
+
+        ASSEMBLER_RECIPES.recipeBuilder("me_crafting_cpu_interface")
+                .inputItems(GTMachines.HULL[UV])
+                .inputItems(GTLMachines.GTAEMachines.ITEM_IMPORT_BUS_ME)
+                .inputItems(GTLMachines.GTAEMachines.FLUID_IMPORT_HATCH_ME)
+                .inputItems(EX_INTERFACE.asItem(), 4)
+                .inputItems(CustomTags.UV_CIRCUITS, 2)
+                .inputFluids(SolderingAlloy.getFluid(576))
+                .outputItems(GTLMachines.GTAEMachines.ME_CRAFTING_CPU_INTERFACE)
+                .EUt(VA[UV]).duration(400)
+                .save(provider);
+
+        ASSEMBLY_LINE_RECIPES.recipeBuilder("transfinite_computation_array")
+                .inputItems(frameGt, Neutronium, 16)
+                .inputItems(FIELD_GENERATOR_UV, 8)
+                .inputItems(EMITTER_UV, 16)
+                .inputItems(SENSOR_UV, 16)
+                .inputItems(CustomTags.UHV_CIRCUITS, 16)
+                .inputItems(GTLBlocks.CRAFTING_STORAGE_256M.asStack(), 16)
+                .inputItems(GTLMachines.GTAEMachines.ME_CRAFT_PARALLEL_CORE.asStack(), 8)
+                .inputItems(GTLMachines.GTAEMachines.ME_CRAFT_SPEED_CORE.asStack(), 8)
+                .inputFluids(MutatedLivingSolder.getFluid(2304))
+                .inputFluids(Naquadria.getFluid(2304))
+                .inputFluids(Orichalcum.getFluid(2304))
+                .inputFluids(Mithril.getFluid(2304))
+                .outputItems(AdditionalMultiBlockMachine.TRANSFINITE_COMPUTATION_ARRAY)
+                .EUt(VA[UHV]).duration(1200)
+                .stationResearch(b -> b
+                        .researchStack(GTLMachines.GTAEMachines.ME_CRAFT_PARALLEL_CORE.asStack())
+                        .dataStack(GTItems.TOOL_DATA_MODULE.asStack()).EUt(VA[UHV]).CWUt(256))
                 .save(provider);
 
         ASSEMBLY_LINE_RECIPES.recipeBuilder("me_craft_pattern_container")

@@ -80,6 +80,7 @@ public final class WirelessAeNetworkRuntime {
             "me_input_assembly",
             "me_stocking_input_hatch",
             "me_output_hatch",
+            "me_crafting_cpu_interface",
             "tag_filter_me_stock_bus_part_machine",
             "tag_filter_me_stock_hatch_part_machine",
             "me_dual_hatch_stock_part_machine",
@@ -100,6 +101,7 @@ public final class WirelessAeNetworkRuntime {
             "me_input_assembly",
             "me_stocking_input_hatch",
             "me_output_hatch",
+            "me_crafting_cpu_interface",
             "tag_filter_me_stock_bus_part_machine",
             "tag_filter_me_stock_hatch_part_machine",
             "me_dual_hatch_stock_part_machine");

@@ -49,6 +49,15 @@ public final class ThroughputMonitorTerminalLayout {
     public static final int UPDATE_INTERVAL_BUTTON_HEIGHT = 16;
     public static final int UPDATE_INTERVAL_BUTTON_X = IMAGE_WIDTH - TITLE_X - UPDATE_INTERVAL_BUTTON_WIDTH;
     public static final int UPDATE_INTERVAL_BUTTON_Y = 4;
+    public static final int VIEW_CELL_PANEL_GAP = 2;
+    public static final int VIEW_CELL_PANEL_PADDING = 7;
+    public static final int VIEW_CELL_PANEL_X = IMAGE_WIDTH + VIEW_CELL_PANEL_GAP;
+    public static final int VIEW_CELL_PANEL_Y = LIST_PANEL_Y;
+    public static final int VIEW_CELL_PANEL_WIDTH = SLOT_SIZE + VIEW_CELL_PANEL_PADDING * 2;
+    public static final int VIEW_CELL_PANEL_HEIGHT = ThroughputMonitorTerminalPart.VIEW_CELL_SLOT_COUNT * SLOT_SIZE + VIEW_CELL_PANEL_PADDING * 2;
+    public static final int VIEW_CELL_SLOT_ALIGNMENT_OFFSET = 1;
+    public static final int VIEW_CELL_X = VIEW_CELL_PANEL_X + VIEW_CELL_PANEL_PADDING + VIEW_CELL_SLOT_ALIGNMENT_OFFSET;
+    public static final int VIEW_CELL_Y = VIEW_CELL_PANEL_Y + VIEW_CELL_PANEL_PADDING + VIEW_CELL_SLOT_ALIGNMENT_OFFSET;
 
     private ThroughputMonitorTerminalLayout() {}
 }

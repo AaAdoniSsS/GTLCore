@@ -45,7 +45,9 @@ public final class ThroughputMonitorStorageTracker {
     private static final Map<MEStorage, List<WeakReference<AllListener>>> ALL_LISTENERS = new WeakHashMap<>();
     private static final Map<MEStorage, List<WeakReference<MEStorage>>> VISIBLE_PARENTS = new WeakHashMap<>();
     private static final Map<MEStorage, List<WeakReference<MEStorage>>> VISIBLE_CHILDREN = new WeakHashMap<>();
-    private static final ThreadLocal<Deque<StorageOperation>> OPERATIONS = ThreadLocal.withInitial(ArrayDeque::new);
+    private static final ThreadLocal<Deque<StorageOperation>> OPERATIONS = new ThreadLocal<>();
+
+    private static volatile boolean trackingActive;
 
     private ThroughputMonitorStorageTracker() {}
 
@@ -64,6 +66,7 @@ public final class ThroughputMonitorStorageTracker {
             if (!found) {
                 listeners.add(new WeakReference<>(listener));
             }
+            trackingActive = true;
         }
     }
 
@@ -76,6 +79,7 @@ public final class ThroughputMonitorStorageTracker {
                     mapIterator.remove();
                 }
             }
+            refreshTrackingState();
         }
     }
 
@@ -94,6 +98,7 @@ public final class ThroughputMonitorStorageTracker {
             if (!found) {
                 listeners.add(new WeakReference<>(listener));
             }
+            trackingActive = true;
         }
     }
 
@@ -106,7 +111,17 @@ public final class ThroughputMonitorStorageTracker {
                     mapIterator.remove();
                 }
             }
+            refreshTrackingState();
         }
+    }
+
+    public static boolean isTrackingActive() {
+        return trackingActive;
+    }
+
+    public static boolean hasPendingOperation() {
+        Deque<StorageOperation> stack = OPERATIONS.get();
+        return stack != null && !stack.isEmpty();
     }
 
     public static void beginInsert(MEStorage storage, IActionSource source) {
@@ -168,6 +183,13 @@ public final class ThroughputMonitorStorageTracker {
 
     private static void beginOperation(MEStorage storage, OperationKind kind, IActionSource source) {
         Deque<StorageOperation> stack = OPERATIONS.get();
+        if (!trackingActive && (stack == null || stack.isEmpty())) {
+            return;
+        }
+        if (stack == null) {
+            stack = new ArrayDeque<>();
+            OPERATIONS.set(stack);
+        }
         StorageOperation parent = stack.peek();
         if (parent != null) {
             linkVisibleStorage(parent.storage, storage);
@@ -178,7 +200,14 @@ public final class ThroughputMonitorStorageTracker {
     private static void endOperation(MEStorage storage, AEKey what, long amount, OperationKind kind,
                                      @Nullable IActionSource actionSource) {
         Deque<StorageOperation> stack = OPERATIONS.get();
+        if (stack == null) {
+            return;
+        }
         StorageOperation operation = popOperation(stack, storage, kind);
+        if (operation == null) {
+            OPERATIONS.remove();
+            return;
+        }
         long changedAmount = Math.max(0L, amount);
         long residualAmount = operation.residualAmount(what, changedAmount);
 
@@ -200,19 +229,20 @@ public final class ThroughputMonitorStorageTracker {
         }
     }
 
-    private static StorageOperation popOperation(Deque<StorageOperation> stack, MEStorage storage, OperationKind kind) {
+    private static @Nullable StorageOperation popOperation(Deque<StorageOperation> stack, MEStorage storage,
+                                                           OperationKind kind) {
         StorageOperation operation = stack.poll();
         if (operation != null && operation.storage == storage && operation.kind == kind) {
             return operation;
         }
 
         stack.clear();
-        return new StorageOperation(storage, kind, null);
+        return null;
     }
 
     private static void recordChange(MEStorage storage, AEKey what, long amountDelta,
                                      @Nullable IActionSource actionSource) {
-        if (amountDelta == 0 || what == null) {
+        if (!trackingActive || amountDelta == 0 || what == null) {
             return;
         }
 
@@ -221,11 +251,13 @@ public final class ThroughputMonitorStorageTracker {
             return;
         }
 
-        boolean anyListeners;
         List<Listener> matched = new ArrayList<>();
         List<AllListener> allMatched = new ArrayList<>();
         synchronized (LOCK) {
-            anyListeners = !LISTENERS.isEmpty() || !ALL_LISTENERS.isEmpty();
+            if (LISTENERS.isEmpty() && ALL_LISTENERS.isEmpty()) {
+                refreshTrackingState();
+                return;
+            }
             Set<MEStorage> targetStorages = visibleDispatchStorages(storage);
             Set<Listener> deliveredListeners = Collections.newSetFromMap(new IdentityHashMap<>());
             Set<AllListener> deliveredAllListeners = Collections.newSetFromMap(new IdentityHashMap<>());
@@ -261,18 +293,25 @@ public final class ThroughputMonitorStorageTracker {
                     ALL_LISTENERS.remove(targetStorage);
                 }
             }
-        }
-
-        if (!anyListeners) {
-            return;
+            refreshTrackingState();
         }
 
         for (Listener listener : matched) {
             listener.recordThroughput(amountDelta, tick);
         }
-        SourceLocation source = resolveSource(actionSource);
-        for (AllListener listener : allMatched) {
-            listener.recordThroughput(what, amountDelta, tick, source);
+        if (!allMatched.isEmpty()) {
+            SourceLocation source = resolveSource(actionSource);
+            for (AllListener listener : allMatched) {
+                listener.recordThroughput(what, amountDelta, tick, source);
+            }
+        }
+    }
+
+    private static void refreshTrackingState() {
+        trackingActive = !LISTENERS.isEmpty() || !ALL_LISTENERS.isEmpty();
+        if (!trackingActive) {
+            VISIBLE_PARENTS.clear();
+            VISIBLE_CHILDREN.clear();
         }
     }
 
@@ -468,7 +507,7 @@ public final class ThroughputMonitorStorageTracker {
         private final MEStorage storage;
         private final OperationKind kind;
         private final IActionSource source;
-        private final Map<AEKey, Long> nestedAmounts = new HashMap<>();
+        private @Nullable Map<AEKey, Long> nestedAmounts;
 
         private StorageOperation(MEStorage storage, OperationKind kind, @Nullable IActionSource source) {
             this.storage = storage;
@@ -481,11 +520,15 @@ public final class ThroughputMonitorStorageTracker {
                 return;
             }
 
-            nestedAmounts.merge(key, amount, NumberUtils::saturatedAdd);
+            if (this.nestedAmounts == null) {
+                this.nestedAmounts = new HashMap<>();
+            }
+            this.nestedAmounts.merge(key, amount, NumberUtils::saturatedAdd);
         }
 
         private long residualAmount(AEKey key, long totalAmount) {
-            long nestedAmount = key == null ? 0L : nestedAmounts.getOrDefault(key, 0L);
+            long nestedAmount = key == null || this.nestedAmounts == null ?
+                    0L : this.nestedAmounts.getOrDefault(key, 0L);
             return totalAmount > nestedAmount ? totalAmount - nestedAmount : 0L;
         }
     }
