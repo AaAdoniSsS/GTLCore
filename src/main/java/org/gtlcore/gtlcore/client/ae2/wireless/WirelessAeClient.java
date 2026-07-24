@@ -11,6 +11,7 @@ import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 
 import appeng.api.util.AEColor;
 import appeng.client.render.StaticItemColor;
+import appeng.init.client.InitScreens;
 
 public final class WirelessAeClient {
 
@@ -36,6 +37,10 @@ public final class WirelessAeClient {
             MenuScreens.register(GTLWirelessAeContent.WIRELESS_NETWORK_BOOKMARK_MENU.get(), WirelessNetworkBookmarkScreen::new);
             MenuScreens.register(GTLWirelessAeContent.WIRELESS_AE_TARGET_MENU.get(), WirelessAeTargetScreen::new);
             MenuScreens.register(GTLWirelessAeContent.PATTERN_QUICK_UPLOAD_SELECTION_MENU.get(), PatternQuickUploadSelectionScreen::new);
+            InitScreens.register(
+                    GTLWirelessAeContent.TAG_VIEW_CELL_MENU.get(),
+                    TagViewCellScreen::new,
+                    "/screens/tag_view_cell.json");
             MenuScreens.register(GTLWirelessAeContent.THROUGHPUT_MONITOR_TERMINAL_MENU.get(), ThroughputMonitorTerminalScreen::new);
             MenuScreens.register(GTLWirelessAeContent.WIRELESS_THROUGHPUT_MONITOR_TERMINAL_MENU.get(), ThroughputMonitorTerminalScreen::new);
         });

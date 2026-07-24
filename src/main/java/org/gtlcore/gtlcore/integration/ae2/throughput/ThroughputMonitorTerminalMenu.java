@@ -1,5 +1,6 @@
 package org.gtlcore.gtlcore.integration.ae2.throughput;
 
+import org.gtlcore.gtlcore.integration.ae2.tag.TagViewCellItem;
 import org.gtlcore.gtlcore.integration.ae2.wireless.GTLWirelessAeContent;
 import org.gtlcore.gtlcore.integration.ae2.wireless.WirelessAePackets;
 
@@ -9,6 +10,7 @@ import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.Container;
 import net.minecraft.world.MenuProvider;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
@@ -19,11 +21,16 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.network.NetworkHooks;
 import net.minecraftforge.network.PacketDistributor;
 
+import appeng.api.implementations.blockentities.IViewCellStorage;
+import appeng.api.inventories.InternalInventory;
 import appeng.api.parts.IPartHost;
 import appeng.api.stacks.AEKey;
+import appeng.core.definitions.AEItems;
 import appeng.menu.AEBaseMenu;
+import appeng.menu.SlotSemantics;
 import appeng.menu.locator.MenuLocator;
 import appeng.menu.locator.MenuLocators;
+import appeng.util.inv.AppEngInternalInventory;
 import de.mari_023.ae2wtlib.terminal.WTMenuHost;
 import de.mari_023.ae2wtlib.wut.ItemWUT;
 import org.jetbrains.annotations.NotNull;
@@ -57,6 +64,7 @@ public class ThroughputMonitorTerminalMenu extends AEBaseMenu {
     private final ThroughputMonitorCollector wirelessCollector;
     private final boolean universalTerminal;
     private final Player menuPlayer;
+    private final List<Slot> viewCellSlots = new ArrayList<>();
     private final Set<AEKey> trackedSourceKeys = new HashSet<>();
     private final Map<AEKey, List<SourceEntry>> clientSources = new HashMap<>();
     private List<Entry> entries;
@@ -106,6 +114,7 @@ public class ThroughputMonitorTerminalMenu extends AEBaseMenu {
             setReturnedFromSubScreen(returningFromSubmenu);
         }
         addPlayerInventorySlots(inventory);
+        addViewCellSlots(terminal == null ? wirelessHost : terminal);
     }
 
     public static void open(ServerPlayer player, ThroughputMonitorTerminalPart terminal) {
@@ -179,6 +188,10 @@ public class ThroughputMonitorTerminalMenu extends AEBaseMenu {
 
     public boolean isUniversalTerminal() {
         return universalTerminal;
+    }
+
+    public List<ItemStack> getViewCells() {
+        return viewCellSlots.stream().map(Slot::getItem).toList();
     }
 
     public void setEntries(List<Entry> entries) {
@@ -257,7 +270,7 @@ public class ThroughputMonitorTerminalMenu extends AEBaseMenu {
 
     @Override
     public @NotNull ItemStack quickMoveStack(@NotNull Player player, int index) {
-        return ItemStack.EMPTY;
+        return super.quickMoveStack(player, index);
     }
 
     @Override
@@ -350,22 +363,43 @@ public class ThroughputMonitorTerminalMenu extends AEBaseMenu {
             for (int column = 0; column < ThroughputMonitorTerminalLayout.INVENTORY_COLUMNS; column++) {
                 int inventoryIndex = column + row * ThroughputMonitorTerminalLayout.INVENTORY_COLUMNS +
                         ThroughputMonitorTerminalLayout.INVENTORY_COLUMNS;
-                addSlot(new Slot(
-                        inventory,
-                        inventoryIndex,
-                        ThroughputMonitorTerminalLayout.PLAYER_INVENTORY_X +
-                                column * ThroughputMonitorTerminalLayout.SLOT_SIZE,
-                        ThroughputMonitorTerminalLayout.PLAYER_INVENTORY_Y +
-                                row * ThroughputMonitorTerminalLayout.SLOT_SIZE));
+                addSlot(
+                        new Slot(
+                                inventory,
+                                inventoryIndex,
+                                ThroughputMonitorTerminalLayout.PLAYER_INVENTORY_X +
+                                        column * ThroughputMonitorTerminalLayout.SLOT_SIZE,
+                                ThroughputMonitorTerminalLayout.PLAYER_INVENTORY_Y +
+                                        row * ThroughputMonitorTerminalLayout.SLOT_SIZE),
+                        SlotSemantics.PLAYER_INVENTORY);
             }
         }
         for (int column = 0; column < ThroughputMonitorTerminalLayout.INVENTORY_COLUMNS; column++) {
-            addSlot(new Slot(
-                    inventory,
-                    column,
-                    ThroughputMonitorTerminalLayout.PLAYER_INVENTORY_X +
-                            column * ThroughputMonitorTerminalLayout.SLOT_SIZE,
-                    ThroughputMonitorTerminalLayout.PLAYER_HOTBAR_Y));
+            addSlot(
+                    new Slot(
+                            inventory,
+                            column,
+                            ThroughputMonitorTerminalLayout.PLAYER_INVENTORY_X +
+                                    column * ThroughputMonitorTerminalLayout.SLOT_SIZE,
+                            ThroughputMonitorTerminalLayout.PLAYER_HOTBAR_Y),
+                    SlotSemantics.PLAYER_HOTBAR);
+        }
+    }
+
+    private void addViewCellSlots(@Nullable Object host) {
+        InternalInventory viewCellInventory = host instanceof IViewCellStorage viewCellStorage ?
+                viewCellStorage.getViewCellStorage() :
+                new AppEngInternalInventory(ThroughputMonitorTerminalPart.VIEW_CELL_SLOT_COUNT);
+        Container container = viewCellInventory.toContainer();
+        for (int slotIndex = 0; slotIndex < viewCellInventory.size(); slotIndex++) {
+            Slot slot = new ViewCellSlot(
+                    container,
+                    slotIndex,
+                    ThroughputMonitorTerminalLayout.VIEW_CELL_X,
+                    ThroughputMonitorTerminalLayout.VIEW_CELL_Y +
+                            slotIndex * ThroughputMonitorTerminalLayout.SLOT_SIZE);
+            addSlot(slot, SlotSemantics.VIEW_CELL);
+            viewCellSlots.add(slot);
         }
     }
 
@@ -422,4 +456,21 @@ public class ThroughputMonitorTerminalMenu extends AEBaseMenu {
 
     public record SourceEntry(ResourceLocation dimension, BlockPos pos, @Nullable Direction side,
                               double insertedPerSecond, double extractedPerSecond) {}
+
+    private static final class ViewCellSlot extends Slot {
+
+        private ViewCellSlot(Container container, int slot, int x, int y) {
+            super(container, slot, x, y);
+        }
+
+        @Override
+        public boolean mayPlace(@NotNull ItemStack stack) {
+            return AEItems.VIEW_CELL.isSameAs(stack) || TagViewCellItem.isTagViewCell(stack);
+        }
+
+        @Override
+        public int getMaxStackSize() {
+            return 1;
+        }
+    }
 }

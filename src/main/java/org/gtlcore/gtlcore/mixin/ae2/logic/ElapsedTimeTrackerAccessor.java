@@ -10,4 +10,7 @@ public interface ElapsedTimeTrackerAccessor {
 
     @Invoker(remap = false)
     void invokeAddMaxItems(long itemDiff, AEKeyType keyType);
+
+    @Invoker(remap = false)
+    void invokeDecrementItems(long itemDiff, AEKeyType keyType);
 }

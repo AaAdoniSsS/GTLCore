@@ -4,6 +4,7 @@ import org.gtlcore.gtlcore.client.renderer.BlockHighlightHandler;
 import org.gtlcore.gtlcore.integration.ae2.throughput.METhroughputMonitorPart;
 import org.gtlcore.gtlcore.integration.ae2.throughput.ThroughputMonitorTerminalLayout;
 import org.gtlcore.gtlcore.integration.ae2.throughput.ThroughputMonitorTerminalMenu;
+import org.gtlcore.gtlcore.integration.ae2.throughput.ThroughputMonitorTerminalPart;
 import org.gtlcore.gtlcore.integration.ae2.throughput.ThroughputMonitorUpdateInterval;
 import org.gtlcore.gtlcore.integration.ae2.wireless.WirelessAePackets;
 
@@ -18,6 +19,7 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 
@@ -25,8 +27,14 @@ import appeng.api.config.Settings;
 import appeng.api.config.SortDir;
 import appeng.api.config.SortOrder;
 import appeng.api.stacks.AEKey;
+import appeng.api.storage.AEKeyFilter;
 import appeng.client.gui.Icon;
+import appeng.client.gui.style.BackgroundGenerator;
 import appeng.client.gui.widgets.SettingToggleButton;
+import appeng.core.localization.GuiText;
+import appeng.items.storage.ViewCellItem;
+import appeng.menu.SlotSemantics;
+import appeng.util.prioritylist.IPartitionList;
 import de.mari_023.ae2wtlib.wut.CycleTerminalButton;
 import de.mari_023.ae2wtlib.wut.IUniversalTerminalCapable;
 import org.jetbrains.annotations.NotNull;
@@ -57,6 +65,7 @@ public class ThroughputMonitorTerminalScreen extends AbstractContainerScreen<Thr
     private static final int ROW_SEPARATOR_X = ThroughputMonitorTerminalLayout.LIST_X + 18;
     private static final int ROW_SEPARATOR_WIDTH = ROW_RATE_RIGHT - ROW_SEPARATOR_X;
     private static final int SLOT_BACKGROUND_OFFSET = 1;
+    private static final float VIEW_CELL_ICON_OPACITY = 0.4F;
     private static final int HIGHLIGHT_DURATION_MILLIS = 15_000;
     private static final Comparator<ThroughputMonitorTerminalMenu.Entry> ENTRY_NAME_ORDER = Comparator
             .comparing(
@@ -77,6 +86,8 @@ public class ThroughputMonitorTerminalScreen extends AbstractContainerScreen<Thr
     private static ThroughputMonitorUpdateInterval rememberedUpdateInterval = ThroughputMonitorUpdateInterval.SECOND;
 
     private final Set<AEKey> expandedKeys = new HashSet<>();
+    private final List<ItemStack> currentViewCells = new ArrayList<>();
+    private @Nullable IPartitionList viewCellFilter;
     private EditBox searchField;
     private SettingToggleButton<SortOrder> sortByButton;
     private SettingToggleButton<SortDir> sortDirectionButton;
@@ -174,6 +185,7 @@ public class ThroughputMonitorTerminalScreen extends AbstractContainerScreen<Thr
     public void containerTick() {
         super.containerTick();
         this.searchField.tick();
+        updateViewCellFilter();
         clampScrollOffset();
     }
 
@@ -220,7 +232,7 @@ public class ThroughputMonitorTerminalScreen extends AbstractContainerScreen<Thr
 
     @Override
     protected void renderBg(@NotNull GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
-        WirelessAeStyle.drawPanel(graphics, this.leftPos, this.topPos, this.imageWidth, this.imageHeight);
+        BackgroundGenerator.draw(this.imageWidth, this.imageHeight, graphics, this.leftPos, this.topPos);
         WirelessAeStyle.drawTextField(
                 graphics,
                 this.leftPos + ThroughputMonitorTerminalLayout.SEARCH_PANEL_X,
@@ -232,6 +244,7 @@ public class ThroughputMonitorTerminalScreen extends AbstractContainerScreen<Thr
                 this.topPos + ThroughputMonitorTerminalLayout.LIST_PANEL_Y,
                 ThroughputMonitorTerminalLayout.LIST_PANEL_WIDTH,
                 ThroughputMonitorTerminalLayout.LIST_PANEL_HEIGHT);
+        drawViewCellSlotBackgrounds(graphics);
         drawPlayerInventorySlotBackgrounds(graphics);
 
         List<DisplayRow> rows = getDisplayRows();
@@ -273,10 +286,6 @@ public class ThroughputMonitorTerminalScreen extends AbstractContainerScreen<Thr
                                 row * ThroughputMonitorTerminalLayout.SLOT_SIZE);
             }
         }
-        drawSlotGroupOutline(
-                graphics,
-                ThroughputMonitorTerminalLayout.PLAYER_INVENTORY_Y,
-                ThroughputMonitorTerminalLayout.PLAYER_INVENTORY_HEIGHT);
         for (int column = 0; column < ThroughputMonitorTerminalLayout.INVENTORY_COLUMNS; column++) {
             drawSlotBackground(
                     graphics,
@@ -284,19 +293,26 @@ public class ThroughputMonitorTerminalScreen extends AbstractContainerScreen<Thr
                             column * ThroughputMonitorTerminalLayout.SLOT_SIZE,
                     ThroughputMonitorTerminalLayout.PLAYER_HOTBAR_Y);
         }
-        drawSlotGroupOutline(
-                graphics,
-                ThroughputMonitorTerminalLayout.PLAYER_HOTBAR_Y,
-                ThroughputMonitorTerminalLayout.PLAYER_HOTBAR_HEIGHT);
     }
 
-    private void drawSlotGroupOutline(GuiGraphics graphics, int slotY, int height) {
-        WirelessAeStyle.drawSlotGroupOutline(
+    private void drawViewCellSlotBackgrounds(GuiGraphics graphics) {
+        BackgroundGenerator.draw(
+                ThroughputMonitorTerminalLayout.VIEW_CELL_PANEL_WIDTH,
+                ThroughputMonitorTerminalLayout.VIEW_CELL_PANEL_HEIGHT,
                 graphics,
-                this.leftPos + ThroughputMonitorTerminalLayout.PLAYER_INVENTORY_X - SLOT_BACKGROUND_OFFSET,
-                this.topPos + slotY - SLOT_BACKGROUND_OFFSET,
-                ThroughputMonitorTerminalLayout.PLAYER_INVENTORY_WIDTH,
-                height);
+                this.leftPos + ThroughputMonitorTerminalLayout.VIEW_CELL_PANEL_X,
+                this.topPos + ThroughputMonitorTerminalLayout.VIEW_CELL_PANEL_Y);
+        for (int slotIndex = 0; slotIndex < ThroughputMonitorTerminalPart.VIEW_CELL_SLOT_COUNT; slotIndex++) {
+            int slotY = ThroughputMonitorTerminalLayout.VIEW_CELL_Y +
+                    slotIndex * ThroughputMonitorTerminalLayout.SLOT_SIZE;
+            drawSlotBackground(graphics, ThroughputMonitorTerminalLayout.VIEW_CELL_X, slotY);
+            Icon.BACKGROUND_VIEW_CELL.getBlitter()
+                    .dest(
+                            this.leftPos + ThroughputMonitorTerminalLayout.VIEW_CELL_X,
+                            this.topPos + slotY)
+                    .opacity(VIEW_CELL_ICON_OPACITY)
+                    .blit(graphics);
+        }
     }
 
     private void drawSlotBackground(GuiGraphics graphics, int slotX, int slotY) {
@@ -565,6 +581,11 @@ public class ThroughputMonitorTerminalScreen extends AbstractContainerScreen<Thr
     }
 
     private void renderMonitorTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (this.hoveredSlot != null && !this.hoveredSlot.hasItem() &&
+                this.menu.getSlots(SlotSemantics.VIEW_CELL).contains(this.hoveredSlot)) {
+            graphics.renderTooltip(this.font, GuiText.TerminalViewCellsTooltip.text(), mouseX, mouseY);
+            return;
+        }
         if (renderSettingTooltip(graphics, this.sortByButton, mouseX, mouseY) ||
                 renderSettingTooltip(graphics, this.sortDirectionButton, mouseX, mouseY)) {
             return;
@@ -617,6 +638,9 @@ public class ThroughputMonitorTerminalScreen extends AbstractContainerScreen<Thr
         String query = normalizedQuery(this.searchField);
         List<DisplayRow> rows = new ArrayList<>();
         for (ThroughputMonitorTerminalMenu.Entry entry : getSortedVisibleEntries()) {
+            if (this.viewCellFilter != null && !this.viewCellFilter.isListed(entry.key())) {
+                continue;
+            }
             boolean resourceMatches = resourceMatches(entry.key(), query);
             List<ThroughputMonitorTerminalMenu.SourceEntry> sources = getVisibleSources(entry.key());
             if (!query.isEmpty() && !resourceMatches) {
@@ -638,6 +662,20 @@ public class ThroughputMonitorTerminalScreen extends AbstractContainerScreen<Thr
             }
         }
         return rows;
+    }
+
+    private void updateViewCellFilter() {
+        List<ItemStack> viewCells = this.menu.getViewCells();
+        if (this.currentViewCells.equals(viewCells)) {
+            return;
+        }
+
+        this.currentViewCells.clear();
+        for (ItemStack viewCell : viewCells) {
+            this.currentViewCells.add(viewCell.copy());
+        }
+        this.viewCellFilter = ViewCellItem.createFilter(AEKeyFilter.none(), this.currentViewCells);
+        // ponytail: no scroll reset on refresh; clampScrollOffset keeps the offset valid if the list shrinks
     }
 
     private @Nullable DisplayRow rowAt(double mouseX, double mouseY) {

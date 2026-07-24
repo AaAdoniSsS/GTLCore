@@ -3,6 +3,8 @@ package org.gtlcore.gtlcore.integration.ae2.wireless;
 import org.gtlcore.gtlcore.GTLCore;
 import org.gtlcore.gtlcore.common.data.GTLCreativeModeTabs;
 import org.gtlcore.gtlcore.integration.ae2.pattern.PatternQuickUploadSelectionMenu;
+import org.gtlcore.gtlcore.integration.ae2.tag.TagViewCellItem;
+import org.gtlcore.gtlcore.integration.ae2.tag.TagViewCellMenu;
 import org.gtlcore.gtlcore.integration.ae2.throughput.METhroughputMonitorPart;
 import org.gtlcore.gtlcore.integration.ae2.throughput.ThroughputMonitorTerminalMenu;
 import org.gtlcore.gtlcore.integration.ae2.throughput.ThroughputMonitorTerminalPart;
@@ -36,6 +38,7 @@ public final class GTLWirelessAeContent {
     private static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITY_TYPES = DeferredRegister.create(ForgeRegistries.BLOCK_ENTITY_TYPES, GTLCore.MOD_ID);
     private static final DeferredRegister<MenuType<?>> MENU_TYPES = DeferredRegister.create(ForgeRegistries.MENU_TYPES, GTLCore.MOD_ID);
     private static final MenuType<ThroughputMonitorTerminalMenu> WIRELESS_THROUGHPUT_MONITOR_TERMINAL_MENU_TYPE = IForgeMenuType.create(ThroughputMonitorTerminalMenu::createWirelessClientMenu);
+    private static final MenuType<TagViewCellMenu> TAG_VIEW_CELL_MENU_TYPE = IForgeMenuType.create(TagViewCellMenu::createClientMenu);
 
     public static final RegistryObject<Block> WIRELESS_NETWORK_CORE = BLOCKS.register(
             "wireless_network_core",
@@ -63,6 +66,10 @@ public final class GTLWirelessAeContent {
     public static final RegistryObject<Item> THROUGHPUT_MONITOR_CONFIGURATOR = ITEMS.register(
             "throughput_monitor_configurator",
             () -> new Item(new Item.Properties()));
+
+    public static final RegistryObject<TagViewCellItem> TAG_VIEW_CELL = ITEMS.register(
+            "tag_view_cell",
+            TagViewCellItem::new);
 
     public static final RegistryObject<PartItem<ThroughputMonitorTerminalPart>> THROUGHPUT_MONITOR_TERMINAL = ITEMS.register(
             "throughput_monitor_terminal",
@@ -113,6 +120,10 @@ public final class GTLWirelessAeContent {
             "wireless_throughput_monitor_terminal",
             () -> WIRELESS_THROUGHPUT_MONITOR_TERMINAL_MENU_TYPE);
 
+    public static final RegistryObject<MenuType<TagViewCellMenu>> TAG_VIEW_CELL_MENU = MENU_TYPES.register(
+            "tag_view_cell",
+            () -> TAG_VIEW_CELL_MENU_TYPE);
+
     private GTLWirelessAeContent() {}
 
     public static void register(IEventBus modBus) {
@@ -135,6 +146,7 @@ public final class GTLWirelessAeContent {
         MenuOpener.addOpener(
                 WIRELESS_THROUGHPUT_MONITOR_TERMINAL_MENU_TYPE,
                 ThroughputMonitorTerminalMenu::openWireless);
+        MenuOpener.addOpener(TAG_VIEW_CELL_MENU_TYPE, TagViewCellMenu::open);
         WUTHandler.addTerminal(
                 WirelessThroughputMonitorTerminalItem.TERMINAL_NAME,
                 item::tryOpen,
@@ -151,6 +163,7 @@ public final class GTLWirelessAeContent {
             event.accept(WIRELESS_NETWORK_BOOKMARK_ITEM);
             event.accept(THROUGHPUT_MONITOR);
             event.accept(THROUGHPUT_MONITOR_CONFIGURATOR);
+            event.accept(TAG_VIEW_CELL);
             event.accept(THROUGHPUT_MONITOR_TERMINAL);
             event.accept(WIRELESS_THROUGHPUT_MONITOR_TERMINAL);
         }
