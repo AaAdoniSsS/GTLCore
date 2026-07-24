@@ -93,3 +93,10 @@ mandatory = false
 versionRange = "[0.1.2,)"
 ordering = "AFTER"
 side = "BOTH"
+
+[[dependencies.${mod_id}]]
+modId = "mae2"
+mandatory = true
+versionRange = "[1.6.1,)"
+ordering = "AFTER"
+side = "BOTH"

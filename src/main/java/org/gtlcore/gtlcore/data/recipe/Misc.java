@@ -1,7 +1,6 @@
 package org.gtlcore.gtlcore.data.recipe;
 
 import org.gtlcore.gtlcore.GTLCore;
-import org.gtlcore.gtlcore.common.data.GTLBlocks;
 import org.gtlcore.gtlcore.common.data.GTLItems;
 import org.gtlcore.gtlcore.common.data.GTLMachines;
 import org.gtlcore.gtlcore.common.data.machines.AdditionalMultiBlockMachine;
@@ -32,14 +31,16 @@ import appeng.core.definitions.AEItems;
 
 import java.util.function.Consumer;
 
+import static appeng.core.definitions.AEBlocks.CRAFTING_MONITOR;
 import static com.glodblock.github.extendedae.common.EPPItemAndBlock.*;
 import static com.gregtechceu.gtceu.api.GTValues.*;
 import static com.gregtechceu.gtceu.api.data.tag.TagPrefix.*;
 import static com.gregtechceu.gtceu.common.data.GTItems.*;
+import static com.gregtechceu.gtceu.common.data.GTMachines.BUFFER;
 import static com.gregtechceu.gtceu.common.data.GTMaterials.*;
 import static com.gregtechceu.gtceu.common.data.GTRecipeTypes.*;
-import static org.gtlcore.gtlcore.common.data.GTLItems.ELECTRIC_PUMP_MAX;
-import static org.gtlcore.gtlcore.common.data.GTLItems.FLUID_REGULATOR_MAX;
+import static org.gtlcore.gtlcore.common.data.GTLItems.*;
+import static org.gtlcore.gtlcore.common.data.GTLMachines.GTAEMachines.ME_CRAFTING_CPU_INTERFACE;
 import static org.gtlcore.gtlcore.common.data.GTLMaterials.*;
 import static org.gtlcore.gtlcore.common.data.GTLRecipeTypes.*;
 import static org.gtlcore.gtlcore.common.data.machines.MultiBlockMachineB.PRIMITIVE_VOID_ORE;
@@ -282,35 +283,25 @@ public class Misc {
                         .dataStack(GTItems.TOOL_DATA_MODULE.asStack()).EUt(VA[9]).CWUt(128))
                 .save(provider);
 
-        ASSEMBLER_RECIPES.recipeBuilder("me_crafting_cpu_interface")
+        ASSEMBLY_LINE_RECIPES.recipeBuilder("me_crafting_cpu_interface")
+                .inputItems(frameGt, Quantanium, 16)
                 .inputItems(GTMachines.HULL[UV])
-                .inputItems(GTLMachines.GTAEMachines.ITEM_IMPORT_BUS_ME)
-                .inputItems(GTLMachines.GTAEMachines.FLUID_IMPORT_HATCH_ME)
-                .inputItems(EX_INTERFACE.asItem(), 4)
-                .inputItems(CustomTags.UV_CIRCUITS, 2)
-                .inputFluids(SolderingAlloy.getFluid(576))
-                .outputItems(GTLMachines.GTAEMachines.ME_CRAFTING_CPU_INTERFACE)
-                .EUt(VA[UV]).duration(400)
-                .save(provider);
-
-        ASSEMBLY_LINE_RECIPES.recipeBuilder("transfinite_computation_array")
-                .inputItems(frameGt, Neutronium, 16)
-                .inputItems(FIELD_GENERATOR_UV, 8)
-                .inputItems(EMITTER_UV, 16)
-                .inputItems(SENSOR_UV, 16)
-                .inputItems(CustomTags.UHV_CIRCUITS, 16)
-                .inputItems(GTLBlocks.CRAFTING_STORAGE_256M.asStack(), 16)
-                .inputItems(GTLMachines.GTAEMachines.ME_CRAFT_PARALLEL_CORE.asStack(), 8)
-                .inputItems(GTLMachines.GTAEMachines.ME_CRAFT_SPEED_CORE.asStack(), 8)
-                .inputFluids(MutatedLivingSolder.getFluid(2304))
-                .inputFluids(Naquadria.getFluid(2304))
-                .inputFluids(Orichalcum.getFluid(2304))
-                .inputFluids(Mithril.getFluid(2304))
-                .outputItems(AdditionalMultiBlockMachine.TRANSFINITE_COMPUTATION_ARRAY)
-                .EUt(VA[UHV]).duration(1200)
+                .inputItems(FIELD_GENERATOR_UHV, 8)
+                .inputItems(EMITTER_UHV, 4)
+                .inputItems(SENSOR_UHV, 4)
+                .inputItems(BUFFER[UHV], 32)
+                .inputItems(CRAFTING_MONITOR.asItem(), 32)
+                .inputItems(CustomTags.UHV_CIRCUITS, 4)
+                .inputItems(CELL_COMPONENT_256M, 16)
+                .inputFluids(AminatedFullerene.getFluid(4000))
+                .inputFluids(CarbonNanotubes.getFluid(5760))
+                .inputFluids(DegenerateRhenium.getFluid(8000))
+                .inputFluids(PolyurethaneResin.getFluid(8000))
+                .outputItems(ME_CRAFTING_CPU_INTERFACE)
                 .stationResearch(b -> b
-                        .researchStack(GTLMachines.GTAEMachines.ME_CRAFT_PARALLEL_CORE.asStack())
-                        .dataStack(GTItems.TOOL_DATA_MODULE.asStack()).EUt(VA[UHV]).CWUt(256))
+                        .researchStack(Registries.getItemStack("mae2:256x_crafting_accelerator"))
+                        .dataStack(TOOL_DATA_MODULE.asStack()).EUt(VA[UHV]).CWUt(256))
+                .EUt(VA[UHV]).duration(800)
                 .save(provider);
 
         ASSEMBLY_LINE_RECIPES.recipeBuilder("me_craft_pattern_container")

@@ -48,10 +48,12 @@ import static com.gregtechceu.gtceu.common.data.GTRecipeTypes.ASSEMBLER_RECIPES;
 import static com.gregtechceu.gtceu.common.data.GTRecipeTypes.ASSEMBLY_LINE_RECIPES;
 import static com.gregtechceu.gtceu.data.recipe.CraftingComponent.*;
 import static com.gregtechceu.gtceu.data.recipe.misc.MetaTileEntityLoader.registerMachineRecipe;
+import static org.gtlcore.gtlcore.common.data.GTLBlocks.CRAFTING_STORAGE_MAX;
 import static org.gtlcore.gtlcore.common.data.GTLMachines.GTAEMachines.ME_EXTEND_PATTERN_BUFFER;
 import static org.gtlcore.gtlcore.common.data.GTLMachines.TAG_FILTER_ME_STOCK_BUS_PART_MACHINE;
 import static org.gtlcore.gtlcore.common.data.GTLMaterials.*;
 import static org.gtlcore.gtlcore.common.data.GTLRecipeTypes.SPACE_COSMIC_PROBE_RECEIVERS_RECIPES;
+import static org.gtlcore.gtlcore.common.data.machines.AdditionalMultiBlockMachine.TRANSFINITE_COMPUTATION_ARRAY;
 import static org.gtlcore.gtlcore.integration.ae2.wireless.GTLWirelessAeContent.WIRELESS_NETWORK_BOOKMARK;
 import static org.gtlcore.gtlcore.integration.ae2.wireless.GTLWirelessAeContent.WIRELESS_NETWORK_CORE;
 import static org.gtlcore.gtlcore.integration.wildcard.WildcardPatternCompatImpl.ME_WILDCARD_PATTERN_BUFFER;
@@ -723,6 +725,28 @@ public class MachineRecipe {
                         .CWUt(2048))
                 .addData("SEPMTier", 5)
                 .duration(200).EUt(V[UXV]).save(provider);
+
+        ASSEMBLY_LINE_RECIPES.recipeBuilder("transfinite_computation_array")
+                .inputItems(frameGt, Adamantium, 16)
+                .inputItems(FIELD_GENERATOR_UHV, 8)
+                .inputItems(GTLItems.REALLY_ULTIMATE_BATTERY)
+                .inputItems(CustomTags.UEV_CIRCUITS, 16)
+                .inputItems(CRAFTING_STORAGE_MAX.asStack(), 16)
+                .inputItems(Registries.getItemStack("mae2:256x_crafting_accelerator", 64))
+                .inputItems(Registries.getItemStack("mae2:256x_crafting_accelerator", 64))
+                .inputItems(wireFine, Enderite, 32)
+                .inputItems(wireFine, Enderite, 32)
+                .inputItems(plate, Highurabilityompoundteel, 16)
+                .inputFluids(EuvPhotoresist.getFluid(3000))
+                .inputFluids(Seaborgium.getFluid(2304))
+                .inputFluids(Dubnium.getFluid(2304))
+                .inputFluids(Kevlar.getFluid(14400))
+                .outputItems(TRANSFINITE_COMPUTATION_ARRAY)
+                .EUt(VA[UEV]).duration(1200)
+                .stationResearch(b -> b
+                        .researchStack(CRAFTING_STORAGE_MAX.asStack())
+                        .dataStack(TOOL_DATA_MODULE.asStack()).EUt(VA[UHV]).CWUt(256))
+                .save(provider);
 
         ASSEMBLY_LINE_RECIPES.recipeBuilder("advanced_vacuum_drying_furnace")
                 .inputItems(CIRCUIT.getIngredient(UIV), 32)
