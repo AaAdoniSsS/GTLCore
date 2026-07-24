@@ -28,7 +28,6 @@ import appeng.api.parts.IPartHost;
 import appeng.api.stacks.AEFluidKey;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
-import appeng.api.stacks.AEKeyType;
 import appeng.api.stacks.KeyCounter;
 import appeng.helpers.InterfaceLogicHost;
 import appeng.helpers.patternprovider.PatternProviderLogic;
@@ -43,7 +42,9 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+import java.util.ArrayList;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -310,10 +311,14 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
             return true;
         }
 
-        // For ME interfaces and other AE2 blocks we only have the abstract MEStorage view,
-        // so fall back to the aggregate capacity check. For plain block inventories we can
-        // simulate exact slot/tank usage via capabilities.
-        if (targetBE == null || side == null || targetBE instanceof InterfaceLogicHost || targetBE.getClass().getName().startsWith("appeng.")) {
+        // ME interfaces (block or cable part) expose their local config slots as item
+        // capability, which does not match the network-backed storage the adapter pushes
+        // into, so they must keep using the aggregate capacity check. Other AE2 machines
+        // (e.g. the inscriber) expose the same inventory the adapter wraps, and NEED the
+        // exact per-slot simulation: their recipe-driven slot filters lock each input to
+        // dedicated non-overlapping slots, which the aggregate slot heuristic cannot
+        // represent (it assumes shared slots and rejects multi-input patterns even at 1x).
+        if (targetBE == null || side == null || targetBE instanceof InterfaceLogicHost || gtlcore$isInterfacePart(targetBE, side)) {
             return gtlcore$targetAcceptsAll(target, baseInputs, operations);
         }
 
@@ -321,43 +326,21 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
         var fluidCap = targetBE.getCapability(ForgeCapabilities.FLUID_HANDLER, side);
         boolean hasHandler = itemCap.isPresent() || fluidCap.isPresent();
 
-        // First pass: ensure each individual key can fit its own available space (cheap reject).
-        if (!gtlcore$targetAcceptsAll(target, baseInputs, operations)) {
+        // First pass: each key must fit its own available space (cheap reject).
+        // Slot reality is verified precisely below; the aggregate slot heuristic only
+        // runs on the aggregate-only path.
+        if (!gtlcore$keysFitIndividually(target, baseInputs, operations)) {
             return false;
         }
 
-        if (itemCap.isPresent()) {
-            IItemHandler handler = itemCap.orElseThrow(NullPointerException::new);
-            for (var input : baseInputs) {
-                AEKey key = input.getKey();
-                if (key.getType() != AEKeyType.items() || !(key instanceof AEItemKey itemKey)) {
-                    continue;
-                }
-                long amount = NumberUtils.saturatedMultiply(input.getLongValue(), operations);
-                if (amount <= 0) {
-                    continue;
-                }
-                if (!gtlcore$canItemHandlerAccept(handler, itemKey, amount)) {
-                    return false;
-                }
-            }
+        if (itemCap.isPresent() &&
+                !gtlcore$canItemHandlerAcceptAll(itemCap.orElseThrow(NullPointerException::new), baseInputs, operations)) {
+            return false;
         }
 
-        if (fluidCap.isPresent()) {
-            IFluidHandler handler = fluidCap.orElseThrow(NullPointerException::new);
-            for (var input : baseInputs) {
-                AEKey key = input.getKey();
-                if (key.getType() != AEKeyType.fluids() || !(key instanceof AEFluidKey fluidKey)) {
-                    continue;
-                }
-                long amount = NumberUtils.saturatedMultiply(input.getLongValue(), operations);
-                if (amount <= 0) {
-                    continue;
-                }
-                if (!gtlcore$canFluidHandlerAccept(handler, fluidKey, amount)) {
-                    return false;
-                }
-            }
+        if (fluidCap.isPresent() &&
+                !gtlcore$canFluidHandlerAcceptAll(fluidCap.orElseThrow(NullPointerException::new), baseInputs, operations)) {
+            return false;
         }
 
         if (!hasHandler) {
@@ -367,91 +350,218 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
     }
 
     @Unique
-    private boolean gtlcore$canItemHandlerAccept(IItemHandler handler, AEItemKey itemKey, long amount) {
-        long remaining = amount;
-        int slots = handler.getSlots();
-        ItemStack representative = itemKey.toStack();
+    private static boolean gtlcore$isInterfacePart(BlockEntity targetBE, Direction side) {
+        return targetBE instanceof IPartHost partHost && partHost.getPart(side) instanceof InterfaceLogicHost;
+    }
 
-        for (int i = 0; i < slots && remaining > 0; i++) {
+    /**
+     * Cross-key slot-aware capacity check. Every key is simulated against the real handler,
+     * but slots already claimed by a previous key in the same batch are accounted for, so
+     * multiple item types competing for the same free slots cannot over-accept (which would
+     * strand the overflow in the provider's sendList and stall the craft).
+     */
+    @Unique
+    private boolean gtlcore$canItemHandlerAcceptAll(IItemHandler handler, KeyCounter baseInputs, long operations) {
+        int slots = handler.getSlots();
+        AEItemKey[] slotOwner = new AEItemKey[slots];
+        long[] slotReserved = new long[slots];
+
+        List<Entry<AEItemKey>> requirements = new ArrayList<>();
+        for (var input : baseInputs) {
+            if (input.getKey() instanceof AEItemKey itemKey) {
+                long amount = NumberUtils.saturatedMultiply(input.getLongValue(), operations);
+                if (amount > 0) {
+                    requirements.add(new Entry<>(itemKey, amount));
+                }
+            }
+        }
+
+        // Most constrained keys first: fewer usable slots means higher risk of being
+        // squeezed out by greedy allocation.
+        requirements.sort((a, b) -> Integer.compare(
+                gtlcore$countUsableSlots(handler, a.key().toStack(), slotOwner),
+                gtlcore$countUsableSlots(handler, b.key().toStack(), slotOwner)));
+
+        for (var requirement : requirements) {
+            AEItemKey itemKey = requirement.key();
+            ItemStack representative = itemKey.toStack();
+            long remaining = requirement.amount();
+
+            for (int i = 0; i < slots && remaining > 0; i++) {
+                ItemStack current = handler.getStackInSlot(i);
+                if (!current.isEmpty()) {
+                    if (!ItemStack.isSameItem(current, representative)) {
+                        continue;
+                    }
+                } else if (slotOwner[i] != null && slotOwner[i] != itemKey) {
+                    continue;
+                }
+
+                // Simulate inserting the whole remainder into this slot. This respects both
+                // filters and unlimited-capacity slots (e.g. gtmthings huge buses), instead of
+                // clamping per-slot capacity to the item's vanilla max stack size.
+                long probe = remaining + slotReserved[i];
+                int chunk = (int) Math.min(probe, Integer.MAX_VALUE);
+                ItemStack remainder = handler.insertItem(i, itemKey.toStack(chunk), true);
+                long accepted = remainder.isEmpty() ? chunk : Math.max(0, chunk - remainder.getCount());
+                long free = accepted - slotReserved[i];
+                if (free <= 0) {
+                    continue;
+                }
+
+                long taken = Math.min(free, remaining);
+                slotReserved[i] += taken;
+                if (current.isEmpty()) {
+                    slotOwner[i] = itemKey;
+                }
+                remaining -= taken;
+            }
+
+            if (remaining > 0) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    @Unique
+    private int gtlcore$countUsableSlots(IItemHandler handler, ItemStack representative, AEItemKey[] slotOwner) {
+        int usable = 0;
+        for (int i = 0; i < handler.getSlots(); i++) {
             ItemStack current = handler.getStackInSlot(i);
             if (!current.isEmpty() && !ItemStack.isSameItem(current, representative)) {
                 continue;
             }
-
-            // Simulate inserting the whole remainder into this slot. This respects both
-            // filters and unlimited-capacity slots (e.g. gtmthings huge buses), instead of
-            // clamping per-slot capacity to the item's vanilla max stack size.
-            int chunk = (int) Math.min(remaining, Integer.MAX_VALUE);
-            ItemStack remainder = handler.insertItem(i, itemKey.toStack(chunk), true);
-            int accepted = remainder.isEmpty() ? chunk : Math.max(0, chunk - remainder.getCount());
-            if (accepted <= 0) {
+            if (current.isEmpty() && slotOwner[i] != null) {
                 continue;
             }
+            if (handler.insertItem(i, representative.copyWithCount(1), true).isEmpty()) {
+                usable++;
+            }
+        }
+        return usable;
+    }
 
-            remaining -= accepted;
+    /**
+     * Fluid equivalent of {@link #gtlcore$canItemHandlerAcceptAll}: tanks already claimed by
+     * another fluid in the same batch are excluded, so multiple fluids cannot over-accept a
+     * shared tank.
+     */
+    @Unique
+    private boolean gtlcore$canFluidHandlerAcceptAll(IFluidHandler handler, KeyCounter baseInputs, long operations) {
+        int tanks = handler.getTanks();
+        AEFluidKey[] tankOwner = new AEFluidKey[tanks];
+        long[] tankReserved = new long[tanks];
+
+        List<Entry<AEFluidKey>> requirements = new ArrayList<>();
+        for (var input : baseInputs) {
+            if (input.getKey() instanceof AEFluidKey fluidKey) {
+                long amount = NumberUtils.saturatedMultiply(input.getLongValue(), operations);
+                if (amount > 0) {
+                    requirements.add(new Entry<>(fluidKey, amount));
+                }
+            }
         }
 
-        return remaining <= 0;
+        for (var requirement : requirements) {
+            AEFluidKey fluidKey = requirement.key();
+            FluidStack representative = fluidKey.toStack(1);
+            long remaining = requirement.amount();
+
+            for (int i = 0; i < tanks && remaining > 0; i++) {
+                FluidStack current = handler.getFluidInTank(i);
+                if (!current.isEmpty()) {
+                    if (!current.isFluidEqual(representative)) {
+                        continue;
+                    }
+                } else if (tankOwner[i] != null && tankOwner[i] != fluidKey) {
+                    continue;
+                }
+
+                long free = handler.getTankCapacity(i) - current.getAmount() - tankReserved[i];
+                if (free <= 0) {
+                    continue;
+                }
+
+                // Verify the handler accepts this fluid at all (respects filters).
+                FluidStack probe = representative.copy();
+                probe.setAmount((int) Math.min(free, Integer.MAX_VALUE));
+                int accepted = handler.fill(probe, IFluidHandler.FluidAction.SIMULATE);
+                if (accepted <= 0) {
+                    continue;
+                }
+
+                long taken = Math.min(Math.min(free, accepted), remaining);
+                tankReserved[i] += taken;
+                if (current.isEmpty()) {
+                    tankOwner[i] = fluidKey;
+                }
+                remaining -= taken;
+            }
+
+            if (remaining > 0) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     @Unique
-    private boolean gtlcore$canFluidHandlerAccept(IFluidHandler handler, AEFluidKey fluidKey, long amount) {
-        long remaining = amount;
-        int tanks = handler.getTanks();
-        FluidStack representative = fluidKey.toStack(1);
+    private record Entry<K extends AEKey>(K key, long amount) {}
 
-        for (int i = 0; i < tanks && remaining > 0; i++) {
-            FluidStack current = handler.getFluidInTank(i);
-            if (!current.isEmpty() && !current.isFluidEqual(representative)) {
-                continue;
-            }
-
-            long free = handler.getTankCapacity(i) - current.getAmount();
-            if (free <= 0) {
-                continue;
-            }
-
-            // Verify the handler accepts this fluid at all.
-            if (handler.fill(representative, IFluidHandler.FluidAction.SIMULATE) <= 0) {
-                continue;
-            }
-
-            remaining -= free;
-        }
-
-        return remaining <= 0;
-    }
-
+    /**
+     * Aggregate-path capacity check for targets without a usable capability view (ME
+     * interfaces, unknown inventories). Combines the per-key check with a conservative
+     * slot-count bound: it assumes slots are shared, so it may underestimate for machines
+     * with dedicated filtered slots — but those should be reached via the exact capability
+     * path instead.
+     */
     @Unique
     private boolean gtlcore$targetAcceptsAll(PatternProviderTarget target, KeyCounter baseInputs, long operations) {
-        // Per-key capacity check: each key must fit its own required amount.
-        // Aggregating per AEKeyType with a min() capacity would let a single
-        // special-stack item (e.g. maxStackSize=1) cap the whole pattern.
+        if (!gtlcore$keysFitIndividually(target, baseInputs, operations)) {
+            return false;
+        }
+
+        // For items we additionally enforce a slot-aware bound, because single-slot
+        // inventories cannot mix different item types in the same slot.
         long requiredItemSlots = 0;
         long availableItemSlots = 0;
 
+        for (var input : baseInputs) {
+            long amount = NumberUtils.saturatedMultiply(input.getLongValue(), operations);
+            if (amount <= 0 || !(input.getKey() instanceof AEItemKey itemKey)) {
+                continue;
+            }
+
+            long available = target.insert(itemKey, Long.MAX_VALUE, Actionable.SIMULATE);
+            int maxStack = Math.max(1, itemKey.getItem().getMaxStackSize());
+            requiredItemSlots = NumberUtils.saturatedAdd(requiredItemSlots, gtlcore$ceilDiv(amount, maxStack));
+            availableItemSlots = Math.max(availableItemSlots, gtlcore$ceilDiv(available, maxStack));
+        }
+
+        return requiredItemSlots <= availableItemSlots;
+    }
+
+    @Unique
+    private boolean gtlcore$keysFitIndividually(PatternProviderTarget target, KeyCounter baseInputs, long operations) {
+        // Per-key capacity check: each key must fit its own required amount.
+        // Aggregating per AEKeyType with a min() capacity would let a single
+        // special-stack item (e.g. maxStackSize=1) cap the whole pattern.
         for (var input : baseInputs) {
             long amount = NumberUtils.saturatedMultiply(input.getLongValue(), operations);
             if (amount <= 0) {
                 continue;
             }
 
-            AEKey key = input.getKey();
-            long available = target.insert(key, Long.MAX_VALUE, Actionable.SIMULATE);
+            long available = target.insert(input.getKey(), Long.MAX_VALUE, Actionable.SIMULATE);
             if (amount > available) {
                 return false;
             }
-
-            // For items we additionally enforce a slot-aware bound, because single-slot
-            // inventories cannot mix different item types in the same slot.
-            if (key.getType() == AEKeyType.items() && key instanceof AEItemKey itemKey) {
-                int maxStack = Math.max(1, itemKey.getItem().getMaxStackSize());
-                requiredItemSlots = NumberUtils.saturatedAdd(requiredItemSlots, gtlcore$ceilDiv(amount, maxStack));
-                availableItemSlots = Math.max(availableItemSlots, gtlcore$ceilDiv(available, maxStack));
-            }
         }
 
-        return requiredItemSlots <= availableItemSlots;
+        return true;
     }
 
     @Unique
