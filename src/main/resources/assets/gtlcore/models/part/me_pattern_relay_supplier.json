@@ -1,0 +1,6 @@
+{
+  "parent": "ae2:part/pattern_provider_base",
+  "textures": {
+    "front": "gtlcore:block/me_pattern_relay_supplier"
+  }
+}

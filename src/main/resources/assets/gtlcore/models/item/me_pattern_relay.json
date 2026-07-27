@@ -1,0 +1,6 @@
+{
+  "parent": "ae2:item/cable_pattern_provider",
+  "textures": {
+    "front": "gtlcore:block/me_pattern_relay_supplier"
+  }
+}
