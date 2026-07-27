@@ -8,6 +8,7 @@
     "ae2.client.ModelBakeryMixin",
     "ae2.gui.NumberEntryWidgetAccessor",
     "ae2.gui.CraftAmountScreenMixin",
+    "ae2.gui.CraftConfirmScreenMixin",
     "ae2.gui.CraftingCPUScreenMixin",
     "ae2.gui.CraftingStatusSearchScreenMixin",
     "ae2.gui.CraftingStatusScreenMixin",

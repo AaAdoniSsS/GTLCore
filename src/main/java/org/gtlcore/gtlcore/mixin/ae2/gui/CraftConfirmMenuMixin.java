@@ -31,6 +31,7 @@ import appeng.menu.me.common.IncrementalUpdateHelper;
 import appeng.menu.me.crafting.CraftAmountMenu;
 import appeng.menu.me.crafting.CraftConfirmMenu;
 import appeng.menu.me.crafting.CraftingPlanSummary;
+import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -39,6 +40,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Future;
@@ -82,14 +84,38 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
     private IClientRepo gtlcore$repo;
 
     @Unique
-    private boolean gtlcore$sent = false;
+    private int gtlcore$storedSyncCooldown = 0;
+
+    @Unique
+    private @Nullable KeyCounter gtlcore$lastSentStored = null;
+
+    @Unique
+    private final IncrementalUpdateHelper gtlcore$updateHelper = new IncrementalUpdateHelper();
+
+    @Unique
+    private int gtlcore$liveVersion = 0;
+
+    @Unique
+    private int gtlcore$liveStoredVersion = -1;
+
+    @Unique
+    private @Nullable KeyCounter gtlcore$liveStoredCache;
+
+    @Unique
+    private int gtlcore$missingVersion = -1;
+
+    @Unique
+    private @Nullable CraftingPlanSummary gtlcore$missingPlan;
+
+    @Unique
+    private List<AEKey> gtlcore$missingCache = List.of();
 
     @Unique
     private long gtlcore$longAmount = CraftAmountReturnState.NO_LONG_AMOUNT;
 
     @Inject(method = "<init>", at = @At("RETURN"), remap = false)
     private void onConstructed(int id, Inventory ip, ISubMenuHost host, CallbackInfo ci) {
-        this.gtlcore$repo = new Repo(() -> 0, new ISortSource() {
+        var repo = new Repo(() -> 0, new ISortSource() {
 
             @Override
             public SortOrder getSortBy() {
@@ -111,11 +137,56 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
                 return TypeFilter.ALL;
             }
         });
+        // repo 每次收到更新回调此监听器，客户端缓存按版本号惰性失效
+        repo.setUpdateViewListener(() -> gtlcore$liveVersion++);
+        this.gtlcore$repo = repo;
     }
 
     @Override
     public IClientRepo gtlcore$getClientRepo() {
         return gtlcore$repo;
+    }
+
+    @Override
+    public @Nullable KeyCounter gtlcore$getLiveStored() {
+        // 首个同步包到达前 repo 是空的，不能拿来判定"库存已被消耗"
+        if (gtlcore$liveVersion == 0) {
+            return null;
+        }
+        if (gtlcore$liveStoredCache == null || gtlcore$liveStoredVersion != gtlcore$liveVersion) {
+            var live = new KeyCounter();
+            for (var entry : gtlcore$repo.getAllEntries()) {
+                if (entry.getWhat() != null && entry.getStoredAmount() > 0) {
+                    live.add(entry.getWhat(), entry.getStoredAmount());
+                }
+            }
+            gtlcore$liveStoredCache = live;
+            gtlcore$liveStoredVersion = gtlcore$liveVersion;
+        }
+        return gtlcore$liveStoredCache;
+    }
+
+    @Override
+    public List<AEKey> gtlcore$getMissingNow() {
+        var currentPlan = this.plan;
+        if (currentPlan == null) {
+            return List.of();
+        }
+        if (currentPlan != gtlcore$missingPlan || gtlcore$missingVersion != gtlcore$liveVersion) {
+            // 计划里的缺失量是算料时的快照，用实时库存复核被其他产线消耗的部分
+            var live = gtlcore$getLiveStored();
+            var missing = new ArrayList<AEKey>();
+            for (var entry : currentPlan.getEntries()) {
+                if (entry.getMissingAmount() > 0 ||
+                        (live != null && entry.getStoredAmount() > live.get(entry.getWhat()))) {
+                    missing.add(entry.getWhat());
+                }
+            }
+            gtlcore$missingCache = missing;
+            gtlcore$missingPlan = currentPlan;
+            gtlcore$missingVersion = gtlcore$liveVersion;
+        }
+        return gtlcore$missingCache;
     }
 
     @Override
@@ -142,12 +213,38 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
 
     @Inject(method = "broadcastChanges", at = @At("RETURN"))
     private void onBroadcastChanges(CallbackInfo ci) {
-        if (gtlcore$sent || this.plan == null) return;
-        KeyCounter relevantStored = gtlcore$getRelevantStoredAmounts();
-        var builder = MEInventoryUpdatePacket.builder(containerId, true);
-        builder.addFull(new IncrementalUpdateHelper(), relevantStored, Set.of(), new KeyCounter());
+        if (this.plan == null) return;
+        // 计划算完后库存仍可能被其他产线消耗，持续同步实时库存供客户端复核缺失
+        if (gtlcore$lastSentStored != null && --gtlcore$storedSyncCooldown > 0) return;
+        gtlcore$storedSyncCooldown = 10;
+        KeyCounter current = gtlcore$getRelevantStoredAmounts();
+
+        if (gtlcore$lastSentStored == null) {
+            var builder = MEInventoryUpdatePacket.builder(containerId, true);
+            builder.addFull(gtlcore$updateHelper, current, Set.of(), new KeyCounter());
+            builder.buildAndSend(this::sendPacketToClient);
+            gtlcore$lastSentStored = current;
+            return;
+        }
+
+        // 增量同步：只发送数量变化的键（current 只含 >0 的量，归零的键走第二个循环）
+        for (var entry : current) {
+            if (gtlcore$lastSentStored.get(entry.getKey()) != entry.getLongValue()) {
+                gtlcore$updateHelper.addChange(entry.getKey());
+            }
+        }
+        for (var entry : gtlcore$lastSentStored) {
+            if (current.get(entry.getKey()) == 0) {
+                gtlcore$updateHelper.addChange(entry.getKey());
+            }
+        }
+        if (!gtlcore$updateHelper.hasChanges()) return;
+
+        var builder = MEInventoryUpdatePacket.builder(containerId, false);
+        builder.addChanges(gtlcore$updateHelper, current, Set.of(), new KeyCounter());
         builder.buildAndSend(this::sendPacketToClient);
-        gtlcore$sent = true;
+        gtlcore$updateHelper.commitChanges();
+        gtlcore$lastSentStored = current;
     }
 
     @Unique

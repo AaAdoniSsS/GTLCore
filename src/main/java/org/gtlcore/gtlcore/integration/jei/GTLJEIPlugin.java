@@ -47,6 +47,7 @@ public class GTLJEIPlugin implements IModPlugin {
     @Override
     public void onRuntimeAvailable(@NotNull IJeiRuntime runtime) {
         JeiMeInventoryTooltip.onRuntimeAvailable(runtime);
+        JeiMissingIngredientBookmarks.onRuntimeAvailable(runtime);
         var list = new ArrayList<ItemStack>();
         for (int i = 1; i <= 32; i++) {
             list.add(IntCircuitBehaviour.stack(i));
@@ -57,5 +58,6 @@ public class GTLJEIPlugin implements IModPlugin {
     @Override
     public void onRuntimeUnavailable() {
         JeiMeInventoryTooltip.onRuntimeUnavailable();
+        JeiMissingIngredientBookmarks.onRuntimeUnavailable();
     }
 }
