@@ -535,6 +535,8 @@
   "item.gtlcore.me_pattern_relay": "ME Pattern Relay",
   "message.gtlcore.me_pattern_relay.mode_supplier": "ME Pattern Relay mode: Supplier End",
   "message.gtlcore.me_pattern_relay.mode_access": "ME Pattern Relay mode: Access End",
+  "tooltip.gtlcore.me_pattern_relay.description": "Relays crafting patterns between two independent ME networks.",
+  "tooltip.gtlcore.me_pattern_relay.wrench": "Use a wrench to switch between Supplier and Access modes.",
   "tooltip.gtlcore.me_pattern_relay.mode": "Mode: %s",
   "tooltip.gtlcore.me_pattern_relay.mode_supplier": "Supplier",
   "tooltip.gtlcore.me_pattern_relay.mode_access": "Access",

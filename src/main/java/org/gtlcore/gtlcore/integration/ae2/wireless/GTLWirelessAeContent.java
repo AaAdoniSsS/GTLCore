@@ -3,6 +3,7 @@ package org.gtlcore.gtlcore.integration.ae2.wireless;
 import org.gtlcore.gtlcore.GTLCore;
 import org.gtlcore.gtlcore.common.data.GTLCreativeModeTabs;
 import org.gtlcore.gtlcore.integration.ae2.pattern.PatternQuickUploadSelectionMenu;
+import org.gtlcore.gtlcore.integration.ae2.patternrelay.PatternRelayItem;
 import org.gtlcore.gtlcore.integration.ae2.patternrelay.PatternRelayPart;
 import org.gtlcore.gtlcore.integration.ae2.tag.TagViewCellItem;
 import org.gtlcore.gtlcore.integration.ae2.tag.TagViewCellMenu;
@@ -57,12 +58,9 @@ public final class GTLWirelessAeContent {
             "wireless_network_bookmark",
             () -> new BlockItem(WIRELESS_NETWORK_BOOKMARK.get(), new Item.Properties()));
 
-    public static final RegistryObject<PartItem<PatternRelayPart>> PATTERN_RELAY = ITEMS.register(
+    public static final RegistryObject<PatternRelayItem> PATTERN_RELAY = ITEMS.register(
             "me_pattern_relay",
-            () -> new PartItem<>(
-                    new Item.Properties(),
-                    PatternRelayPart.class,
-                    PatternRelayPart::new));
+            () -> new PatternRelayItem(new Item.Properties()));
 
     public static final RegistryObject<PartItem<METhroughputMonitorPart>> THROUGHPUT_MONITOR = ITEMS.register(
             "throughput_monitor",

@@ -535,6 +535,8 @@
   "item.gtlcore.me_pattern_relay": "ME 样板中继器",
   "message.gtlcore.me_pattern_relay.mode_supplier": "ME 样板中继器模式：供应端",
   "message.gtlcore.me_pattern_relay.mode_access": "ME 样板中继器模式：访问端",
+  "tooltip.gtlcore.me_pattern_relay.description": "在两个独立的 ME 网络之间中继加工样板。",
+  "tooltip.gtlcore.me_pattern_relay.wrench": "使用扳手切换供应端和访问端模式。",
   "tooltip.gtlcore.me_pattern_relay.mode": "模式：%s",
   "tooltip.gtlcore.me_pattern_relay.mode_supplier": "供应端",
   "tooltip.gtlcore.me_pattern_relay.mode_access": "访问端",

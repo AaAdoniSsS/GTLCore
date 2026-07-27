@@ -43,6 +43,7 @@ import appeng.api.util.AECableType;
 import appeng.parts.AEBasePart;
 import appeng.parts.PartModel;
 import appeng.util.Platform;
+import appeng.util.SettingsFrom;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -120,7 +121,7 @@ public final class PatternRelayPart extends AEBasePart implements ICraftingProvi
     @Override
     public void readFromNBT(CompoundTag data) {
         super.readFromNBT(data);
-        mode = Mode.fromOrdinal(data.getInt(TAG_MODE));
+        mode = getMode(data);
         readCounter(data, TAG_PENDING_OUTPUTS, pendingOutputs);
         readCounter(data, TAG_OBSERVED_SUPPLIER_STOCK, observedSupplierStock);
     }
@@ -128,9 +129,28 @@ public final class PatternRelayPart extends AEBasePart implements ICraftingProvi
     @Override
     public void writeToNBT(CompoundTag data) {
         super.writeToNBT(data);
-        data.putInt(TAG_MODE, mode.ordinal());
+        writeMode(data, mode);
         data.put(TAG_PENDING_OUTPUTS, writeCounter(pendingOutputs));
         data.put(TAG_OBSERVED_SUPPLIER_STOCK, writeCounter(observedSupplierStock));
+    }
+
+    @Override
+    public void exportSettings(SettingsFrom mode, CompoundTag output) {
+        super.exportSettings(mode, output);
+        writeMode(output, this.mode);
+    }
+
+    @Override
+    public void importSettings(SettingsFrom mode, CompoundTag input, @Nullable Player player) {
+        super.importSettings(mode, input, player);
+        Mode importedMode = getMode(input);
+        if (this.mode != importedMode) {
+            this.mode = importedMode;
+            routeRefreshRequested = true;
+            clearRoutes();
+            getHost().markForSave();
+            getHost().markForUpdate();
+        }
     }
 
     @Override
@@ -198,6 +218,14 @@ public final class PatternRelayPart extends AEBasePart implements ICraftingProvi
 
     public String getModeNameTranslationKey() {
         return mode.nameTranslationKey;
+    }
+
+    static String getModeNameTranslationKey(ItemStack stack) {
+        return getMode(stack.getTag()).nameTranslationKey;
+    }
+
+    static boolean isAccessMode(ItemStack stack) {
+        return getMode(stack.getTag()) == Mode.ACCESS;
     }
 
     @Override
@@ -426,6 +454,15 @@ public final class PatternRelayPart extends AEBasePart implements ICraftingProvi
             }
         }
         return entries;
+    }
+
+    private static Mode getMode(@Nullable CompoundTag data) {
+        return data != null && data.contains(TAG_MODE, Tag.TAG_INT) ?
+                Mode.fromOrdinal(data.getInt(TAG_MODE)) : Mode.SUPPLIER;
+    }
+
+    private static void writeMode(CompoundTag data, Mode mode) {
+        data.putInt(TAG_MODE, mode.ordinal());
     }
 
     private @Nullable PatternRelayPart findPeer(Mode expectedMode) {
