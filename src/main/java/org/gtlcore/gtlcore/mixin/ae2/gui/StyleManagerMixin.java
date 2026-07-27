@@ -13,7 +13,9 @@ public abstract class StyleManagerMixin {
 
     @ModifyVariable(method = "loadStyleDoc", at = @At("HEAD"), argsOnly = true, remap = false)
     private static String loadStyleDocHooks(String path) {
-        if (path.contains("crafting_status.json")) {
+        if (path.contains("craft_confirm.json")) {
+            return "/screens/modify_craft_confirm.json";
+        } else if (path.contains("crafting_status.json")) {
             return "/screens/modify_crafting_status.json";
         } else if (path.contains("wireless_pattern_encoding_terminal.json")) {
             return "/screens/wtlib/modify_wireless_pattern_encoding_terminal.json";

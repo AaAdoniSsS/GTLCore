@@ -36,6 +36,9 @@ public class GTLJadePlugin implements IWailaPlugin {
         var meInventoryAmountProvider = new MeInventoryAmountProvider();
         registration.addConfig(meInventoryAmountProvider.getUid(), true);
         registration.registerBlockComponent(meInventoryAmountProvider, Block.class);
+        var patternRelayProvider = new PatternRelayJadeProvider();
+        registration.addConfig(patternRelayProvider.getUid(), true);
+        registration.registerBlockComponent(patternRelayProvider, Block.class);
         registration.registerItemStorageClient(MEStockingItemStorageProvider.INSTANCE);
         registration.registerFluidStorageClient(MEStockingFluidStorageProvider.INSTANCE);
         registration.registerBlockComponent(new WirelessOpticalDataHatchProvide(), Block.class);

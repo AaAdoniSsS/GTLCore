@@ -6,6 +6,7 @@ import net.minecraft.world.level.Level;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.items.IItemHandler;
 
+import appeng.api.implementations.menuobjects.ItemMenuHost;
 import appeng.api.networking.IGrid;
 import appeng.helpers.WirelessTerminalMenuHost;
 import appeng.items.tools.powered.WirelessTerminalItem;
@@ -73,8 +74,11 @@ public final class WirelessTerminalGridResolver {
         if (grid == null || !terminal.hasPower(player, MIN_TERMINAL_POWER, stack)) {
             return null;
         }
-        var menuHost = new WirelessTerminalMenuHost(player, null, stack, (ignoredPlayer, ignoredMenu) -> {});
-        return menuHost.rangeCheck() ? grid : null;
+        ItemMenuHost menuHost = terminal.getMenuHost(player, -1, stack, null);
+        if (!(menuHost instanceof WirelessTerminalMenuHost wirelessHost) || !wirelessHost.rangeCheck()) {
+            return null;
+        }
+        return grid;
     }
 
     static final class SearchBudget {

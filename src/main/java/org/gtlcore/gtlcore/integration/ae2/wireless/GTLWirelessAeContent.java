@@ -3,6 +3,8 @@ package org.gtlcore.gtlcore.integration.ae2.wireless;
 import org.gtlcore.gtlcore.GTLCore;
 import org.gtlcore.gtlcore.common.data.GTLCreativeModeTabs;
 import org.gtlcore.gtlcore.integration.ae2.pattern.PatternQuickUploadSelectionMenu;
+import org.gtlcore.gtlcore.integration.ae2.patternrelay.PatternRelayItem;
+import org.gtlcore.gtlcore.integration.ae2.patternrelay.PatternRelayPart;
 import org.gtlcore.gtlcore.integration.ae2.tag.TagViewCellItem;
 import org.gtlcore.gtlcore.integration.ae2.tag.TagViewCellMenu;
 import org.gtlcore.gtlcore.integration.ae2.throughput.METhroughputMonitorPart;
@@ -55,6 +57,10 @@ public final class GTLWirelessAeContent {
     public static final RegistryObject<Item> WIRELESS_NETWORK_BOOKMARK_ITEM = ITEMS.register(
             "wireless_network_bookmark",
             () -> new BlockItem(WIRELESS_NETWORK_BOOKMARK.get(), new Item.Properties()));
+
+    public static final RegistryObject<PatternRelayItem> PATTERN_RELAY = ITEMS.register(
+            "me_pattern_relay",
+            () -> new PatternRelayItem(new Item.Properties()));
 
     public static final RegistryObject<PartItem<METhroughputMonitorPart>> THROUGHPUT_MONITOR = ITEMS.register(
             "throughput_monitor",
@@ -127,6 +133,7 @@ public final class GTLWirelessAeContent {
     private GTLWirelessAeContent() {}
 
     public static void register(IEventBus modBus) {
+        PatternRelayPart.registerModels();
         ThroughputMonitorTerminalPart.registerModels();
         BLOCKS.register(modBus);
         ITEMS.register(modBus);
@@ -161,6 +168,7 @@ public final class GTLWirelessAeContent {
         if (CreativeModeTabs.FUNCTIONAL_BLOCKS.equals(event.getTabKey()) || GTLCreativeModeTabs.GTL_CORE.getKey().equals(event.getTabKey())) {
             event.accept(WIRELESS_NETWORK_CORE_ITEM);
             event.accept(WIRELESS_NETWORK_BOOKMARK_ITEM);
+            event.accept(PATTERN_RELAY);
             event.accept(THROUGHPUT_MONITOR);
             event.accept(THROUGHPUT_MONITOR_CONFIGURATOR);
             event.accept(TAG_VIEW_CELL);
