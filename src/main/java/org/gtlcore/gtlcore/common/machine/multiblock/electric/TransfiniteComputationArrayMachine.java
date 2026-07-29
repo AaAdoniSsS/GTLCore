@@ -15,6 +15,7 @@ import com.gregtechceu.gtceu.api.machine.feature.IFancyUIMachine;
 import com.gregtechceu.gtceu.api.machine.feature.multiblock.IDisplayUIMachine;
 import com.gregtechceu.gtceu.api.machine.feature.multiblock.IMultiPart;
 import com.gregtechceu.gtceu.api.machine.multiblock.MultiblockControllerMachine;
+import com.gregtechceu.gtceu.api.pattern.MultiblockWorldSavedData;
 
 import com.lowdragmc.lowdraglib.gui.modular.ModularUI;
 import com.lowdragmc.lowdraglib.gui.texture.GuiTextureGroup;
@@ -35,6 +36,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.player.Player;
 
 import appeng.api.config.Actionable;
@@ -59,6 +61,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 public class TransfiniteComputationArrayMachine extends MultiblockControllerMachine
@@ -75,6 +78,7 @@ public class TransfiniteComputationArrayMachine extends MultiblockControllerMach
     private static final String NBT_CPU_ID = "Id";
     private static final String NBT_CPU_BYTES = "Bytes";
     private static final String NBT_CPU_STATE = "State";
+    private static final long ASYNC_PATTERN_CHECK_INTERVAL = 4L;
     private static final int UI_WIDTH = 198;
     private static final int UI_HEIGHT = 208;
     private static final int MAIN_PAGE_WIDTH = 190;
@@ -111,9 +115,37 @@ public class TransfiniteComputationArrayMachine extends MultiblockControllerMach
     @Nullable
     private MECraftingCPUInterfacePartMachine networkInterface;
     private TransfiniteCraftingCPU capacityCpu;
+    private final AtomicBoolean patternCheckQueued = new AtomicBoolean();
 
     public TransfiniteComputationArrayMachine(IMachineBlockEntity holder) {
         super(holder);
+    }
+
+    @Override
+    public void asyncCheckPattern(long periodID) {
+        if ((isFormed() && !getMultiblockState().hasError()) ||
+                Math.floorMod(getHolder().getOffset() + periodID, ASYNC_PATTERN_CHECK_INTERVAL) != 0 ||
+                !this.patternCheckQueued.compareAndSet(false, true)) {
+            return;
+        }
+        if (!(getLevel() instanceof ServerLevel serverLevel)) {
+            this.patternCheckQueued.set(false);
+            return;
+        }
+        serverLevel.getServer().execute(() -> {
+            try {
+                if (isInValid() || getLevel() != serverLevel) return;
+                if (checkPatternWithLock()) {
+                    setFlipped(getMultiblockState().isNeededFlip());
+                    onStructureFormed();
+                    var savedData = MultiblockWorldSavedData.getOrCreate(serverLevel);
+                    savedData.addMapping(getMultiblockState());
+                    savedData.removeAsyncLogic(this);
+                }
+            } finally {
+                this.patternCheckQueued.set(false);
+            }
+        });
     }
 
     public void setParallelism(long parallelism) {

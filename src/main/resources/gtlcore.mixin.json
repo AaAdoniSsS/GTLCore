@@ -4,6 +4,7 @@
   "package": "org.gtlcore.gtlcore.mixin",
   "compatibilityLevel": "JAVA_17",
   "client": [
+    "avaritia.client.InfinityArmorModelMixin",
     "ae2.client.BuiltInModelHooksAccessor",
     "ae2.client.ModelBakeryMixin",
     "ae2.gui.NumberEntryWidgetAccessor",
@@ -175,6 +176,7 @@
     "gtm.fix.WorkableElectricMultiblockMachineMixin",
     "gtm.ftb.TeleportFromMapPacketMixin",
     "gtm.gui.AmountSetWidgetMixin",
+    "gtm.gui.BatchConfiguratorMixin",
     "gtm.gui.GTRecipeWidgetMixin",
     "gtm.gui.MachineModeFancyConfiguratorMixin",
     "gtm.gui.ProspectorScannerBehaviorMixin",

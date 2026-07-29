@@ -1,9 +1,12 @@
 package org.gtlcore.gtlcore.mixin.gtm.fix;
 
+import org.gtlcore.gtlcore.api.machine.trait.IBatchMachine;
 import org.gtlcore.gtlcore.api.machine.trait.ICheckPatternMachine;
 import org.gtlcore.gtlcore.api.machine.trait.ILockRecipe;
 import org.gtlcore.gtlcore.api.machine.trait.IRecipeCapabilityMachine;
 import org.gtlcore.gtlcore.api.machine.trait.IRecipeStatus;
+import org.gtlcore.gtlcore.api.recipe.BatchProcessing;
+import org.gtlcore.gtlcore.api.recipe.IGTRecipe;
 import org.gtlcore.gtlcore.api.recipe.RecipeText;
 
 import com.gregtechceu.gtceu.api.GTValues;
@@ -17,22 +20,35 @@ import com.gregtechceu.gtceu.api.machine.feature.IFancyUIMachine;
 import com.gregtechceu.gtceu.api.machine.multiblock.WorkableElectricMultiblockMachine;
 import com.gregtechceu.gtceu.api.machine.multiblock.WorkableMultiblockMachine;
 import com.gregtechceu.gtceu.api.misc.EnergyContainerList;
+import com.gregtechceu.gtceu.common.data.GTRecipeTypes;
 import com.gregtechceu.gtceu.common.machine.multiblock.electric.research.DataBankMachine;
 import com.gregtechceu.gtceu.utils.GTUtil;
 
 import net.minecraft.ChatFormatting;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 
+import lombok.Getter;
+import org.jetbrains.annotations.NotNull;
 import org.spongepowered.asm.mixin.*;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import java.util.Arrays;
 import java.util.List;
 
 @Mixin(WorkableElectricMultiblockMachine.class)
-public abstract class WorkableElectricMultiblockMachineMixin extends WorkableMultiblockMachine implements IFancyUIMachine, ICheckPatternMachine {
+public abstract class WorkableElectricMultiblockMachineMixin extends WorkableMultiblockMachine implements IFancyUIMachine, ICheckPatternMachine, IBatchMachine {
+
+    @Unique
+    private static final String GTLCORE_BATCH_ENABLED_NBT = "GTLCoreBatchEnabled";
+
+    @Unique
+    @Getter
+    private boolean batchEnabled = false;
 
     public WorkableElectricMultiblockMachineMixin(IMachineBlockEntity holder, Object... args) {
         super(holder, args);
@@ -78,6 +94,48 @@ public abstract class WorkableElectricMultiblockMachineMixin extends WorkableMul
     }
 
     @Override
+    public void setBatchEnabled(boolean enabled) {
+        boolean nextState = enabled && supportsBatchProcessing();
+        if (this.batchEnabled == nextState) return;
+        this.batchEnabled = nextState;
+        this.markDirty();
+        this.getRecipeLogic().markLastRecipeDirty();
+        this.getRecipeLogic().updateTickSubscription();
+    }
+
+    @Override
+    public void saveCustomPersistedData(@NotNull CompoundTag tag, boolean forDrop) {
+        super.saveCustomPersistedData(tag, forDrop);
+        tag.putBoolean(GTLCORE_BATCH_ENABLED_NBT, this.batchEnabled);
+    }
+
+    @Override
+    public void loadCustomPersistedData(@NotNull CompoundTag tag) {
+        super.loadCustomPersistedData(tag);
+        if (tag.contains(GTLCORE_BATCH_ENABLED_NBT, Tag.TAG_BYTE)) {
+            this.batchEnabled = tag.getBoolean(GTLCORE_BATCH_ENABLED_NBT);
+        }
+    }
+
+    @Override
+    public boolean supportsBatchProcessing() {
+        return gtlcore$hasBaseBatchSupport() && !BatchProcessing.isCrossRecipeParallel(this);
+    }
+
+    @Override
+    public boolean canConfigureBatchProcessing() {
+        return gtlcore$hasBaseBatchSupport() && BatchProcessing.canConfigureBatchProcessing(this);
+    }
+
+    @Unique
+    private boolean gtlcore$hasBaseBatchSupport() {
+        var recipeTypes = getDefinition().getRecipeTypes();
+        return !isGenerator() && !(self() instanceof IOpticalComputationReceiver) &&
+                !(self() instanceof IOpticalComputationProvider) && !(self() instanceof DataBankMachine) &&
+                recipeTypes != null && Arrays.stream(recipeTypes).anyMatch(type -> type != GTRecipeTypes.DUMMY_RECIPES);
+    }
+
+    @Override
     public void attachConfigurators(ConfiguratorPanel configuratorPanel) {
         configuratorPanel.attachConfigurators(new IFancyConfiguratorButton.Toggle(
                 GuiTextures.BUTTON_POWER.getSubTexture(0, 0, 1, 0.5),
@@ -111,6 +169,11 @@ public abstract class WorkableElectricMultiblockMachineMixin extends WorkableMul
             } else {
                 textList.add(Component.translatable("gui.gtlcore.recipe_lock.no_recipe"));
             }
+        }
+        var activeRecipe = this.getRecipeLogic().getLastRecipe();
+        if (this.getRecipeLogic().isActive() && activeRecipe != null && IGTRecipe.of(activeRecipe).getBatchSize() > 1) {
+            textList.add(Component.translatable("gui.gtlcore.batch_processing.active",
+                    IGTRecipe.of(activeRecipe).getBatchSize()));
         }
     }
 

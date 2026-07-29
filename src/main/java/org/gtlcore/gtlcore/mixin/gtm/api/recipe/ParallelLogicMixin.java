@@ -1,5 +1,6 @@
 package org.gtlcore.gtlcore.mixin.gtm.api.recipe;
 
+import org.gtlcore.gtlcore.api.recipe.BatchProcessing;
 import org.gtlcore.gtlcore.api.recipe.IGTRecipe;
 import org.gtlcore.gtlcore.api.recipe.IParallelLogic;
 
@@ -76,7 +77,9 @@ public abstract class ParallelLogicMixin {
             if (limitByOutput > 1) {
                 GTRecipe multiRecipe = currentRecipe.copy(ContentModifier.multiplier(limitByOutput), modifyDuration);
                 ((IGTRecipe) multiRecipe).setRealParallels((long) limitByOutput * ((IGTRecipe) currentRecipe).getRealParallels());
-                multiRecipe = IParallelLogic.getRecipeOutputChance(machine, multiRecipe);
+                if (!BatchProcessing.isEnabled(machine.self())) {
+                    multiRecipe = IParallelLogic.getRecipeOutputChance(machine, multiRecipe);
+                }
                 return Pair.of(multiRecipe, limitByOutput);
             } else {
                 return Pair.of(currentRecipe, limitByOutput);

@@ -3,6 +3,7 @@ package org.gtlcore.gtlcore.mixin.gtm.api.machine;
 import org.gtlcore.gtlcore.api.machine.ISuspendableMachine;
 import org.gtlcore.gtlcore.api.machine.trait.ILockRecipe;
 import org.gtlcore.gtlcore.api.machine.trait.IRecipeStatus;
+import org.gtlcore.gtlcore.api.recipe.BatchProcessing;
 import org.gtlcore.gtlcore.api.recipe.IGTRecipe;
 import org.gtlcore.gtlcore.api.recipe.RecipeResult;
 
@@ -27,6 +28,8 @@ import lombok.Setter;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.*;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Redirect;
 
 import java.util.*;
 import java.util.function.Predicate;
@@ -116,6 +119,7 @@ public abstract class RecipeLogicMixin implements ILockRecipe, IRecipeStatus {
     @Overwrite(remap = false)
     protected boolean handleRecipeIO(GTRecipe recipe, IO io) {
         if (!(this.machine.hasProxies() && io != IO.BOTH)) return false;
+        if (io == IO.IN && !BatchProcessing.applyInPlace(this.machine.self(), recipe)) return false;
         return handleRecipeInput(this.machine, recipe);
     }
 
@@ -167,6 +171,22 @@ public abstract class RecipeLogicMixin implements ILockRecipe, IRecipeStatus {
             this.duration = recipe.duration;
             this.isActive = true;
         }
+    }
+
+    @Redirect(
+              method = "serverTick",
+              at = @At(
+                       value = "INVOKE",
+                       target = "Lcom/gregtechceu/gtceu/api/machine/trait/RecipeLogic;onRecipeFinish()V",
+                       remap = false),
+              remap = false)
+    private void gtlcore$finishRecipeWhenBatchOutputFits(RecipeLogic recipeLogic) {
+        if (this.lastRecipe != null && IGTRecipe.of(this.lastRecipe).getBatchSize() > 1 &&
+                !matchRecipeOutput(this.machine, this.lastRecipe)) {
+            this.setWaiting(null);
+            return;
+        }
+        recipeLogic.onRecipeFinish();
     }
 
     /**
@@ -271,6 +291,11 @@ public abstract class RecipeLogicMixin implements ILockRecipe, IRecipeStatus {
      */
     @Overwrite(remap = false)
     public void onRecipeFinish() {
+        if (this.lastRecipe != null && IGTRecipe.of(this.lastRecipe).getBatchSize() > 1 &&
+                !matchRecipeOutput(this.machine, this.lastRecipe)) {
+            this.setWaiting(null);
+            return;
+        }
         this.machine.afterWorking();
         if (this.lastRecipe != null) {
             handleRecipeOutput(this.machine, this.lastRecipe);

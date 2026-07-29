@@ -42,6 +42,7 @@ public class ThroughputMonitorTerminalPart extends AbstractDisplayPart
 
     private final ThroughputMonitorCollector collector = new ThroughputMonitorCollector();
     private final AppEngInternalInventory viewCells = new AppEngInternalInventory(this, VIEW_CELL_SLOT_COUNT);
+    private int openMenuCount;
 
     public ThroughputMonitorTerminalPart(IPartItem<?> partItem) {
         super(partItem, true);
@@ -50,7 +51,7 @@ public class ThroughputMonitorTerminalPart extends AbstractDisplayPart
     @Override
     public void addToWorld() {
         super.addToWorld();
-        registerStorageTracker();
+        updateStorageTracker();
     }
 
     @Override
@@ -104,7 +105,7 @@ public class ThroughputMonitorTerminalPart extends AbstractDisplayPart
 
     @Override
     protected void onMainNodeStateChanged(IGridNodeListener.State reason) {
-        registerStorageTracker();
+        updateStorageTracker();
         super.onMainNodeStateChanged(reason);
     }
 
@@ -126,6 +127,25 @@ public class ThroughputMonitorTerminalPart extends AbstractDisplayPart
     List<ThroughputMonitorCollector.Snapshot> getSnapshots() {
         registerStorageTracker();
         return collector.getSnapshots();
+    }
+
+    void openMonitor() {
+        openMenuCount++;
+        registerStorageTracker();
+    }
+
+    void closeMonitor() {
+        if (openMenuCount > 0 && --openMenuCount == 0) {
+            unregisterStorageTracker();
+        }
+    }
+
+    private void updateStorageTracker() {
+        if (openMenuCount > 0) {
+            registerStorageTracker();
+        } else {
+            unregisterStorageTracker();
+        }
     }
 
     private void registerStorageTracker() {

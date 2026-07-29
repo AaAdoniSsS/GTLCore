@@ -1,0 +1,209 @@
+package org.gtlcore.gtlcore.api.recipe;
+
+import org.gtlcore.gtlcore.api.machine.trait.IBatchMachine;
+import org.gtlcore.gtlcore.api.recipe.ingredient.LongIngredient;
+import org.gtlcore.gtlcore.common.machine.trait.MultipleRecipesLogic;
+import org.gtlcore.gtlcore.config.ConfigHolder;
+
+import com.gregtechceu.gtceu.api.capability.recipe.FluidRecipeCapability;
+import com.gregtechceu.gtceu.api.capability.recipe.ItemRecipeCapability;
+import com.gregtechceu.gtceu.api.capability.recipe.RecipeCapability;
+import com.gregtechceu.gtceu.api.machine.MetaMachine;
+import com.gregtechceu.gtceu.api.machine.feature.IRecipeLogicMachine;
+import com.gregtechceu.gtceu.api.recipe.GTRecipe;
+import com.gregtechceu.gtceu.api.recipe.content.Content;
+import com.gregtechceu.gtceu.api.recipe.ingredient.FluidIngredient;
+import com.gregtechceu.gtceu.api.recipe.ingredient.SizedIngredient;
+
+import net.minecraft.world.item.crafting.Ingredient;
+
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Optional;
+
+import static org.gtlcore.gtlcore.api.recipe.IAdvancedContentModifier.preciseMultiplier;
+
+public final class BatchProcessing {
+
+    private static final ClassValue<MultipleRecipeModeAccess> MULTIPLE_RECIPE_MODE_ACCESS = new ClassValue<>() {
+
+        @Override
+        protected MultipleRecipeModeAccess computeValue(Class<?> type) {
+            return new MultipleRecipeModeAccess(
+                    findMethod(type, List.of("isMultipleMode", "getMultipleMode")),
+                    findMethod(type, List.of("setMultipleMode", "setIsMultipleMode"), boolean.class),
+                    findMethod(type, List.of("useModes")));
+        }
+    };
+
+    private BatchProcessing() {}
+
+    public static boolean isEnabled(MetaMachine machine) {
+        return machine instanceof IBatchMachine batchMachine && batchMachine.supportsBatchProcessing() &&
+                batchMachine.isBatchEnabled();
+    }
+
+    public static boolean isCrossRecipeParallel(IRecipeLogicMachine machine) {
+        if (!(machine.getRecipeLogic() instanceof MultipleRecipesLogic)) return false;
+
+        var modeGetter = MULTIPLE_RECIPE_MODE_ACCESS.get(machine.getClass()).modeGetter();
+        return modeGetter.isEmpty() || invokeBoolean(modeGetter.get(), machine, true);
+    }
+
+    public static boolean canConfigureBatchProcessing(IRecipeLogicMachine machine) {
+        if (!(machine.getRecipeLogic() instanceof MultipleRecipesLogic)) return true;
+
+        var access = MULTIPLE_RECIPE_MODE_ACCESS.get(machine.getClass());
+        if (access.modeGetter().isEmpty() || access.modeSetter().isEmpty()) return false;
+        return access.useModesGetter().isEmpty() || invokeBoolean(access.useModesGetter().get(), machine, true);
+    }
+
+    public static GTRecipe apply(MetaMachine machine, GTRecipe recipe) {
+        if (!isEnabled(machine) || IGTRecipe.of(recipe).isBatchProcessed() ||
+                !(machine instanceof IRecipeLogicMachine recipeMachine)) {
+            return recipe;
+        }
+
+        int batchSize = getBatchSize(recipeMachine, recipe);
+        if (batchSize == 0) return null;
+        GTRecipe result = batchSize > 1 ? scaleRecipe(recipe, batchSize) : recipe;
+        result = IParallelLogic.getRecipeOutputChance(recipeMachine, result);
+        IGTRecipe.of(result).setBatchSize(batchSize);
+        IGTRecipe.of(result).setBatchProcessed(true);
+        return result;
+    }
+
+    public static boolean applyInPlace(MetaMachine machine, GTRecipe recipe) {
+        GTRecipe result = apply(machine, recipe);
+        if (result == null) return false;
+        if (result == recipe) return true;
+
+        var inputs = new HashMap<>(result.inputs);
+        var outputs = new HashMap<>(result.outputs);
+        var tickInputs = new HashMap<>(result.tickInputs);
+        var tickOutputs = new HashMap<>(result.tickOutputs);
+        recipe.inputs.clear();
+        recipe.inputs.putAll(inputs);
+        recipe.outputs.clear();
+        recipe.outputs.putAll(outputs);
+        recipe.tickInputs.clear();
+        recipe.tickInputs.putAll(tickInputs);
+        recipe.tickOutputs.clear();
+        recipe.tickOutputs.putAll(tickOutputs);
+        recipe.duration = result.duration;
+        recipe.ocTier = result.ocTier;
+        RecipeExtensionCopier.copy(result, recipe);
+        return true;
+    }
+
+    private static int getBatchSize(IRecipeLogicMachine machine, GTRecipe recipe) {
+        if (recipe.duration <= 0) return 1;
+
+        int timeLimit = Math.max(1, ConfigHolder.INSTANCE.batchProcessingTimeLimitTicks);
+        int maxCycles = timeLimit / recipe.duration;
+        long realParallels = Math.max(1, IGTRecipe.of(recipe).getRealParallels());
+        maxCycles = (int) Math.min(maxCycles, Long.MAX_VALUE / realParallels);
+        maxCycles = limitByLongAmounts(recipe, maxCycles);
+        if (maxCycles <= 0) return 0;
+        if (maxCycles == 1) return 1;
+
+        return getParallelAmountWithoutEU(machine, recipe, maxCycles);
+    }
+
+    private static int limitByLongAmounts(GTRecipe recipe, int limit) {
+        limit = limitByTotalAmount(limit, getTotalItemAmount(recipe.getInputContents(ItemRecipeCapability.CAP)));
+        limit = limitByTotalAmount(limit, getTotalFluidAmount(recipe.getInputContents(FluidRecipeCapability.CAP)));
+        limit = limitByTotalAmount(limit, getTotalItemAmount(recipe.getOutputContents(ItemRecipeCapability.CAP)));
+        return limitByTotalAmount(limit, getTotalFluidAmount(recipe.getOutputContents(FluidRecipeCapability.CAP)));
+    }
+
+    private static int limitByTotalAmount(int limit, long totalAmount) {
+        if (totalAmount < 0) return 0;
+        if (totalAmount == 0) return limit;
+        return (int) Math.min(limit, Long.MAX_VALUE / totalAmount);
+    }
+
+    private static long getTotalItemAmount(List<Content> contents) {
+        long total = 0;
+        for (Content content : contents) {
+            Ingredient ingredient = ItemRecipeCapability.CAP.of(content.content);
+            long amount = ingredient instanceof LongIngredient longIngredient ?
+                    longIngredient.getActualAmount() :
+                    ingredient instanceof SizedIngredient sizedIngredient ? sizedIngredient.getAmount() : 1;
+            if (amount < 0) return -1;
+            if (amount > Long.MAX_VALUE - total) return -1;
+            total += amount;
+        }
+        return total;
+    }
+
+    private static long getTotalFluidAmount(List<Content> contents) {
+        long total = 0;
+        for (Content content : contents) {
+            FluidIngredient ingredient = FluidRecipeCapability.CAP.of(content.content);
+            long amount = ingredient.getAmount();
+            if (amount < 0) return -1;
+            if (amount > Long.MAX_VALUE - total) return -1;
+            total += amount;
+        }
+        return total;
+    }
+
+    private static int getParallelAmountWithoutEU(IRecipeLogicMachine machine, GTRecipe recipe, int limit) {
+        long parallel = IParallelLogic.getParallel(machine, recipe, limit);
+        if (parallel == 0) return 0;
+
+        for (RecipeCapability<?> capability : recipe.inputs.keySet()) {
+            if (capability.doMatchInRecipe() && capability != ItemRecipeCapability.CAP &&
+                    capability != FluidRecipeCapability.CAP) {
+                parallel = Math.min(parallel, capability.getMaxParallelRatio(machine, recipe, (int) parallel));
+            }
+        }
+        for (RecipeCapability<?> capability : recipe.outputs.keySet()) {
+            if (capability.doMatchInRecipe() && capability != ItemRecipeCapability.CAP &&
+                    capability != FluidRecipeCapability.CAP && !machine.canVoidRecipeOutputs(capability)) {
+                parallel = Math.min(parallel, capability.limitParallel(recipe, machine, (int) parallel));
+            }
+        }
+        return (int) parallel;
+    }
+
+    private static GTRecipe scaleRecipe(GTRecipe recipe, int batchSize) {
+        GTRecipe batched = recipe.copy(preciseMultiplier(batchSize), false);
+        RecipeExtensionCopier.copy(recipe, batched);
+
+        batched.tickInputs.clear();
+        batched.tickInputs.putAll(recipe.tickInputs);
+        batched.tickOutputs.clear();
+        batched.tickOutputs.putAll(recipe.tickOutputs);
+        batched.duration = recipe.duration * batchSize;
+        batched.ocTier = recipe.ocTier;
+        IGTRecipe.of(batched).setRealParallels(IGTRecipe.of(recipe).getRealParallels() * batchSize);
+        return batched;
+    }
+
+    private static Optional<Method> findMethod(Class<?> type, List<String> names, Class<?>... parameterTypes) {
+        for (String name : names) {
+            try {
+                return Optional.of(type.getMethod(name, parameterTypes));
+            } catch (NoSuchMethodException ignored) {
+                // Optional compatibility method is not present on this machine type.
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static boolean invokeBoolean(Method method, Object target, boolean fallback) {
+        try {
+            Object result = method.invoke(target);
+            return result instanceof Boolean value ? value : fallback;
+        } catch (IllegalAccessException | InvocationTargetException exception) {
+            return fallback;
+        }
+    }
+
+    private record MultipleRecipeModeAccess(Optional<Method> modeGetter, Optional<Method> modeSetter,
+                                            Optional<Method> useModesGetter) {}
+}

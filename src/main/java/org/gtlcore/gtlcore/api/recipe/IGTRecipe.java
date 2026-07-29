@@ -15,4 +15,12 @@ public interface IGTRecipe {
     long getRealParallels();
 
     void setRealParallels(long realParallels);
+
+    int getBatchSize();
+
+    void setBatchSize(int batchSize);
+
+    boolean isBatchProcessed();
+
+    void setBatchProcessed(boolean batchProcessed);
 }

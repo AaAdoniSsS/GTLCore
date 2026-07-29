@@ -71,6 +71,9 @@ import java.util.function.*;
 
 public class AdvancedBlockPattern extends BlockPattern {
 
+    public static final String MATCHED_REPETITIONS_CONTEXT = "gtlcore:matched_repetitions";
+    public static final String MATCHED_MIN_Z_CONTEXT = "gtlcore:matched_min_z";
+
     static Direction[] FACINGS = { Direction.SOUTH, Direction.NORTH, Direction.WEST, Direction.EAST, Direction.UP,
             Direction.DOWN };
     static Direction[] FACINGS_H = { Direction.SOUTH, Direction.NORTH, Direction.WEST, Direction.EAST };
@@ -166,14 +169,7 @@ public class AdvancedBlockPattern extends BlockPattern {
         blocks.put(centerPos, controller);
         if (controller.isFormed() && autoBuildSetting.isReplaceMode()) controller.onStructureInvalid();
 
-        int[] repeat = new int[this.fingerLength];
-        for (int h = 0; h < this.fingerLength; h++) {
-            var minH = aisleRepetitions[h][0];
-            var maxH = aisleRepetitions[h][1];
-            if (minH != maxH) {
-                repeat[h] = Math.max(minH, Math.min(maxH, autoBuildSetting.getRepeatCount()));
-            } else repeat[h] = minH;
-        }
+        int[] repeat = getConfiguredRepetitions(autoBuildSetting.getRepeatCount());
 
         for (int c = 0, z = minZ, r; c < this.fingerLength; c++) {
             for (r = 0; r < repeat[c]; r++) {
@@ -384,28 +380,31 @@ public class AdvancedBlockPattern extends BlockPattern {
         Direction facing = controller.self().getFrontFacing();
         Direction upwardsFacing = controller.self().getUpwardsFacing();
 
-        int repeatCountSetting = autoBuildSetting.getRepeatCount();
-        boolean isFlipped = autoBuildSetting.isFlipped();
         boolean aeMode = autoBuildSetting.isAeMode();
         GlobalPos boundAE = autoBuildSetting.getBoundAE();
         IGrid grid = aeMode ? findBestGrid(level, player, boundAE) : null;
         var aeInventory = grid != null ? grid.getStorageService().getInventory() : null;
         IActionSource source = IActionSource.ofPlayer(player);
 
-        // 获取多方块状态用于判定方块是否有效
         MultiblockState worldState = controller.getMultiblockState();
-
-        // 计算重复次数
-        int[] repeat = new int[this.fingerLength];
-        for (int h = 0; h < this.fingerLength; h++) {
-            var minH = this.aisleRepetitions[h][0];
-            var maxH = this.aisleRepetitions[h][1];
-            if (minH != maxH) {
-                repeat[h] = Math.max(minH, Math.min(maxH, repeatCountSetting));
-            } else repeat[h] = minH;
+        DismantleLayout layout = null;
+        if (controller.getPattern().checkPatternAt(worldState, true)) {
+            var matchContext = worldState.getMatchContext();
+            int[] repetitions = matchContext.get(MATCHED_REPETITIONS_CONTEXT);
+            if (repetitions != null && repetitions.length == this.fingerLength &&
+                    matchContext.containsKey(MATCHED_MIN_Z_CONTEXT)) {
+                layout = new DismantleLayout(matchContext.getInt(MATCHED_MIN_Z_CONTEXT), repetitions,
+                        worldState.isNeededFlip(), Integer.MAX_VALUE);
+            }
+        }
+        if (layout == null) {
+            layout = findBestPartialDismantleLayout(level, centerPos, facing, upwardsFacing,
+                    controller.self().allowFlip());
         }
 
-        int minZ = -this.centerOffset[4];
+        int[] repeat = layout.repetitions();
+        int minZ = layout.minZ();
+        boolean isFlipped = layout.isFlipped();
 
         // 遍历模式中的每一个位置
         for (int c = 0, z = minZ; c < this.fingerLength; c++) {
@@ -479,6 +478,95 @@ public class AdvancedBlockPattern extends BlockPattern {
         if (controller instanceof WorkableMultiblockMachine machine) {
             machine.onPartUnload();
         }
+    }
+
+    private DismantleLayout findBestPartialDismantleLayout(Level level, BlockPos centerPos, Direction facing,
+                                                           Direction upwardsFacing, boolean allowsFlip) {
+        DismantleLayout normal = findPartialDismantleLayout(level, centerPos, facing, upwardsFacing, false);
+        if (!allowsFlip) return normal;
+        DismantleLayout flipped = findPartialDismantleLayout(level, centerPos, facing, upwardsFacing, true);
+        return flipped.score() > normal.score() ? flipped : normal;
+    }
+
+    private DismantleLayout findPartialDismantleLayout(Level level, BlockPos centerPos, Direction facing,
+                                                       Direction upwardsFacing, boolean isFlipped) {
+        int controllerAisle = this.centerOffset[2];
+        int[] repetitions = new int[this.fingerLength];
+        MultiblockState probeState = new MultiblockState(level, centerPos);
+        int score = 0;
+
+        int z = 0;
+        for (int aisle = controllerAisle; aisle < this.fingerLength; aisle++) {
+            int count = findPartialRepetitions(level, centerPos, facing, upwardsFacing, isFlipped, probeState,
+                    aisle, z, 1);
+            repetitions[aisle] = count;
+            for (int repeat = 0; repeat < count; repeat++) {
+                score += scoreSlice(level, centerPos, facing, upwardsFacing, isFlipped, probeState, aisle,
+                        z + repeat);
+            }
+            z += count;
+        }
+
+        z = -1;
+        for (int aisle = controllerAisle - 1; aisle >= 0; aisle--) {
+            int count = findPartialRepetitions(level, centerPos, facing, upwardsFacing, isFlipped, probeState,
+                    aisle, z, -1);
+            repetitions[aisle] = count;
+            for (int repeat = 0; repeat < count; repeat++) {
+                score += scoreSlice(level, centerPos, facing, upwardsFacing, isFlipped, probeState, aisle,
+                        z - repeat);
+            }
+            z -= count;
+        }
+        return new DismantleLayout(z + 1, repetitions, isFlipped, score);
+    }
+
+    private int findPartialRepetitions(Level level, BlockPos centerPos, Direction facing, Direction upwardsFacing,
+                                       boolean isFlipped, MultiblockState probeState, int aisle, int startZ,
+                                       int step) {
+        int min = this.aisleRepetitions[aisle][0];
+        int max = this.aisleRepetitions[aisle][1];
+        if (min == max) return min;
+
+        int adjacentAisle = aisle + step;
+        int count = 0;
+        while (count < max) {
+            int z = startZ + count * step;
+            int currentScore = scoreSlice(level, centerPos, facing, upwardsFacing, isFlipped, probeState, aisle, z);
+            int adjacentScore = adjacentAisle >= 0 && adjacentAisle < this.fingerLength ?
+                    scoreSlice(level, centerPos, facing, upwardsFacing, isFlipped, probeState, adjacentAisle, z) : 0;
+            if (adjacentScore > currentScore || currentScore == 0 && count >= min) break;
+            count++;
+        }
+        return count;
+    }
+
+    private int scoreSlice(Level level, BlockPos centerPos, Direction facing, Direction upwardsFacing,
+                           boolean isFlipped, MultiblockState probeState, int aisle, int z) {
+        int score = 0;
+        for (int b = 0, y = -this.centerOffset[1]; b < this.thumbLength; b++, y++) {
+            for (int a = 0, x = -this.centerOffset[0]; a < this.palmLength; a++, x++) {
+                TraceabilityPredicate predicate = this.blockMatches[aisle][b][a];
+                if (predicate.isAny()) continue;
+                BlockPos pos = setActualRelativeOffset(x, y, z, facing, upwardsFacing, isFlipped)
+                        .offset(centerPos.getX(), centerPos.getY(), centerPos.getZ());
+                BlockState blockState = level.getBlockState(pos);
+                if (!blockState.isAir() && isBlockValid(blockState, pos, predicate, probeState)) score++;
+            }
+        }
+        return score;
+    }
+
+    private record DismantleLayout(int minZ, int[] repetitions, boolean isFlipped, int score) {}
+
+    private int[] getConfiguredRepetitions(int repeatCount) {
+        int[] repetitions = new int[this.fingerLength];
+        for (int aisle = 0; aisle < this.fingerLength; aisle++) {
+            int min = this.aisleRepetitions[aisle][0];
+            int max = this.aisleRepetitions[aisle][1];
+            repetitions[aisle] = min == max ? min : Math.max(min, Math.min(max, repeatCount));
+        }
+        return repetitions;
     }
 
     private boolean isBlockValid(BlockState current, BlockPos pos, TraceabilityPredicate predicate, MultiblockState tempState) {

@@ -31,6 +31,7 @@ public abstract class GTRecipePayloadMixin extends ObjectTypedPayload<GTRecipe> 
         tag.putString("id", payload.id.toString());
         tag.put("recipe", GTRecipeSerializer.CODEC.encodeStart(NbtOps.INSTANCE, payload).result().orElse(new CompoundTag()));
         tag.putLong("realParallels", IGTRecipe.of(payload).getRealParallels());
+        tag.putInt("batchSize", IGTRecipe.of(payload).getBatchSize());
         tag.putInt("ocTier", payload.ocTier);
         return tag;
     }
@@ -42,6 +43,7 @@ public abstract class GTRecipePayloadMixin extends ObjectTypedPayload<GTRecipe> 
             if (payload != null) {
                 payload.id = new ResourceLocation(compoundTag.getString("id"));
                 IGTRecipe.of(payload).setRealParallels(compoundTag.contains("realParallels") ? compoundTag.getLong("realParallels") : 1);
+                IGTRecipe.of(payload).setBatchSize(compoundTag.contains("batchSize") ? compoundTag.getInt("batchSize") : 1);
                 payload.ocTier = compoundTag.getInt("ocTier");
             }
         } else if (tag instanceof StringTag stringTag) {
@@ -67,6 +69,7 @@ public abstract class GTRecipePayloadMixin extends ObjectTypedPayload<GTRecipe> 
         buf.writeResourceLocation(this.payload.id);
         GTRecipeSerializer.SERIALIZER.toNetwork(buf, this.payload);
         buf.writeLong(IGTRecipe.of(this.payload).getRealParallels());
+        buf.writeInt(IGTRecipe.of(this.payload).getBatchSize());
         buf.writeInt(this.payload.ocTier);
     }
 
@@ -77,7 +80,10 @@ public abstract class GTRecipePayloadMixin extends ObjectTypedPayload<GTRecipe> 
             this.payload = GTRecipeSerializer.SERIALIZER.fromNetwork(id, buf);
             if (buf.isReadable()) {
                 IGTRecipe.of(this.payload).setRealParallels(buf.readLong());
-                this.payload.ocTier = buf.readInt();
+                if (buf.isReadable()) {
+                    IGTRecipe.of(this.payload).setBatchSize(buf.readInt());
+                    this.payload.ocTier = buf.readInt();
+                }
             }
         } else {
             RecipeManager recipeManager = Registries.getRecipeManager();
