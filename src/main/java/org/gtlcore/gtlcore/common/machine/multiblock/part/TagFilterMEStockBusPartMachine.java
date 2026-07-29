@@ -265,6 +265,8 @@ public class TagFilterMEStockBusPartMachine extends MEInputBusPartMachine implem
 
         protected IntArrayList configIndexList = new IntArrayList();
 
+        private long lastSnapshotTick = Long.MIN_VALUE;
+
         public ExportOnlyAEStockingItemList(MetaMachine holder, int slots) {
             super(holder, slots, ExportOnlyAEStockingItemSlot::new);
             for (ExportOnlyAEItemSlot exportOnlyAEItemSlot : inventory) {
@@ -283,6 +285,7 @@ public class TagFilterMEStockBusPartMachine extends MEInputBusPartMachine implem
 
         @Override
         public void onConfigChanged() {
+            lastSnapshotTick = Long.MIN_VALUE;
             configList.clear();
             configIndexList.clear();
             for (int i = 0, inventoryLength = inventory.length; i < inventoryLength; i++) {
@@ -365,8 +368,10 @@ public class TagFilterMEStockBusPartMachine extends MEInputBusPartMachine implem
 
         @Override
         public @Nullable Object2LongMap<ItemStack> getMEItemMap() {
-            if (ENABLE_ULTIMATE_ME_STOCKING || getChanged()) {
+            long currentTick = getOffsetTimer();
+            if (getChanged() || ENABLE_ULTIMATE_ME_STOCKING && lastSnapshotTick != currentTick) {
                 setChanged(false);
+                lastSnapshotTick = currentTick;
                 final var itemMap = getItemMap();
                 itemMap.clear();
                 final MEStorage aeNetwork = Objects.requireNonNull(getMainNode().getGrid()).getStorageService().getInventory();

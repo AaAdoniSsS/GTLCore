@@ -63,6 +63,7 @@ public interface IParallelLogic {
         var copy = new GTRecipe(recipe.recipeType, recipe.id, recipe.inputs, recipeContents, recipe.tickInputs, recipe.tickOutputs,
                 recipe.inputChanceLogics, recipe.outputChanceLogics, recipe.tickInputChanceLogics, recipe.tickOutputChanceLogics,
                 recipe.conditions, recipe.ingredientActions, recipe.data, recipe.duration, recipe.isFuel);
+        RecipeExtensionCopier.copy(recipe, copy);
         ((IGTRecipe) copy).setRealParallels(((IGTRecipe) recipe).getRealParallels());
         copy.ocTier = recipe.ocTier;
         return copy;

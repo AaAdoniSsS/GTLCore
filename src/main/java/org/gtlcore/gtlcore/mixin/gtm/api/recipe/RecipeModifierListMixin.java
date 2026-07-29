@@ -1,5 +1,6 @@
 package org.gtlcore.gtlcore.mixin.gtm.api.recipe;
 
+import org.gtlcore.gtlcore.api.recipe.BatchProcessing;
 import org.gtlcore.gtlcore.api.recipe.IAdvancedOCResult;
 import org.gtlcore.gtlcore.utils.NumberUtils;
 
@@ -96,6 +97,6 @@ public abstract class RecipeModifierListMixin {
         }
 
         result.reset();
-        return modifiedRecipe;
+        return modifiedRecipe == null ? null : BatchProcessing.apply(machine, modifiedRecipe);
     }
 }

@@ -3,6 +3,7 @@ package org.gtlcore.gtlcore.mixin.gtm.api.machine;
 import org.gtlcore.gtlcore.api.machine.IPerformanceDisplayMachine;
 import org.gtlcore.gtlcore.api.machine.ISuspendableMachine;
 import org.gtlcore.gtlcore.api.machine.PerformanceMonitorMachine;
+import org.gtlcore.gtlcore.api.machine.trait.IBatchMachine;
 
 import com.gregtechceu.gtceu.api.block.BlockProperties;
 import com.gregtechceu.gtceu.api.capability.GTCapabilityHelper;
@@ -164,14 +165,55 @@ public abstract class MetaMachineMixin implements IPerformanceDisplayMachine, IS
         }
     }
 
+    @Inject(method = "onToolClick", at = @At("HEAD"), remap = false, cancellable = true)
+    private void gtlcore$toggleBatchProcessingWithWireCutter(Set<@NotNull GTToolType> toolTypes, ItemStack itemStack,
+                                                             UseOnContext context,
+                                                             CallbackInfoReturnable<Pair<GTToolType, InteractionResult>> cir) {
+        Player player = context.getPlayer();
+        MetaMachine machine = holder.getMetaMachine();
+        if (!toolTypes.contains(GTToolType.WIRE_CUTTER) || player == null || !player.isShiftKeyDown() ||
+                !(machine instanceof IBatchMachine batchMachine) ||
+                !batchMachine.canConfigureBatchProcessing())
+            return;
+
+        InteractionResult result = player instanceof ServerPlayer serverPlayer ?
+                gtlcore$toggleBatchProcessing(serverPlayer, context.getHand(), batchMachine) :
+                InteractionResult.SUCCESS;
+        cir.setReturnValue(Pair.of(GTToolType.WIRE_CUTTER, result));
+    }
+
     @Inject(method = "onToolClick", at = @At("RETURN"), remap = false, cancellable = true)
-    private void onToolClick(Set<@NotNull GTToolType> toolType, ItemStack itemStack, UseOnContext context, CallbackInfoReturnable<Pair<GTToolType, InteractionResult>> cir) {
-        if (cir.getReturnValue().getSecond() == InteractionResult.PASS && toolType.contains(GTToolType.WIRE_CUTTER)) {
-            Player player = context.getPlayer();
-            if (player instanceof ServerPlayer serverPlayer && holder.getMetaMachine() instanceof IGridConnectedMachine gridConnectedMachine) {
-                cir.setReturnValue(Pair.of(GTToolType.WIRE_CUTTER, gTLCore$onWireCutterClick(serverPlayer, context.getHand(), gridConnectedMachine)));
-            }
+    private void gtlcore$configureGridWithWireCutter(Set<@NotNull GTToolType> toolTypes, ItemStack itemStack,
+                                                     UseOnContext context,
+                                                     CallbackInfoReturnable<Pair<GTToolType, InteractionResult>> cir) {
+        if (cir.getReturnValue().getSecond() != InteractionResult.PASS ||
+                !toolTypes.contains(GTToolType.WIRE_CUTTER))
+            return;
+
+        Player player = context.getPlayer();
+        MetaMachine machine = holder.getMetaMachine();
+        if (player instanceof ServerPlayer serverPlayer && machine instanceof IGridConnectedMachine gridConnectedMachine) {
+            cir.setReturnValue(Pair.of(GTToolType.WIRE_CUTTER,
+                    gTLCore$onWireCutterClick(serverPlayer, context.getHand(), gridConnectedMachine)));
         }
+    }
+
+    @Unique
+    private InteractionResult gtlcore$toggleBatchProcessing(ServerPlayer serverPlayer, InteractionHand hand,
+                                                            IBatchMachine batchMachine) {
+        serverPlayer.swing(hand);
+        if (!batchMachine.supportsBatchProcessing()) {
+            serverPlayer.sendSystemMessage(
+                    Component.translatable("gui.gtlcore.batch_processing.unsupported_mode"), true);
+            return InteractionResult.CONSUME;
+        }
+
+        boolean enabled = !batchMachine.isBatchEnabled();
+        batchMachine.setBatchEnabled(enabled);
+        serverPlayer.sendSystemMessage(Component.translatable(enabled ?
+                "gui.gtlcore.batch_processing.enabled" :
+                "gui.gtlcore.batch_processing.disabled"), true);
+        return InteractionResult.CONSUME;
     }
 
     @Inject(method = "shouldRenderGrid", at = @At("HEAD"), remap = false, cancellable = true)

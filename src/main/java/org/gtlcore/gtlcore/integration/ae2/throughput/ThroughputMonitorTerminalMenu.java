@@ -71,6 +71,7 @@ public class ThroughputMonitorTerminalMenu extends AEBaseMenu {
     private ThroughputMonitorUpdateInterval updateInterval = ThroughputMonitorUpdateInterval.SECOND;
     private int ticksUntilSync;
     private boolean initialSyncPending;
+    private boolean terminalCollectorOpen;
 
     public static ThroughputMonitorTerminalMenu createWiredClientMenu(int containerId, Inventory inventory,
                                                                       FriendlyByteBuf data) {
@@ -109,6 +110,10 @@ public class ThroughputMonitorTerminalMenu extends AEBaseMenu {
         this.menuPlayer = inventory.player;
         this.entries = List.of();
         this.initialSyncPending = terminal != null || wirelessCollector != null;
+        if (terminal != null) {
+            terminal.openMonitor();
+            terminalCollectorOpen = true;
+        }
         if (locator != null) {
             setLocator(locator);
             setReturnedFromSubScreen(returningFromSubmenu);
@@ -291,6 +296,10 @@ public class ThroughputMonitorTerminalMenu extends AEBaseMenu {
 
     @Override
     public void removed(@NotNull Player player) {
+        if (terminalCollectorOpen) {
+            terminal.closeMonitor();
+            terminalCollectorOpen = false;
+        }
         if (wirelessCollector != null) {
             wirelessCollector.close();
         }

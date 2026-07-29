@@ -100,6 +100,9 @@
   "config.gtlcore.option.ae2PatternProviderAutoExpandDefault": "Enable Smart Multiplication for newly placed AE2 Pattern Providers by default",
   "config.gtlcore.option.enablePrimitiveVoidOre": "Enable Primitive Void Ore Miner",
   "config.gtlcore.option.enableMaxFastCalculationLogging": "Enable MAX_FAST Calculation Performance Logging",
+  "config.gtlcore.option.enableAe2CraftingDispatchPerformanceLogging": "Enable AE2 Crafting Dispatch Performance Logging",
+  "config.gtlcore.option.ae2CraftingDispatchPerformanceWarningMicros": "AE2 Crafting Dispatch Performance Warning Threshold (Microseconds)",
+  "config.gtlcore.option.ae2CraftingDispatchPerformanceLogIntervalTicks": "AE2 Crafting Dispatch Performance Log Interval (Ticks)",
   "config.gtlcore.option.enableSkyBlokeMode": "Enable Skyblock Mode",
   "config.gtlcore.option.enableSmoothAnimations": "Enable Smooth Animations",
   "config.gtlcore.option.enableUltimateMEStocking": "Enable Ultimate ME Stocking Pull Mode",
@@ -115,6 +118,7 @@
   "config.gtlcore.option.travelStaffCD": "Travel Staff Cooldown",
   "config.gtlcore.option.ftbUltimineRange": "Chain Mining Range",
   "config.gtlcore.option.sendUpdateMessages": "Enable Update Notifications",
+  "config.gtlcore.option.batchProcessingTimeLimitTicks": "Batch Processing Time Limit (Ticks)",
   "config.jade.plugin_gtlcore.tick_time_provider": "[GTLCore] Tick Time",
   "config.jade.plugin_gtlcore.wireless_data_hatch_provider": "Wireless Data Hatch",
   "config.jade.plugin_gtlcore.wireless_ae_network_provider": "Wireless ME Network",
@@ -613,5 +617,9 @@
   "gui.gtlcore.transfinite_computation_array.selection_mode.player_only.tooltip": "Players only: accepts player-sourced requests and is preferred over general-purpose CPUs",
   "gui.gtlcore.transfinite_computation_array.selection_mode.machine_only.tooltip": "Automation only: accepts requests without a player source and is preferred over general-purpose CPUs",
   "gui.gtlcore.transfinite_computation_array.parallelism": "Dispatch parallelism",
-  "gui.gtlcore.transfinite_computation_array.storage": "Aggregate crafting storage: Unlimited"
+  "gui.gtlcore.transfinite_computation_array.storage": "Aggregate crafting storage: Unlimited",
+  "gui.gtlcore.batch_processing.enabled": "Batch processing: Enabled",
+  "gui.gtlcore.batch_processing.disabled": "Batch processing: Disabled",
+  "gui.gtlcore.batch_processing.unsupported_mode": "Batch processing: Unsupported in the current machine mode",
+  "gui.gtlcore.batch_processing.active": "Current batch: %s cycles"
 }

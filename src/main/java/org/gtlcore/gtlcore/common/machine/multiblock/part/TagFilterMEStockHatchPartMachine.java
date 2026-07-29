@@ -261,6 +261,8 @@ public class TagFilterMEStockHatchPartMachine extends MEInputHatchPartMachine im
 
         protected IntArrayList configIndexList = new IntArrayList();
 
+        private long lastSnapshotTick = Long.MIN_VALUE;
+
         public ExportOnlyAEStockingFluidList(MetaMachine holder, int slots) {
             super(holder, slots, ExportOnlyAEStockingFluidSlot::new);
             for (ExportOnlyAEFluidSlot exportOnlyAEFluidSlot : inventory) {
@@ -279,6 +281,7 @@ public class TagFilterMEStockHatchPartMachine extends MEInputHatchPartMachine im
 
         @Override
         public void onConfigChanged() {
+            lastSnapshotTick = Long.MIN_VALUE;
             configList.clear();
             configIndexList.clear();
             for (int i = 0, inventoryLength = inventory.length; i < inventoryLength; i++) {
@@ -357,8 +360,10 @@ public class TagFilterMEStockHatchPartMachine extends MEInputHatchPartMachine im
 
         @Override
         public List<FluidStack> getMEFluidList() {
-            if (ENABLE_ULTIMATE_ME_STOCKING || getChanged()) {
+            long currentTick = getOffsetTimer();
+            if (getChanged() || ENABLE_ULTIMATE_ME_STOCKING && lastSnapshotTick != currentTick) {
                 setChanged(false);
+                lastSnapshotTick = currentTick;
                 final var fluidList = getFluidList();
                 fluidList.clear();
                 final MEStorage aeNetwork = Objects.requireNonNull(getMainNode().getGrid()).getStorageService().getInventory();

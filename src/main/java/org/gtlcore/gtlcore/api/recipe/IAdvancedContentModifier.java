@@ -11,4 +11,10 @@ public interface IAdvancedContentModifier {
         ((IAdvancedContentModifier) modifier).setDivision(numerator, denominator);
         return modifier;
     }
+
+    static ContentModifier preciseMultiplier(long multiplier) {
+        var modifier = new ContentModifier(multiplier, 0);
+        ((IAdvancedContentModifier) modifier).setDivision(multiplier, 1);
+        return modifier;
+    }
 }

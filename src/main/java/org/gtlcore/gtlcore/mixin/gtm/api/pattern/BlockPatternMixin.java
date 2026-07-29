@@ -1,5 +1,6 @@
 package org.gtlcore.gtlcore.mixin.gtm.api.pattern;
 
+import org.gtlcore.gtlcore.api.pattern.AdvancedBlockPattern;
 import org.gtlcore.gtlcore.api.pattern.util.IMultiblockStateGet;
 
 import com.gregtechceu.gtceu.api.block.ActiveBlock;
@@ -24,6 +25,7 @@ import it.unimi.dsi.fastutil.objects.*;
 import org.spongepowered.asm.mixin.*;
 
 import java.lang.reflect.Array;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -67,101 +69,141 @@ public abstract class BlockPatternMixin {
      */
     @Overwrite(remap = false)
     public boolean checkPatternAt(MultiblockState worldState, BlockPos centerPos, Direction frontFacing, Direction upwardsFacing, boolean isFlipped, boolean savePredicate) {
-        boolean findFirstAisle = false;
-        int minZ = -centerOffset[4];
-        if (worldState instanceof IMultiblockStateGet stateGet) stateGet.cleanState();
-        PatternMatchContext matchContext = worldState.getMatchContext();
-        Map<SimplePredicate, Integer> globalCount = worldState.getGlobalCount();
-        Map<SimplePredicate, Integer> layerCount = worldState.getLayerCount();
+        int[] matchedRepetitions = new int[this.fingerLength];
+        int minStartZ = -this.centerOffset[4];
+        int maxStartZ = -this.centerOffset[3];
+        for (int startZ = minStartZ; startZ <= maxStartZ; startZ++) {
+            Arrays.fill(matchedRepetitions, 0);
+            if (gtlcore$matchAisles(worldState, centerPos, frontFacing, upwardsFacing, isFlipped, savePredicate,
+                    startZ, 0, startZ, matchedRepetitions)) {
+                worldState.setError(null);
+                worldState.setNeededFlip(isFlipped);
+                PatternMatchContext matchContext = worldState.getMatchContext();
+                matchContext.set(AdvancedBlockPattern.MATCHED_REPETITIONS_CONTEXT, matchedRepetitions.clone());
+                matchContext.set(AdvancedBlockPattern.MATCHED_MIN_Z_CONTEXT, startZ);
+                return true;
+            }
+            if (worldState.error == MultiblockState.UNLOAD_ERROR) return false;
+        }
 
-        // Checking aisles
-        for (int c = 0, z = minZ++, r; c < this.fingerLength; c++) {
-            // Checking repeatable slices
-            loop:
-            for (r = 0; (findFirstAisle ? r < aisleRepetitions[c][1] : z <= -centerOffset[3]); r++) {
-                // Checking single slice
-                layerCount.clear();
+        if (!worldState.hasError()) worldState.setError(new PatternError());
+        return false;
+    }
 
-                for (int b = 0, y = -centerOffset[1]; b < this.thumbLength; b++, y++) {
-                    for (int a = 0, x = -centerOffset[0]; a < this.palmLength; a++, x++) {
-                        worldState.setError(null);
-                        TraceabilityPredicate predicate = this.blockMatches[c][b][a];
-                        if (predicate.isAny()) continue;
-                        BlockPos pos = setActualRelativeOffset(x, y, z, frontFacing, upwardsFacing, isFlipped).offset(centerPos.getX(),
-                                centerPos.getY(), centerPos.getZ());
-                        if (worldState instanceof IMultiblockStateGet stateGet && !stateGet.updateState(pos, predicate)) {
-                            return false;
-                        }
-                        if (predicate.addCache()) {
-                            worldState.addPosCache(pos);
-                            if (savePredicate) {
-                                matchContext.getOrCreate("predicates", Object2ObjectOpenHashMap::new).put(pos, predicate);
-                            }
-                        }
-                        boolean canPartShared = true;
-                        if (worldState.getTileEntity() instanceof IMachineBlockEntity machineBlockEntity &&
-                                machineBlockEntity.getMetaMachine() instanceof IMultiPart part) { // add detected parts
-                            if (!predicate.isAny()) {
-                                if (part.isFormed() && !part.canShared() &&
-                                        !part.hasController(worldState.controllerPos)) { // check part can be shared
-                                    canPartShared = false;
-                                    worldState.setError(new PatternStringError("multiblocked.pattern.error.share"));
-                                } else {
-                                    matchContext.getOrCreate("parts", ObjectOpenHashSet::new).add(part);
-                                }
-                            }
-                        }
-                        if (worldState.getBlockState().getBlock() instanceof ActiveBlock) {
-                            matchContext.getOrCreate("vaBlocks", LongOpenHashSet::new)
-                                    .add(worldState.getPos().asLong());
-                        }
-                        if (!predicate.test(worldState) || !canPartShared) { // matching failed
-                            if (findFirstAisle) {
-                                if (r < aisleRepetitions[c][0]) {// retreat to see if the first aisle can start later
-                                    r = c = 0;
-                                    z = minZ++;
-                                    matchContext.reset();
-                                    findFirstAisle = false;
-                                }
-                            } else {
-                                z++;// continue searching for the first aisle
-                            }
-                            continue loop;
-                        }
-                        matchContext.getOrCreate("ioMap", Long2ObjectOpenHashMap::new).put(worldState.getPos().asLong(),
-                                worldState.io);
-                    }
+    @Unique
+    private boolean gtlcore$matchAisles(MultiblockState worldState, BlockPos centerPos, Direction frontFacing,
+                                        Direction upwardsFacing, boolean isFlipped, boolean savePredicate, int startZ,
+                                        int aisle, int z, int[] repetitions) {
+        if (aisle == 0 && worldState instanceof IMultiblockStateGet stateGet) stateGet.cleanState();
+
+        int minRepetitions = this.aisleRepetitions[aisle][0];
+        int maxRepetitions = this.aisleRepetitions[aisle][1];
+        int validRepetitions = 0;
+        while (validRepetitions < maxRepetitions &&
+                gtlcore$matchSlice(worldState, centerPos, frontFacing, upwardsFacing, isFlipped, savePredicate, aisle,
+                        z + validRepetitions)) {
+            validRepetitions++;
+        }
+        if (worldState.error == MultiblockState.UNLOAD_ERROR) return false;
+
+        for (int count = validRepetitions; count >= minRepetitions; count--) {
+            repetitions[aisle] = count;
+            Arrays.fill(repetitions, aisle + 1, repetitions.length, 0);
+            if (!gtlcore$replayLayout(worldState, centerPos, frontFacing, upwardsFacing, isFlipped, savePredicate,
+                    startZ, aisle, repetitions)) {
+                if (worldState.error == MultiblockState.UNLOAD_ERROR) return false;
+                continue;
+            }
+            if (aisle + 1 < this.fingerLength) {
+                if (gtlcore$matchAisles(worldState, centerPos, frontFacing, upwardsFacing, isFlipped, savePredicate,
+                        startZ, aisle + 1, z + count, repetitions)) {
+                    return true;
                 }
-                findFirstAisle = true;
-                z++;
+                if (worldState.error == MultiblockState.UNLOAD_ERROR) return false;
+            } else if (gtlcore$hasRequiredGlobalCounts(worldState)) {
+                return true;
+            }
+        }
+        repetitions[aisle] = 0;
+        return false;
+    }
 
-                // Check layer-local matcher predicate
-                for (var entry : layerCount.entrySet()) {
-                    if (entry.getValue() < entry.getKey().minLayerCount) {
-                        worldState.setError(new SinglePredicateError(entry.getKey(), 3));
-                        return false;
-                    }
+    @Unique
+    private boolean gtlcore$replayLayout(MultiblockState worldState, BlockPos centerPos, Direction frontFacing,
+                                         Direction upwardsFacing, boolean isFlipped, boolean savePredicate, int startZ,
+                                         int lastAisle, int[] repetitions) {
+        if (!(worldState instanceof IMultiblockStateGet stateGet)) return false;
+        stateGet.cleanState();
+        int z = startZ;
+        for (int aisle = 0; aisle <= lastAisle; aisle++) {
+            for (int repeat = 0; repeat < repetitions[aisle]; repeat++, z++) {
+                if (!gtlcore$matchSlice(worldState, centerPos, frontFacing, upwardsFacing, isFlipped, savePredicate,
+                        aisle, z)) {
+                    return false;
                 }
             }
-            // Repetitions out of range
-            if (r < aisleRepetitions[c][0] || worldState.hasError() || !findFirstAisle) {
-                if (!worldState.hasError()) {
-                    worldState.setError(new PatternError());
+        }
+        return true;
+    }
+
+    @Unique
+    private boolean gtlcore$matchSlice(MultiblockState worldState, BlockPos centerPos, Direction frontFacing,
+                                       Direction upwardsFacing, boolean isFlipped, boolean savePredicate, int aisle,
+                                       int z) {
+        Map<SimplePredicate, Integer> layerCount = worldState.getLayerCount();
+        layerCount.clear();
+        PatternMatchContext matchContext = worldState.getMatchContext();
+        for (int b = 0, y = -this.centerOffset[1]; b < this.thumbLength; b++, y++) {
+            for (int a = 0, x = -this.centerOffset[0]; a < this.palmLength; a++, x++) {
+                worldState.setError(null);
+                TraceabilityPredicate predicate = this.blockMatches[aisle][b][a];
+                if (predicate.isAny()) continue;
+                BlockPos pos = setActualRelativeOffset(x, y, z, frontFacing, upwardsFacing, isFlipped)
+                        .offset(centerPos.getX(), centerPos.getY(), centerPos.getZ());
+                if (!(worldState instanceof IMultiblockStateGet stateGet) || !stateGet.updateState(pos, predicate)) {
+                    return false;
                 }
+                if (predicate.addCache()) {
+                    worldState.addPosCache(pos);
+                    if (savePredicate) {
+                        matchContext.getOrCreate("predicates", Object2ObjectOpenHashMap::new).put(pos, predicate);
+                    }
+                }
+                boolean canPartShared = true;
+                if (worldState.getTileEntity() instanceof IMachineBlockEntity machineBlockEntity &&
+                        machineBlockEntity.getMetaMachine() instanceof IMultiPart part) {
+                    if (part.isFormed() && !part.canShared() && !part.hasController(worldState.controllerPos)) {
+                        canPartShared = false;
+                        worldState.setError(new PatternStringError("multiblocked.pattern.error.share"));
+                    } else {
+                        matchContext.getOrCreate("parts", ObjectOpenHashSet::new).add(part);
+                    }
+                }
+                if (worldState.getBlockState().getBlock() instanceof ActiveBlock) {
+                    matchContext.getOrCreate("vaBlocks", LongOpenHashSet::new).add(worldState.getPos().asLong());
+                }
+                if (!predicate.test(worldState) || !canPartShared) return false;
+                matchContext.getOrCreate("ioMap", Long2ObjectOpenHashMap::new).put(worldState.getPos().asLong(),
+                        worldState.io);
+            }
+        }
+        for (var entry : layerCount.entrySet()) {
+            if (entry.getValue() < entry.getKey().minLayerCount) {
+                worldState.setError(new SinglePredicateError(entry.getKey(), 3));
                 return false;
             }
         }
+        return true;
+    }
 
-        // Check count matches amount
-        for (var entry : globalCount.entrySet()) {
+    @Unique
+    private boolean gtlcore$hasRequiredGlobalCounts(MultiblockState worldState) {
+        for (var entry : worldState.getGlobalCount().entrySet()) {
             if (entry.getValue() < entry.getKey().minCount) {
                 worldState.setError(new SinglePredicateError(entry.getKey(), 1));
                 return false;
             }
         }
-
-        worldState.setError(null);
-        worldState.setNeededFlip(isFlipped);
         return true;
     }
 
