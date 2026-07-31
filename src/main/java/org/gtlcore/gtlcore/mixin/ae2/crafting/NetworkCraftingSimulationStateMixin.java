@@ -1,5 +1,7 @@
 package org.gtlcore.gtlcore.mixin.ae2.crafting;
 
+import org.gtlcore.gtlcore.integration.ae2.crafting.ManualCraftingInventoryLock;
+
 import appeng.api.config.Actionable;
 import appeng.api.config.FuzzyMode;
 import appeng.api.networking.security.IActionSource;
@@ -63,8 +65,9 @@ public abstract class NetworkCraftingSimulationStateMixin {
         }
 
         long available = Math.min(cachedAmount, amount);
-        if (AEConfig.instance().isCraftingSimulatedExtraction() && this.gTLCore$storageService != null &&
-                this.gTLCore$actionSource != null) {
+        if (this.gTLCore$storageService != null && this.gTLCore$actionSource != null &&
+                (AEConfig.instance().isCraftingSimulatedExtraction() || ManualCraftingInventoryLock.hasReservations(
+                        this.gTLCore$storageService.getInventory()))) {
             available = this.gTLCore$storageService.getInventory()
                     .extract(what, available, Actionable.SIMULATE, this.gTLCore$actionSource);
         }
@@ -88,7 +91,9 @@ public abstract class NetworkCraftingSimulationStateMixin {
         }
 
         var keys = new ArrayList<AEKey>(fuzzyEntries.size());
-        boolean simulatedExtraction = AEConfig.instance().isCraftingSimulatedExtraction();
+        boolean simulatedExtraction = AEConfig.instance().isCraftingSimulatedExtraction() ||
+                (this.gTLCore$storageService != null &&
+                        ManualCraftingInventoryLock.hasReservations(this.gTLCore$storageService.getInventory()));
         for (var entry : fuzzyEntries) {
             AEKey fuzzyKey = entry.getKey();
             long cachedAmount = entry.getLongValue();

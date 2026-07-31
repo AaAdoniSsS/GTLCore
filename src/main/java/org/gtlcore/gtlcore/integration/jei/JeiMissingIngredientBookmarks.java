@@ -2,12 +2,16 @@ package org.gtlcore.gtlcore.integration.jei;
 
 import org.gtlcore.gtlcore.GTLCore;
 
+import net.minecraft.client.renderer.Rect2i;
+
 import appeng.api.stacks.AEFluidKey;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import mezz.jei.api.constants.VanillaTypes;
 import mezz.jei.api.forge.ForgeTypes;
+import mezz.jei.api.ingredients.IIngredientType;
 import mezz.jei.api.ingredients.ITypedIngredient;
+import mezz.jei.api.runtime.IClickableIngredient;
 import mezz.jei.api.runtime.IIngredientManager;
 import mezz.jei.api.runtime.IJeiRuntime;
 import org.jetbrains.annotations.Nullable;
@@ -78,6 +82,33 @@ public final class JeiMissingIngredientBookmarks {
             return new AddResult(AddStatus.ADDED, added);
         }
         return new AddResult(supported > 0 ? AddStatus.ALREADY_BOOKMARKED : AddStatus.NOTHING_TO_ADD, 0);
+    }
+
+    public static Optional<IClickableIngredient<?>> createClickableIngredient(AEKey key, Rect2i area) {
+        IJeiRuntime jeiRuntime = runtime;
+        if (jeiRuntime == null) {
+            return Optional.empty();
+        }
+
+        IIngredientManager ingredientManager = jeiRuntime.getIngredientManager();
+        if (key instanceof AEItemKey itemKey) {
+            return createClickableIngredient(
+                    ingredientManager, VanillaTypes.ITEM_STACK, itemKey.toStack(), area);
+        }
+        if (key instanceof AEFluidKey fluidKey) {
+            return createClickableIngredient(
+                    ingredientManager, ForgeTypes.FLUID_STACK, fluidKey.toStack(1), area);
+        }
+        return Optional.empty();
+    }
+
+    private static <T> Optional<IClickableIngredient<?>> createClickableIngredient(
+                                                                                   IIngredientManager ingredientManager,
+                                                                                   IIngredientType<T> type,
+                                                                                   T ingredient,
+                                                                                   Rect2i area) {
+        return ingredientManager.createClickableIngredient(type, ingredient, area, false)
+                .map(clickableIngredient -> clickableIngredient);
     }
 
     private static Optional<ITypedIngredient<?>> toTypedIngredient(AEKey key,

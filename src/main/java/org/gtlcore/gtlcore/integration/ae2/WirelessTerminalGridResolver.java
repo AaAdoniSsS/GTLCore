@@ -1,5 +1,7 @@
 package org.gtlcore.gtlcore.integration.ae2;
 
+import org.gtlcore.gtlcore.integration.ae2.wireless.CuriosCompat;
+
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -26,16 +28,24 @@ public final class WirelessTerminalGridResolver {
 
     public static @Nullable IGrid find(Player player, Level level) {
         IItemHandler handler = player.getCapability(ForgeCapabilities.ITEM_HANDLER).resolve().orElse(null);
-        if (handler == null) {
-            return null;
+        if (handler != null) {
+            IGrid grid = find(
+                    player,
+                    handler,
+                    level,
+                    Collections.newSetFromMap(new IdentityHashMap<>()),
+                    new SearchBudget(MAX_NESTED_HANDLER_DEPTH, MAX_SCANNED_SLOTS),
+                    0);
+            if (grid != null) {
+                return grid;
+            }
         }
-        return find(
-                player,
-                handler,
-                level,
-                Collections.newSetFromMap(new IdentityHashMap<>()),
-                new SearchBudget(MAX_NESTED_HANDLER_DEPTH, MAX_SCANNED_SLOTS),
-                0);
+
+        CuriosCompat.TerminalSlot curiosSlot = CuriosCompat.findWirelessTerminal(player);
+        if (curiosSlot != null && curiosSlot.stack().getItem() instanceof WirelessTerminalItem terminal) {
+            return findUsableGrid(player, level, curiosSlot.stack(), terminal);
+        }
+        return null;
     }
 
     private static @Nullable IGrid find(Player player, IItemHandler handler, Level level, Set<IItemHandler> visited,

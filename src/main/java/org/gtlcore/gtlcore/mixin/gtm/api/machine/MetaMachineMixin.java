@@ -171,7 +171,7 @@ public abstract class MetaMachineMixin implements IPerformanceDisplayMachine, IS
                                                              CallbackInfoReturnable<Pair<GTToolType, InteractionResult>> cir) {
         Player player = context.getPlayer();
         MetaMachine machine = holder.getMetaMachine();
-        if (!toolTypes.contains(GTToolType.WIRE_CUTTER) || player == null || !player.isShiftKeyDown() ||
+        if (!Set.of(GTToolType.WIRE_CUTTER).equals(toolTypes) || player == null || !player.isShiftKeyDown() ||
                 !(machine instanceof IBatchMachine batchMachine) ||
                 !batchMachine.canConfigureBatchProcessing())
             return;

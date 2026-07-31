@@ -78,6 +78,20 @@ public class ConfigHolder {
     @Configurable.Range(min = 1, max = 16)
     public int ae2StorageServiceUpdateInterval = 8;
     @Configurable
+    @Configurable.Comment({
+            "测试功能：玩家进入手动合成结算界面后，锁定该计划使用的ME库存，直至取消、关闭界面或订单提交。",
+            "Experimental: Reserve ME inventory used by a manual crafting plan until it is cancelled, closed, or submitted."
+    })
+    public boolean enableAe2ManualCraftingInventoryLock = false;
+    @Configurable
+    @Configurable.Comment({
+            "测试功能：将手动合成库存锁的申请、冲突、提取限制、提交和释放效果写入独立日志。",
+            "日志文件：logs/gtlcore/ae2-manual-crafting-inventory-lock-*.log",
+            "Experimental: Write manual crafting inventory lock acquisition, conflicts, extraction limits, submission, and release effects to a dedicated log.",
+            "Log file: logs/gtlcore/ae2-manual-crafting-inventory-lock-*.log"
+    })
+    public boolean enableAe2ManualCraftingInventoryLockLogging = false;
+    @Configurable
     @Configurable.Comment("AE2合成计算模式: LEGACY(原版), FAST(快速), ULTRA_FAST(极快), MAX_FAST(需求聚合)")
     public AE2CalculationMode ae2CalculationMode = AE2CalculationMode.ULTRA_FAST;
     @Configurable
