@@ -26,6 +26,7 @@
     "gtm.TagPrefixItemRendererMixin",
     "gtm.api.recipe.ContentMixin",
     "gtm.client.TooltipsHandlerMixin",
+    "gtm.gui.AEConfigSlotWidgetMixin",
     "gtm.gui.AEFluidConfigSlotWidgetMixin",
     "gtm.gui.ConfiguratorPanelMixin",
     "gtm.gui.ConfiguratorPanelTabAccessor",

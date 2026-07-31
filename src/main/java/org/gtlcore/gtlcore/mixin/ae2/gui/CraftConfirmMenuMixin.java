@@ -1,9 +1,11 @@
 package org.gtlcore.gtlcore.mixin.ae2.gui;
 
+import org.gtlcore.gtlcore.config.ConfigHolder;
 import org.gtlcore.gtlcore.integration.ae2.common.CraftAmountReturnState;
 import org.gtlcore.gtlcore.integration.ae2.common.IConfirmStartMenu;
 import org.gtlcore.gtlcore.integration.ae2.common.ILongCraftAmountMenu;
 import org.gtlcore.gtlcore.integration.ae2.common.ILongCraftConfirmMenu;
+import org.gtlcore.gtlcore.integration.ae2.crafting.ManualCraftingInventoryLock;
 
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
@@ -15,7 +17,12 @@ import appeng.api.config.TypeFilter;
 import appeng.api.config.ViewItems;
 import appeng.api.networking.IGrid;
 import appeng.api.networking.crafting.CalculationStrategy;
+import appeng.api.networking.crafting.ICraftingCPU;
 import appeng.api.networking.crafting.ICraftingPlan;
+import appeng.api.networking.crafting.ICraftingRequester;
+import appeng.api.networking.crafting.ICraftingService;
+import appeng.api.networking.crafting.ICraftingSubmitResult;
+import appeng.api.networking.security.IActionSource;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.KeyCounter;
 import appeng.api.storage.ISubMenuHost;
@@ -38,7 +45,9 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -112,6 +121,15 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
 
     @Unique
     private long gtlcore$longAmount = CraftAmountReturnState.NO_LONG_AMOUNT;
+
+    @Unique
+    private @Nullable ManualCraftingInventoryLock.Reservation gtlcore$inventoryReservation;
+
+    @Unique
+    private @Nullable ICraftingPlan gtlcore$reservedPlan;
+
+    @Unique
+    private CalculationStrategy gtlcore$calculationStrategy = CalculationStrategy.REPORT_MISSING_ITEMS;
 
     @Inject(method = "<init>", at = @At("RETURN"), remap = false)
     private void onConstructed(int id, Inventory ip, ISubMenuHost host, CallbackInfo ci) {
@@ -191,6 +209,8 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
 
     @Override
     public boolean gtlcore$planLongAmountJob(AEKey whatToCraft, long amount, CalculationStrategy strategy) {
+        this.gtlcore$releaseInventoryReservation();
+        this.gtlcore$calculationStrategy = strategy;
         if (this.job != null) {
             this.job.cancel(true);
         }
@@ -213,7 +233,14 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
 
     @Inject(method = "broadcastChanges", at = @At("RETURN"))
     private void onBroadcastChanges(CallbackInfo ci) {
-        if (this.plan == null) return;
+        if (this.isClientSide() || this.plan == null) return;
+        if (!ConfigHolder.INSTANCE.enableAe2ManualCraftingInventoryLock) {
+            this.gtlcore$releaseInventoryReservation();
+        } else if (this.result != null && this.result != this.gtlcore$reservedPlan &&
+                !this.gtlcore$tryReserveInventory(this.result)) {
+                    this.gtlcore$restartCalculationAfterReservationConflict();
+                    return;
+                }
         // 计划算完后库存仍可能被其他产线消耗，持续同步实时库存供客户端复核缺失
         if (gtlcore$lastSentStored != null && --gtlcore$storedSyncCooldown > 0) return;
         gtlcore$storedSyncCooldown = 10;
@@ -265,12 +292,89 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
         return relevantStored;
     }
 
+    @Inject(method = "planJob", at = @At("HEAD"), remap = false)
+    private void gtlcore$prepareForPlan(AEKey whatToCraft, int amount, CalculationStrategy strategy,
+                                        CallbackInfoReturnable<Boolean> cir) {
+        this.gtlcore$releaseInventoryReservation();
+        this.gtlcore$calculationStrategy = strategy;
+    }
+
+    @Redirect(
+              method = "startJob",
+              at = @At(
+                       value = "INVOKE",
+                       target = "Lappeng/api/networking/crafting/ICraftingService;submitJob(Lappeng/api/networking/crafting/ICraftingPlan;Lappeng/api/networking/crafting/ICraftingRequester;Lappeng/api/networking/crafting/ICraftingCPU;ZLappeng/api/networking/security/IActionSource;)Lappeng/api/networking/crafting/ICraftingSubmitResult;"),
+              remap = false)
+    private ICraftingSubmitResult gtlcore$submitWithReservedInventory(
+                                                                      ICraftingService craftingService,
+                                                                      ICraftingPlan plan,
+                                                                      ICraftingRequester requester,
+                                                                      ICraftingCPU target,
+                                                                      boolean prioritizePower,
+                                                                      IActionSource source) {
+        var reservation = plan == this.gtlcore$reservedPlan ? this.gtlcore$inventoryReservation : null;
+        ICraftingSubmitResult submitResult = reservation == null ?
+                craftingService.submitJob(plan, requester, target, prioritizePower, source) :
+                reservation.submit(() -> craftingService.submitJob(
+                        plan, requester, target, prioritizePower, source));
+        if (submitResult.successful()) {
+            this.gtlcore$releaseInventoryReservation();
+        }
+        return submitResult;
+    }
+
+    @Inject(method = "removed", at = @At("HEAD"))
+    private void gtlcore$releaseInventoryOnClose(net.minecraft.world.entity.player.Player player, CallbackInfo ci) {
+        this.gtlcore$releaseInventoryReservation();
+    }
+
+    @Unique
+    private boolean gtlcore$tryReserveInventory(ICraftingPlan craftingPlan) {
+        this.gtlcore$releaseInventoryReservation();
+        var grid = this.getGrid();
+        if (grid == null) {
+            return false;
+        }
+
+        var reservation = ManualCraftingInventoryLock.tryAcquire(
+                grid.getStorageService().getInventory(), craftingPlan.usedItems(), this.getActionSource());
+        if (reservation == null) {
+            return false;
+        }
+        this.gtlcore$inventoryReservation = reservation;
+        this.gtlcore$reservedPlan = craftingPlan;
+        return true;
+    }
+
+    @Unique
+    private void gtlcore$restartCalculationAfterReservationConflict() {
+        this.result = null;
+        this.plan = null;
+        this.gtlcore$lastSentStored = null;
+        if (this.whatToCraft == null || !this.gtlcore$planLongAmountJob(
+                this.whatToCraft,
+                CraftAmountReturnState.displayAmount(this.gtlcore$longAmount, this.amount),
+                this.gtlcore$calculationStrategy)) {
+            this.gtlcore$returnToPreviousMenu();
+        }
+    }
+
+    @Unique
+    private void gtlcore$releaseInventoryReservation() {
+        if (this.gtlcore$inventoryReservation != null) {
+            this.gtlcore$inventoryReservation.close();
+            this.gtlcore$inventoryReservation = null;
+        }
+        this.gtlcore$reservedPlan = null;
+    }
+
     @Inject(method = "goBack", at = @At("HEAD"), cancellable = true, remap = false)
     private void goBackWithLongAmount(CallbackInfo ci) {
         if (this.isClientSide()) return;
 
         ci.cancel();
         this.clearError();
+        this.gtlcore$releaseInventoryReservation();
         this.gtlcore$returnToPreviousMenu();
     }
 

@@ -220,6 +220,10 @@ public final class PatternRelayPart extends AEBasePart implements ICraftingProvi
         return mode.nameTranslationKey;
     }
 
+    public boolean isAccessMode() {
+        return mode == Mode.ACCESS;
+    }
+
     static String getModeNameTranslationKey(ItemStack stack) {
         return getMode(stack.getTag()).nameTranslationKey;
     }

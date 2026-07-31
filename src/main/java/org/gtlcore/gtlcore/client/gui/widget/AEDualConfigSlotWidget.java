@@ -1,6 +1,7 @@
 package org.gtlcore.gtlcore.client.gui.widget;
 
 import org.gtlcore.gtlcore.integration.ae2.MEFluidUnits;
+import org.gtlcore.gtlcore.integration.jei.JeiMissingIngredientBookmarks;
 import org.gtlcore.gtlcore.utils.Registries;
 
 import com.gregtechceu.gtceu.api.gui.GuiTextures;
@@ -10,6 +11,7 @@ import com.gregtechceu.gtceu.integration.ae2.slot.IConfigurableSlot;
 import com.gregtechceu.gtceu.integration.ae2.utils.AEUtil;
 
 import com.lowdragmc.lowdraglib.LDLib;
+import com.lowdragmc.lowdraglib.gui.ingredient.IIngredientSlot;
 import com.lowdragmc.lowdraglib.gui.ingredient.Target;
 import com.lowdragmc.lowdraglib.gui.util.DrawerHelper;
 import com.lowdragmc.lowdraglib.gui.util.TextFormattingUtil;
@@ -49,7 +51,7 @@ import static com.lowdragmc.lowdraglib.gui.widget.PhantomFluidWidget.drainFrom;
 /**
  * @author EasterFG on 2025/3/7
  */
-public class AEDualConfigSlotWidget extends Widget implements IGhostItemTarget, IGhostFluidTarget {
+public class AEDualConfigSlotWidget extends Widget implements IGhostItemTarget, IGhostFluidTarget, IIngredientSlot {
 
     private static final int COMPACT_AMOUNT_MAX_LENGTH = 4;
 
@@ -114,6 +116,26 @@ public class AEDualConfigSlotWidget extends Widget implements IGhostItemTarget, 
     protected boolean mouseOverStock(double mouseX, double mouseY) {
         Position position = getPosition();
         return isMouseOver(position.x, position.y + 18, 18, 18, mouseX, mouseY);
+    }
+
+    @Override
+    public Object getXEIIngredientOverMouse(double mouseX, double mouseY) {
+        boolean configHovered = mouseOverConfig(mouseX, mouseY);
+        boolean stockHovered = mouseOverStock(mouseX, mouseY);
+        if (!configHovered && !stockHovered) {
+            return null;
+        }
+
+        IConfigurableSlot slot = parentWidget.getDisplay(getIndex());
+        GenericStack stack = configHovered ? slot.getConfig() : slot.getStock();
+        if (stack == null) {
+            return null;
+        }
+
+        int slotHeight = getSizeHeight() / 2;
+        int slotY = getPositionY() + (stockHovered ? slotHeight : 0);
+        var area = new Rect2i(getPositionX(), slotY, getSizeWidth(), slotHeight);
+        return JeiMissingIngredientBookmarks.createClickableIngredient(stack.what(), area).orElse(null);
     }
 
     @OnlyIn(Dist.CLIENT)

@@ -1,5 +1,6 @@
 package org.gtlcore.gtlcore.mixin.ae2.storage;
 
+import org.gtlcore.gtlcore.integration.ae2.crafting.ManualCraftingInventoryLock;
 import org.gtlcore.gtlcore.integration.ae2.throughput.ThroughputMonitorStorageTracker;
 import org.gtlcore.gtlcore.integration.ae2.throughput.ThroughputStorageView;
 
@@ -14,6 +15,7 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
@@ -23,7 +25,7 @@ import java.util.List;
 import java.util.NavigableMap;
 
 @Mixin(NetworkStorage.class)
-public abstract class NetworkStorageMixin implements ThroughputStorageView {
+public abstract class NetworkStorageMixin implements ThroughputStorageView, ManualCraftingInventoryLock.AvailabilityView {
 
     @Shadow(remap = false)
     @Final
@@ -74,6 +76,12 @@ public abstract class NetworkStorageMixin implements ThroughputStorageView {
         ThroughputMonitorStorageTracker.beginExtraction((MEStorage) (Object) this, source);
     }
 
+    @ModifyVariable(method = "extract", at = @At("HEAD"), argsOnly = true, ordinal = 0, remap = false)
+    private long gtlcore$limitExtractionToUnlockedInventory(long amount, AEKey what, long requested,
+                                                            Actionable mode, IActionSource source) {
+        return ManualCraftingInventoryLock.limitExtraction((MEStorage) (Object) this, what, amount, source);
+    }
+
     @Inject(method = "extract", at = @At("RETURN"), remap = false)
     private void gtlcore$recordExtraction(AEKey what, long amount, Actionable mode, IActionSource source, CallbackInfoReturnable<Long> cir) {
         if (!ThroughputMonitorStorageTracker.isTrackingActive() &&
@@ -95,6 +103,22 @@ public abstract class NetworkStorageMixin implements ThroughputStorageView {
             storages.addAll(priorityStorages);
         }
         return storages;
+    }
+
+    @Override
+    public long gtlcore$getAvailableAmount(AEKey what, IActionSource source) {
+        long available = 0;
+        for (List<MEStorage> priorityStorages : priorityInventory.values()) {
+            for (MEStorage storage : priorityStorages) {
+                long remaining = Long.MAX_VALUE - available;
+                long stored = storage.extract(what, remaining, Actionable.SIMULATE, source);
+                if (stored >= remaining) {
+                    return Long.MAX_VALUE;
+                }
+                available += stored;
+            }
+        }
+        return available;
     }
 
     @Override
