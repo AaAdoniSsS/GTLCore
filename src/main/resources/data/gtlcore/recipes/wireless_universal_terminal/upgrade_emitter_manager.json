@@ -1,0 +1,7 @@
+{
+  "type": "ae2wtlib:upgrade",
+  "terminal": {
+    "item": "gtlcore:wireless_emitter_manager_terminal"
+  },
+  "terminalName": "emitter_manager"
+}

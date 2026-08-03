@@ -41,6 +41,7 @@
     "mc.GuiGraphicsMixin",
     "mc.SlotAccessor",
     "extendedae.ExPatternProviderScreenMixin",
+    "extendedae.GuiExPatternTerminalMixin",
     "meRequester.NumberFieldMixin"
   ],
   "mixins": [
@@ -48,6 +49,7 @@
     "adastra.RocketMixin",
     "adastra.VehicleItemMixin",
     "ae2.BasicCellInventoryMixin",
+    "ae2.AbstractLevelEmitterPartAccessor",
     "ae2.ConfigMenuInventoryMixin",
     "ae2.CPUSelectionListMixin",
     "ae2.CreativeCellInventoryMixin",
@@ -59,6 +61,7 @@
     "ae2.PortableCellItemMixin",
     "ae2.TooltipsMixin",
     "ae2.ViewCellItemMixin",
+    "ae2wtlib.ItemWUTMixin",
     "ae2.crafting.CraftingCalculationMixin",
     "ae2.crafting.ChildCraftingSimulationStateAccessor",
     "ae2.crafting.CraftingCpuHelperMixin",
@@ -145,6 +148,7 @@
     "gtm.api.capability.CWURecipeCapabilityMixin",
     "gtm.api.capability.FluidRecipeCapabilityMixin",
     "gtm.api.capability.ItemRecipeCapabilityMixin",
+    "gtm.api.block.MetaMachineBlockMixin",
     "gtm.api.item.tool.GTToolTypeMixin",
     "gtm.api.machine.FluidDrillLogicMixin",
     "gtm.api.machine.MetaMachineMixin",

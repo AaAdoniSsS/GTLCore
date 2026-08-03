@@ -62,6 +62,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 public class TransfiniteComputationArrayMachine extends MultiblockControllerMachine
@@ -79,6 +80,13 @@ public class TransfiniteComputationArrayMachine extends MultiblockControllerMach
     private static final String NBT_CPU_BYTES = "Bytes";
     private static final String NBT_CPU_STATE = "State";
     private static final long ASYNC_PATTERN_CHECK_INTERVAL = 4L;
+    /**
+     * Ticks after loading during which the structure is checked every tick instead of every
+     * {@link #ASYNC_PATTERN_CHECK_INTERVAL} ticks. This array is large enough that the throttled cadence can
+     * leave it unformed noticeably long after entering the world, so it is polled hard for the first
+     * 5 seconds and then falls back to the normal interval.
+     */
+    private static final int EAGER_CHECK_TICKS = 100;
     private static final int UI_WIDTH = 198;
     private static final int UI_HEIGHT = 208;
     private static final int MAIN_PAGE_WIDTH = 190;
@@ -116,16 +124,31 @@ public class TransfiniteComputationArrayMachine extends MultiblockControllerMach
     private MECraftingCPUInterfacePartMachine networkInterface;
     private TransfiniteCraftingCPU capacityCpu;
     private final AtomicBoolean patternCheckQueued = new AtomicBoolean();
+    /** Remaining ticks of the post-load eager check window; decremented from the async check thread. */
+    private final AtomicInteger eagerCheckTicks = new AtomicInteger();
 
     public TransfiniteComputationArrayMachine(IMachineBlockEntity holder) {
         super(holder);
     }
 
     @Override
+    public void onLoad() {
+        super.onLoad();
+        // Entering the world should settle the structure as soon as possible, so prioritise it over the
+        // throttled cadence until it forms or the window runs out.
+        this.eagerCheckTicks.set(isFormed() ? 0 : EAGER_CHECK_TICKS);
+    }
+
+    @Override
     public void asyncCheckPattern(long periodID) {
-        if ((isFormed() && !getMultiblockState().hasError()) ||
-                Math.floorMod(getHolder().getOffset() + periodID, ASYNC_PATTERN_CHECK_INTERVAL) != 0 ||
-                !this.patternCheckQueued.compareAndSet(false, true)) {
+        if (isFormed() && !getMultiblockState().hasError()) {
+            return;
+        }
+        boolean eager = this.eagerCheckTicks.get() > 0 && this.eagerCheckTicks.getAndDecrement() > 0;
+        if (!eager && Math.floorMod(getHolder().getOffset() + periodID, ASYNC_PATTERN_CHECK_INTERVAL) != 0) {
+            return;
+        }
+        if (!this.patternCheckQueued.compareAndSet(false, true)) {
             return;
         }
         if (!(getLevel() instanceof ServerLevel serverLevel)) {
@@ -136,6 +159,7 @@ public class TransfiniteComputationArrayMachine extends MultiblockControllerMach
             try {
                 if (isInValid() || getLevel() != serverLevel) return;
                 if (checkPatternWithLock()) {
+                    this.eagerCheckTicks.set(0);
                     setFlipped(getMultiblockState().isNeededFlip());
                     onStructureFormed();
                     var savedData = MultiblockWorldSavedData.getOrCreate(serverLevel);

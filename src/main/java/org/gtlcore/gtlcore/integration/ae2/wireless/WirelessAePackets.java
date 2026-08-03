@@ -2,6 +2,7 @@ package org.gtlcore.gtlcore.integration.ae2.wireless;
 
 import org.gtlcore.gtlcore.GTLCore;
 import org.gtlcore.gtlcore.client.gui.PatterEncodingTermMenuModify;
+import org.gtlcore.gtlcore.integration.ae2.emitter.EmitterManagerTerminalMenu;
 import org.gtlcore.gtlcore.integration.ae2.pattern.PatternQuickUploadSelectionMenu;
 import org.gtlcore.gtlcore.integration.ae2.throughput.ThroughputMonitorTerminalMenu;
 import org.gtlcore.gtlcore.integration.ae2.throughput.ThroughputMonitorUpdateInterval;
@@ -39,7 +40,7 @@ import java.util.function.Supplier;
 
 public final class WirelessAePackets {
 
-    private static final String PROTOCOL_VERSION = "6";
+    private static final String PROTOCOL_VERSION = "7";
     private static int nextPacketId;
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
@@ -142,6 +143,34 @@ public final class WirelessAePackets {
                 SyncThroughputMonitorSourcesPacket::decode,
                 SyncThroughputMonitorSourcesPacket::handle,
                 java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT));
+        CHANNEL.registerMessage(
+                nextPacketId++,
+                SyncEmitterManagerTerminalPacket.class,
+                SyncEmitterManagerTerminalPacket::encode,
+                SyncEmitterManagerTerminalPacket::decode,
+                SyncEmitterManagerTerminalPacket::handle,
+                java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT));
+        CHANNEL.registerMessage(
+                nextPacketId++,
+                SetEmitterSettingPacket.class,
+                SetEmitterSettingPacket::encode,
+                SetEmitterSettingPacket::decode,
+                SetEmitterSettingPacket::handle,
+                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
+        CHANNEL.registerMessage(
+                nextPacketId++,
+                SetEmitterValuePacket.class,
+                SetEmitterValuePacket::encode,
+                SetEmitterValuePacket::decode,
+                SetEmitterValuePacket::handle,
+                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
+        CHANNEL.registerMessage(
+                nextPacketId++,
+                SelectEmitterPacket.class,
+                SelectEmitterPacket::encode,
+                SelectEmitterPacket::decode,
+                SelectEmitterPacket::handle,
+                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
         MeInventoryAmountPackets.register(CHANNEL, () -> nextPacketId++);
         JeiWirelessTerminalOrderPackets.register(CHANNEL, () -> nextPacketId++);
     }
@@ -672,6 +701,135 @@ public final class WirelessAePackets {
                             .invoke(null, packet);
                 } catch (ReflectiveOperationException | RuntimeException ignored) {
                     // Client-only handler is not present on dedicated servers.
+                }
+            });
+            context.setPacketHandled(true);
+        }
+    }
+
+    public record SyncEmitterManagerTerminalPacket(
+                                                   int containerId,
+                                                   List<EmitterManagerTerminalMenu.Entry> entries) {
+
+        private static void encode(SyncEmitterManagerTerminalPacket packet, FriendlyByteBuf buffer) {
+            buffer.writeVarInt(packet.containerId);
+            EmitterManagerTerminalMenu.writeEntries(buffer, packet.entries);
+        }
+
+        private static SyncEmitterManagerTerminalPacket decode(FriendlyByteBuf buffer) {
+            return new SyncEmitterManagerTerminalPacket(
+                    buffer.readVarInt(),
+                    EmitterManagerTerminalMenu.readEntries(buffer));
+        }
+
+        private static void handle(SyncEmitterManagerTerminalPacket packet,
+                                   Supplier<NetworkEvent.Context> contextSupplier) {
+            NetworkEvent.Context context = contextSupplier.get();
+            context.enqueueWork(() -> {
+                try {
+                    Class.forName("org.gtlcore.gtlcore.client.ae2.wireless.WirelessAeClientPacketHandler")
+                            .getMethod("handleEmitterManagerTerminal", SyncEmitterManagerTerminalPacket.class)
+                            .invoke(null, packet);
+                } catch (ReflectiveOperationException | RuntimeException ignored) {
+                    // Client-only handler is not present on dedicated servers.
+                }
+            });
+            context.setPacketHandled(true);
+        }
+    }
+
+    public record SetEmitterSettingPacket(int containerId, EmitterManagerTerminalMenu.Address address,
+                                          String settingName, String valueName) {
+
+        private static final int MAX_SETTING_NAME_LENGTH = 64;
+
+        private static void encode(SetEmitterSettingPacket packet, FriendlyByteBuf buffer) {
+            buffer.writeVarInt(packet.containerId);
+            packet.address.write(buffer);
+            buffer.writeUtf(packet.settingName, MAX_SETTING_NAME_LENGTH);
+            buffer.writeUtf(packet.valueName, MAX_SETTING_NAME_LENGTH);
+        }
+
+        private static SetEmitterSettingPacket decode(FriendlyByteBuf buffer) {
+            return new SetEmitterSettingPacket(
+                    buffer.readVarInt(),
+                    EmitterManagerTerminalMenu.Address.read(buffer),
+                    buffer.readUtf(MAX_SETTING_NAME_LENGTH),
+                    buffer.readUtf(MAX_SETTING_NAME_LENGTH));
+        }
+
+        private static void handle(SetEmitterSettingPacket packet,
+                                   Supplier<NetworkEvent.Context> contextSupplier) {
+            NetworkEvent.Context context = contextSupplier.get();
+            context.enqueueWork(() -> {
+                ServerPlayer player = context.getSender();
+                if (player != null && player.containerMenu instanceof EmitterManagerTerminalMenu menu &&
+                        menu.containerId == packet.containerId) {
+                    menu.setEmitterSetting(player, packet.address, packet.settingName, packet.valueName);
+                }
+            });
+            context.setPacketHandled(true);
+        }
+    }
+
+    /** Tells the server which emitter the terminal has selected, so its upgrade slots back the card slots. */
+    public record SelectEmitterPacket(int containerId,
+                                      @org.jetbrains.annotations.Nullable EmitterManagerTerminalMenu.Address address) {
+
+        private static void encode(SelectEmitterPacket packet, FriendlyByteBuf buffer) {
+            buffer.writeVarInt(packet.containerId);
+            buffer.writeBoolean(packet.address != null);
+            if (packet.address != null) {
+                packet.address.write(buffer);
+            }
+        }
+
+        private static SelectEmitterPacket decode(FriendlyByteBuf buffer) {
+            int containerId = buffer.readVarInt();
+            return new SelectEmitterPacket(
+                    containerId,
+                    buffer.readBoolean() ? EmitterManagerTerminalMenu.Address.read(buffer) : null);
+        }
+
+        private static void handle(SelectEmitterPacket packet, Supplier<NetworkEvent.Context> contextSupplier) {
+            NetworkEvent.Context context = contextSupplier.get();
+            context.enqueueWork(() -> {
+                ServerPlayer player = context.getSender();
+                if (player != null && player.containerMenu instanceof EmitterManagerTerminalMenu menu &&
+                        menu.containerId == packet.containerId) {
+                    menu.setSelectedAddress(packet.address);
+                }
+            });
+            context.setPacketHandled(true);
+        }
+    }
+
+    public record SetEmitterValuePacket(int containerId, EmitterManagerTerminalMenu.Address address,
+                                        EmitterManagerTerminalMenu.ValueKind kind, long value) {
+
+        private static void encode(SetEmitterValuePacket packet, FriendlyByteBuf buffer) {
+            buffer.writeVarInt(packet.containerId);
+            packet.address.write(buffer);
+            buffer.writeEnum(packet.kind);
+            buffer.writeVarLong(packet.value);
+        }
+
+        private static SetEmitterValuePacket decode(FriendlyByteBuf buffer) {
+            return new SetEmitterValuePacket(
+                    buffer.readVarInt(),
+                    EmitterManagerTerminalMenu.Address.read(buffer),
+                    buffer.readEnum(EmitterManagerTerminalMenu.ValueKind.class),
+                    buffer.readVarLong());
+        }
+
+        private static void handle(SetEmitterValuePacket packet,
+                                   Supplier<NetworkEvent.Context> contextSupplier) {
+            NetworkEvent.Context context = contextSupplier.get();
+            context.enqueueWork(() -> {
+                ServerPlayer player = context.getSender();
+                if (player != null && player.containerMenu instanceof EmitterManagerTerminalMenu menu &&
+                        menu.containerId == packet.containerId) {
+                    menu.setEmitterValue(player, packet.address, packet.kind, packet.value);
                 }
             });
             context.setPacketHandled(true);

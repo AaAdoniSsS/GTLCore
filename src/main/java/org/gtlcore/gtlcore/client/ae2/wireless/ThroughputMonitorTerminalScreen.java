@@ -13,7 +13,6 @@ import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
-import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
@@ -28,8 +27,10 @@ import appeng.api.config.SortDir;
 import appeng.api.config.SortOrder;
 import appeng.api.stacks.AEKey;
 import appeng.api.storage.AEKeyFilter;
+import appeng.client.gui.AEBaseScreen;
 import appeng.client.gui.Icon;
 import appeng.client.gui.style.BackgroundGenerator;
+import appeng.client.gui.style.ScreenStyle;
 import appeng.client.gui.widgets.SettingToggleButton;
 import appeng.core.localization.GuiText;
 import appeng.items.storage.ViewCellItem;
@@ -50,7 +51,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
-public class ThroughputMonitorTerminalScreen extends AbstractContainerScreen<ThroughputMonitorTerminalMenu>
+public class ThroughputMonitorTerminalScreen extends AEBaseScreen<ThroughputMonitorTerminalMenu>
                                              implements IUniversalTerminalCapable {
 
     private static final int SEARCH_MAX_LENGTH = 80;
@@ -109,10 +110,8 @@ public class ThroughputMonitorTerminalScreen extends AbstractContainerScreen<Thr
     private Map<AEKey, List<ThroughputMonitorTerminalMenu.SourceEntry>> frozenSources;
 
     public ThroughputMonitorTerminalScreen(ThroughputMonitorTerminalMenu menu, Inventory inventory,
-                                           Component title) {
-        super(menu, inventory, title);
-        this.imageWidth = ThroughputMonitorTerminalLayout.IMAGE_WIDTH;
-        this.imageHeight = ThroughputMonitorTerminalLayout.IMAGE_HEIGHT;
+                                           Component title, ScreenStyle style) {
+        super(menu, inventory, title, style);
     }
 
     @Override
@@ -162,8 +161,6 @@ public class ThroughputMonitorTerminalScreen extends AbstractContainerScreen<Thr
                     this.leftPos - this.cycleTerminalButton.getWidth() -
                             ThroughputMonitorTerminalLayout.UNIVERSAL_TERMINAL_BUTTON_GAP,
                     this.topPos + ThroughputMonitorTerminalLayout.UNIVERSAL_TERMINAL_BUTTON_Y);
-            this.cycleTerminalButton.setTooltip(
-                    Tooltip.create(this.cycleTerminalButton.getTooltipMessage().get(0)));
             this.addRenderableWidget(this.cycleTerminalButton);
         }
         clampScrollOffset();
@@ -224,15 +221,14 @@ public class ThroughputMonitorTerminalScreen extends AbstractContainerScreen<Thr
 
     @Override
     public void render(@NotNull GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        this.renderBackground(graphics);
         super.render(graphics, mouseX, mouseY, partialTick);
-        this.renderTooltip(graphics, mouseX, mouseY);
         renderMonitorTooltip(graphics, mouseX, mouseY);
     }
 
     @Override
-    protected void renderBg(@NotNull GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
-        BackgroundGenerator.draw(this.imageWidth, this.imageHeight, graphics, this.leftPos, this.topPos);
+    public void drawBG(@NotNull GuiGraphics graphics, int offsetX, int offsetY, int mouseX, int mouseY,
+                       float partialTick) {
+        super.drawBG(graphics, offsetX, offsetY, mouseX, mouseY, partialTick);
         WirelessAeStyle.drawTextField(
                 graphics,
                 this.leftPos + ThroughputMonitorTerminalLayout.SEARCH_PANEL_X,
@@ -324,7 +320,8 @@ public class ThroughputMonitorTerminalScreen extends AbstractContainerScreen<Thr
     }
 
     @Override
-    protected void renderLabels(@NotNull GuiGraphics graphics, int mouseX, int mouseY) {
+    public void drawFG(@NotNull GuiGraphics graphics, int offsetX, int offsetY, int mouseX, int mouseY) {
+        super.drawFG(graphics, offsetX, offsetY, mouseX, mouseY);
         graphics.drawString(
                 this.font,
                 this.title,

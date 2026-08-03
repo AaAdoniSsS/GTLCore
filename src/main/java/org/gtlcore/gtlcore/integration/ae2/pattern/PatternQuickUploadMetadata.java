@@ -1,5 +1,7 @@
 package org.gtlcore.gtlcore.integration.ae2.pattern;
 
+import org.gtlcore.gtlcore.GTLCore;
+
 import com.gregtechceu.gtceu.api.recipe.GTRecipeType;
 
 import net.minecraft.nbt.CompoundTag;
@@ -17,7 +19,7 @@ import java.util.Set;
 
 public final class PatternQuickUploadMetadata {
 
-    private static final String ROOT_KEY = "gtlcore";
+    private static final String ROOT_KEY = GTLCore.MOD_ID;
     private static final String RECIPE_TYPES_KEY = "patternQuickUploadRecipeTypes";
 
     private PatternQuickUploadMetadata() {}

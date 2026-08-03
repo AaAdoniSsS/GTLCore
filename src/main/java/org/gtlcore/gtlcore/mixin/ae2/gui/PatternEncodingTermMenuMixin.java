@@ -2,6 +2,8 @@ package org.gtlcore.gtlcore.mixin.ae2.gui;
 
 import org.gtlcore.gtlcore.GTLCore;
 import org.gtlcore.gtlcore.client.gui.PatterEncodingTermMenuModify;
+import org.gtlcore.gtlcore.common.data.GTLStats;
+import org.gtlcore.gtlcore.integration.ae2.pattern.PatternEncoderMetadata;
 import org.gtlcore.gtlcore.integration.ae2.pattern.PatternQuickUploadMetadata;
 import org.gtlcore.gtlcore.integration.ae2.pattern.PatternQuickUploadRecipeTypeResolver;
 import org.gtlcore.gtlcore.integration.ae2.pattern.PatternQuickUploadSelectionMenu;
@@ -147,7 +149,9 @@ public abstract class PatternEncodingTermMenuMixin extends MEStorageMenu impleme
                 }
             }
 
+            gTLCore$writePatternEncoder(encodedPattern);
             this.encodedPatternSlot.set(encodedPattern);
+            gTLCore$awardPatternEncoded();
         } else {
             clearPattern();
         }
@@ -457,12 +461,16 @@ public abstract class PatternEncodingTermMenuMixin extends MEStorageMenu impleme
 
     @Unique
     private void gTLCore$encodeAndUploadPattern(ServerPlayer player, PatternQuickUploadService.Target target) {
+        boolean isNewPattern = !PatternDetailsHelper.isEncodedPattern(this.encodedPatternSlot.getItem());
         ItemStack preparedPattern = gTLCore$previewPatternForQuickUpload(player);
         if (preparedPattern == null) {
             return;
         }
         if (!gTLCore$hasPatternSourceForQuickUpload(player)) {
             return;
+        }
+        if (isNewPattern) {
+            gTLCore$writePatternEncoder(preparedPattern);
         }
         PatternQuickUploadService.UploadResult uploadResult = PatternQuickUploadService.insertIntoTargetSlotResult(player, preparedPattern, target);
         if (uploadResult != null) {
@@ -471,9 +479,29 @@ public abstract class PatternEncodingTermMenuMixin extends MEStorageMenu impleme
             this.gTLCore$lastQuickUploadPattern = preparedPattern.copy();
             this.gTLCore$lastQuickUploadSlot = uploadResult.slot();
             gTLCore$consumePatternSourceAfterQuickUpload();
+            if (isNewPattern) {
+                gTLCore$awardPatternEncoded();
+            }
             player.displayClientMessage(Component.translatable("message.gtlcore.pattern_quick_upload_inserted", target.targetName()), true);
         } else {
             player.displayClientMessage(Component.translatable("message.gtlcore.pattern_quick_upload_insert_failed"), true);
+        }
+    }
+
+    @Unique
+    private void gTLCore$writePatternEncoder(ItemStack patternStack) {
+        if (this.getPlayer() instanceof ServerPlayer player) {
+            PatternEncoderMetadata.writeEncoder(
+                    patternStack,
+                    player.getUUID(),
+                    player.getGameProfile().getName());
+        }
+    }
+
+    @Unique
+    private void gTLCore$awardPatternEncoded() {
+        if (this.getPlayer() instanceof ServerPlayer player) {
+            GTLStats.awardPatternEncoded(player);
         }
     }
 

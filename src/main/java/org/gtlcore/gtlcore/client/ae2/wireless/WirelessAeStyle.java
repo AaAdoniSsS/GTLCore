@@ -18,6 +18,10 @@ final class WirelessAeStyle {
     static final int WARNING_TEXT = 0xFFA33A2A;
     static final int ONLINE_TEXT = 0xFF245F68;
     static final int AE2_SCROLLBAR_WIDTH = Scrollbar.SMALL.handleWidth();
+    /** Height of an AE2 text field's visual frame. */
+    static final int AE2_TEXT_FIELD_HEIGHT = 12;
+    /** Inset of the editable text area inside that frame, on both axes. */
+    static final int AE2_TEXT_FIELD_PADDING = 2;
     private static final int PANEL_LIGHT_BORDER = 0xFFEEEEEE;
     private static final int PANEL_HIGHLIGHT = 0xFFFFFFFF;
     private static final int PANEL_SHADOW = 0xFF555555;
@@ -25,6 +29,15 @@ final class WirelessAeStyle {
     private static final int PANEL_BACKGROUND_FILL = 0xFFCBCCD4;
 
     private static final ResourceLocation AE2_BACKGROUND = new ResourceLocation("ae2", "textures/guis/background.png");
+    private static final ResourceLocation AE2_TEXT_FIELD = new ResourceLocation("ae2", "textures/guis/text_field.png");
+    /** AE2's {@code guis/text_field.png} is a 128x128 sheet sliced horizontally: 1px edges, stretched centre. */
+    private static final int AE2_TEXT_FIELD_TEXTURE_SIZE = 128;
+    private static final int AE2_TEXT_FIELD_EDGE = 1;
+    private static final int AE2_TEXT_FIELD_CENTER_SOURCE_WIDTH = 126;
+    /** Vertical offset of each state row inside the sheet. */
+    private static final int AE2_TEXT_FIELD_STATE_NORMAL = 0;
+    private static final int AE2_TEXT_FIELD_STATE_DISABLED = 12;
+    private static final int AE2_TEXT_FIELD_STATE_FOCUSED = 24;
     private static final ResourceLocation INSET_PANEL = wirelessTexture("inset_panel.png");
     private static final ResourceLocation TEXT_FIELD = wirelessTexture("text_field.png");
     private static final ResourceLocation SEPARATOR = wirelessTexture("separator.png");
@@ -71,6 +84,48 @@ final class WirelessAeStyle {
 
     static void drawTextField(GuiGraphics graphics, int x, int y, int width) {
         drawNineSlice(graphics, TEXT_FIELD, x, y, width, 20, 120, 20, 3);
+    }
+
+    static void drawAe2TextField(GuiGraphics graphics, int x, int y, int width) {
+        drawAe2TextField(graphics, x, y, width, true, false);
+    }
+
+    /**
+     * Draws AE2's text field frame the way {@code AETextField} does: 1px left edge, a stretched centre and a 1px
+     * right edge, taken from the state row matching {@code editable}/{@code focused}.
+     */
+    static void drawAe2TextField(GuiGraphics graphics, int x, int y, int width, boolean editable, boolean focused) {
+        if (width <= 0) {
+            return;
+        }
+
+        int sourceY = !editable ? AE2_TEXT_FIELD_STATE_DISABLED :
+                (focused ? AE2_TEXT_FIELD_STATE_FOCUSED : AE2_TEXT_FIELD_STATE_NORMAL);
+        int centerWidth = Math.max(0, width - AE2_TEXT_FIELD_EDGE * 2);
+        blitRegion(graphics, AE2_TEXT_FIELD, x, y, 0, sourceY, AE2_TEXT_FIELD_EDGE, AE2_TEXT_FIELD_HEIGHT,
+                AE2_TEXT_FIELD_TEXTURE_SIZE, AE2_TEXT_FIELD_TEXTURE_SIZE);
+        if (centerWidth > 0) {
+            graphics.blit(
+                    AE2_TEXT_FIELD,
+                    x + AE2_TEXT_FIELD_EDGE,
+                    y,
+                    centerWidth,
+                    AE2_TEXT_FIELD_HEIGHT,
+                    AE2_TEXT_FIELD_EDGE,
+                    sourceY,
+                    Math.min(AE2_TEXT_FIELD_CENTER_SOURCE_WIDTH, centerWidth),
+                    AE2_TEXT_FIELD_HEIGHT,
+                    AE2_TEXT_FIELD_TEXTURE_SIZE,
+                    AE2_TEXT_FIELD_TEXTURE_SIZE);
+        }
+        blitRegion(graphics, AE2_TEXT_FIELD, x + width - AE2_TEXT_FIELD_EDGE, y,
+                AE2_TEXT_FIELD_TEXTURE_SIZE - AE2_TEXT_FIELD_EDGE, sourceY, AE2_TEXT_FIELD_EDGE,
+                AE2_TEXT_FIELD_HEIGHT, AE2_TEXT_FIELD_TEXTURE_SIZE, AE2_TEXT_FIELD_TEXTURE_SIZE);
+    }
+
+    /** Width available for text inside an AE2 text field frame of {@code frameWidth}, matching AE2's cursor padding. */
+    static int ae2TextFieldTextWidth(Font font, int frameWidth) {
+        return Math.max(0, frameWidth - AE2_TEXT_FIELD_PADDING * 2 - font.width("_"));
     }
 
     static void drawSlotGroupOutline(GuiGraphics graphics, int x, int y, int width, int height) {
