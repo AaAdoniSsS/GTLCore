@@ -2,6 +2,10 @@ package org.gtlcore.gtlcore.integration.ae2.wireless;
 
 import org.gtlcore.gtlcore.GTLCore;
 import org.gtlcore.gtlcore.common.data.GTLCreativeModeTabs;
+import org.gtlcore.gtlcore.integration.ae2.emitter.EmitterManagerTerminalMenu;
+import org.gtlcore.gtlcore.integration.ae2.emitter.EmitterManagerTerminalPart;
+import org.gtlcore.gtlcore.integration.ae2.emitter.WirelessEmitterManagerMenuHost;
+import org.gtlcore.gtlcore.integration.ae2.emitter.WirelessEmitterManagerTerminalItem;
 import org.gtlcore.gtlcore.integration.ae2.pattern.PatternQuickUploadSelectionMenu;
 import org.gtlcore.gtlcore.integration.ae2.patternrelay.PatternRelayItem;
 import org.gtlcore.gtlcore.integration.ae2.patternrelay.PatternRelayPart;
@@ -40,6 +44,7 @@ public final class GTLWirelessAeContent {
     private static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITY_TYPES = DeferredRegister.create(ForgeRegistries.BLOCK_ENTITY_TYPES, GTLCore.MOD_ID);
     private static final DeferredRegister<MenuType<?>> MENU_TYPES = DeferredRegister.create(ForgeRegistries.MENU_TYPES, GTLCore.MOD_ID);
     private static final MenuType<ThroughputMonitorTerminalMenu> WIRELESS_THROUGHPUT_MONITOR_TERMINAL_MENU_TYPE = IForgeMenuType.create(ThroughputMonitorTerminalMenu::createWirelessClientMenu);
+    private static final MenuType<EmitterManagerTerminalMenu> WIRELESS_EMITTER_MANAGER_TERMINAL_MENU_TYPE = IForgeMenuType.create(EmitterManagerTerminalMenu::createWirelessClientMenu);
     private static final MenuType<TagViewCellMenu> TAG_VIEW_CELL_MENU_TYPE = IForgeMenuType.create(TagViewCellMenu::createClientMenu);
 
     public static final RegistryObject<Block> WIRELESS_NETWORK_CORE = BLOCKS.register(
@@ -84,9 +89,20 @@ public final class GTLWirelessAeContent {
                     ThroughputMonitorTerminalPart.class,
                     ThroughputMonitorTerminalPart::new));
 
+    public static final RegistryObject<PartItem<EmitterManagerTerminalPart>> EMITTER_MANAGER_TERMINAL = ITEMS.register(
+            "emitter_manager_terminal",
+            () -> new PartItem<>(
+                    new Item.Properties(),
+                    EmitterManagerTerminalPart.class,
+                    EmitterManagerTerminalPart::new));
+
     public static final RegistryObject<WirelessThroughputMonitorTerminalItem> WIRELESS_THROUGHPUT_MONITOR_TERMINAL = ITEMS.register(
             "wireless_throughput_monitor_terminal",
             WirelessThroughputMonitorTerminalItem::new);
+
+    public static final RegistryObject<WirelessEmitterManagerTerminalItem> WIRELESS_EMITTER_MANAGER_TERMINAL = ITEMS.register(
+            "wireless_emitter_manager_terminal",
+            WirelessEmitterManagerTerminalItem::new);
 
     public static final RegistryObject<BlockEntityType<WirelessNetworkCoreBlockEntity>> WIRELESS_NETWORK_CORE_BE = BLOCK_ENTITY_TYPES.register(
             "wireless_network_core",
@@ -126,6 +142,14 @@ public final class GTLWirelessAeContent {
             "wireless_throughput_monitor_terminal",
             () -> WIRELESS_THROUGHPUT_MONITOR_TERMINAL_MENU_TYPE);
 
+    public static final RegistryObject<MenuType<EmitterManagerTerminalMenu>> EMITTER_MANAGER_TERMINAL_MENU = MENU_TYPES.register(
+            "emitter_manager_terminal",
+            () -> IForgeMenuType.create(EmitterManagerTerminalMenu::createWiredClientMenu));
+
+    public static final RegistryObject<MenuType<EmitterManagerTerminalMenu>> WIRELESS_EMITTER_MANAGER_TERMINAL_MENU = MENU_TYPES.register(
+            "wireless_emitter_manager_terminal",
+            () -> WIRELESS_EMITTER_MANAGER_TERMINAL_MENU_TYPE);
+
     public static final RegistryObject<MenuType<TagViewCellMenu>> TAG_VIEW_CELL_MENU = MENU_TYPES.register(
             "tag_view_cell",
             () -> TAG_VIEW_CELL_MENU_TYPE);
@@ -135,6 +159,7 @@ public final class GTLWirelessAeContent {
     public static void register(IEventBus modBus) {
         PatternRelayPart.registerModels();
         ThroughputMonitorTerminalPart.registerModels();
+        EmitterManagerTerminalPart.registerModels();
         BLOCKS.register(modBus);
         ITEMS.register(modBus);
         BLOCK_ENTITY_TYPES.register(modBus);
@@ -148,20 +173,33 @@ public final class GTLWirelessAeContent {
             return;
         }
 
-        WirelessThroughputMonitorTerminalItem item = WIRELESS_THROUGHPUT_MONITOR_TERMINAL.get();
-        GridLinkables.register(item, WirelessTerminalItem.LINKABLE_HANDLER);
+        WirelessThroughputMonitorTerminalItem throughputItem = WIRELESS_THROUGHPUT_MONITOR_TERMINAL.get();
+        GridLinkables.register(throughputItem, WirelessTerminalItem.LINKABLE_HANDLER);
         MenuOpener.addOpener(
                 WIRELESS_THROUGHPUT_MONITOR_TERMINAL_MENU_TYPE,
                 ThroughputMonitorTerminalMenu::openWireless);
+        WirelessEmitterManagerTerminalItem emitterItem = WIRELESS_EMITTER_MANAGER_TERMINAL.get();
+        GridLinkables.register(emitterItem, WirelessTerminalItem.LINKABLE_HANDLER);
+        MenuOpener.addOpener(
+                WIRELESS_EMITTER_MANAGER_TERMINAL_MENU_TYPE,
+                EmitterManagerTerminalMenu::openWireless);
         MenuOpener.addOpener(TAG_VIEW_CELL_MENU_TYPE, TagViewCellMenu::open);
         WUTHandler.addTerminal(
                 WirelessThroughputMonitorTerminalItem.TERMINAL_NAME,
-                item::tryOpen,
+                throughputItem::tryOpen,
                 WirelessThroughputMonitorMenuHost::new,
                 WIRELESS_THROUGHPUT_MONITOR_TERMINAL_MENU_TYPE,
-                item,
+                throughputItem,
                 WirelessThroughputMonitorTerminalItem.HOTKEY_NAME,
-                item.getDescriptionId());
+                throughputItem.getDescriptionId());
+        WUTHandler.addTerminal(
+                WirelessEmitterManagerTerminalItem.TERMINAL_NAME,
+                emitterItem::tryOpen,
+                WirelessEmitterManagerMenuHost::new,
+                WIRELESS_EMITTER_MANAGER_TERMINAL_MENU_TYPE,
+                emitterItem,
+                WirelessEmitterManagerTerminalItem.HOTKEY_NAME,
+                emitterItem.getDescriptionId());
     }
 
     private static void addCreativeTabItems(BuildCreativeModeTabContentsEvent event) {
@@ -173,7 +211,9 @@ public final class GTLWirelessAeContent {
             event.accept(THROUGHPUT_MONITOR_CONFIGURATOR);
             event.accept(TAG_VIEW_CELL);
             event.accept(THROUGHPUT_MONITOR_TERMINAL);
+            event.accept(EMITTER_MANAGER_TERMINAL);
             event.accept(WIRELESS_THROUGHPUT_MONITOR_TERMINAL);
+            event.accept(WIRELESS_EMITTER_MANAGER_TERMINAL);
         }
     }
 }

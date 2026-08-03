@@ -1,5 +1,6 @@
 package org.gtlcore.gtlcore.mixin.ae2.pattern;
 
+import org.gtlcore.gtlcore.integration.ae2.pattern.PatternEncoderMetadata;
 import org.gtlcore.gtlcore.integration.ae2.pattern.PatternQuickUploadMetadata;
 
 import net.minecraft.ChatFormatting;
@@ -29,6 +30,11 @@ public abstract class EncodedPatternItemMixin {
     @Inject(method = "appendHoverText", at = @At("TAIL"))
     private void gtlcore$appendQuickUploadRecipeTypes(ItemStack stack, Level level, List<Component> tooltip,
                                                       TooltipFlag flag, CallbackInfo ci) {
+        PatternEncoderMetadata.readEncoder(stack).ifPresent(encoder -> tooltip.add(Component.translatable(
+                "tooltip.gtlcore.pattern_encoder",
+                Component.literal(encoder.displayName()).withStyle(ChatFormatting.LIGHT_PURPLE))
+                .withStyle(ChatFormatting.GRAY)));
+
         Set<ResourceLocation> recipeTypeIds = PatternQuickUploadMetadata.readRecipeTypeIds(stack);
         if (recipeTypeIds.isEmpty()) {
             return;

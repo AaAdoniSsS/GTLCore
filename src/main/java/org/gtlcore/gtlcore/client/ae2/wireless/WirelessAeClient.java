@@ -29,7 +29,8 @@ public final class WirelessAeClient {
     private static void onRegisterItemColors(RegisterColorHandlersEvent.Item event) {
         event.register(
                 new StaticItemColor(AEColor.TRANSPARENT),
-                GTLWirelessAeContent.THROUGHPUT_MONITOR_TERMINAL.get());
+                GTLWirelessAeContent.THROUGHPUT_MONITOR_TERMINAL.get(),
+                GTLWirelessAeContent.EMITTER_MANAGER_TERMINAL.get());
     }
 
     public static void onClientSetup(FMLClientSetupEvent event) {
@@ -47,8 +48,22 @@ public final class WirelessAeClient {
                     GTLWirelessAeContent.TAG_VIEW_CELL_MENU.get(),
                     TagViewCellScreen::new,
                     "/screens/tag_view_cell.json");
-            MenuScreens.register(GTLWirelessAeContent.THROUGHPUT_MONITOR_TERMINAL_MENU.get(), ThroughputMonitorTerminalScreen::new);
-            MenuScreens.register(GTLWirelessAeContent.WIRELESS_THROUGHPUT_MONITOR_TERMINAL_MENU.get(), ThroughputMonitorTerminalScreen::new);
+            InitScreens.register(
+                    GTLWirelessAeContent.THROUGHPUT_MONITOR_TERMINAL_MENU.get(),
+                    ThroughputMonitorTerminalScreen::new,
+                    "/screens/throughput_monitor_terminal.json");
+            InitScreens.register(
+                    GTLWirelessAeContent.WIRELESS_THROUGHPUT_MONITOR_TERMINAL_MENU.get(),
+                    ThroughputMonitorTerminalScreen::new,
+                    "/screens/throughput_monitor_terminal.json");
+            InitScreens.register(
+                    GTLWirelessAeContent.EMITTER_MANAGER_TERMINAL_MENU.get(),
+                    EmitterManagerTerminalScreen::new,
+                    "/screens/emitter_manager_terminal.json");
+            InitScreens.register(
+                    GTLWirelessAeContent.WIRELESS_EMITTER_MANAGER_TERMINAL_MENU.get(),
+                    EmitterManagerTerminalScreen::new,
+                    "/screens/emitter_manager_terminal.json");
         });
     }
 }
