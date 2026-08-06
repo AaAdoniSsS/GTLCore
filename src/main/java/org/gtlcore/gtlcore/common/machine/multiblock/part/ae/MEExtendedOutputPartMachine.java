@@ -57,6 +57,10 @@ public class MEExtendedOutputPartMachine extends MEExtendedOutputPartMachineBase
         notifyHandlers();
     }
 
+    public MEOutputFilterHandler getFilterHandler() {
+        return filterHandler;
+    }
+
     // ========================================
     // GUI SYSTEM
     // ========================================

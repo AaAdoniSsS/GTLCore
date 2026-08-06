@@ -1,5 +1,6 @@
 package org.gtlcore.gtlcore.common.machine.multiblock.part;
 
+import org.gtlcore.gtlcore.api.gui.TagFilterConfigurator;
 import org.gtlcore.gtlcore.api.machine.trait.MEPart.IModifiableSyncOffset;
 import org.gtlcore.gtlcore.api.machine.trait.MEStock.ExportOnlyAEConfigureFluidSlot;
 import org.gtlcore.gtlcore.api.machine.trait.MEStock.IMESlot;
@@ -19,8 +20,6 @@ import com.gregtechceu.gtceu.integration.ae2.machine.MEInputHatchPartMachine;
 import com.gregtechceu.gtceu.integration.ae2.slot.*;
 import com.gregtechceu.gtceu.integration.ae2.utils.AEUtil;
 
-import com.lowdragmc.lowdraglib.gui.texture.IGuiTexture;
-import com.lowdragmc.lowdraglib.gui.texture.ResourceTexture;
 import com.lowdragmc.lowdraglib.gui.texture.TextTexture;
 import com.lowdragmc.lowdraglib.gui.widget.*;
 import com.lowdragmc.lowdraglib.side.fluid.FluidStack;
@@ -62,7 +61,6 @@ public class TagFilterMEStockHatchPartMachine extends MEInputHatchPartMachine im
             MEInputHatchPartMachine.MANAGED_FIELD_HOLDER);
 
     private static final boolean ENABLE_ULTIMATE_ME_STOCKING = ConfigHolder.INSTANCE.enableUltimateMEStocking;
-    private static final ResourceTexture TEXTURE = new ResourceTexture("gtceu:textures/gui/list.png");
 
     @Persisted
     protected String tagWhite = "";
@@ -94,7 +92,7 @@ public class TagFilterMEStockHatchPartMachine extends MEInputHatchPartMachine im
                 this::isCountSort,
                 (clickData, pressed) -> setCountSort(pressed))
                 .setTooltipsSupplier(pressed -> List.of(Component.translatable("tooltip.gtlcore.auto_pull_sort_mode"))));
-        configuratorPanel.attachConfigurators(new FilterIFancyConfigurator());
+        configuratorPanel.attachConfigurators(createTagFilterConfigurator());
     }
 
     @Override
@@ -223,36 +221,18 @@ public class TagFilterMEStockHatchPartMachine extends MEInputHatchPartMachine im
         return MANAGED_FIELD_HOLDER;
     }
 
-    private class FilterIFancyConfigurator implements IFancyConfigurator {
+    public String getTagWhite() {
+        return tagWhite;
+    }
 
-        @Override
-        public Component getTitle() {
-            return Component.translatable("gui.gtlcore.tag_filter_config");
-        }
+    public String getTagBlack() {
+        return tagBlack;
+    }
 
-        @Override
-        public IGuiTexture getIcon() {
-            return TEXTURE.scale(1.25f);
-        }
-
-        @Override
-        public Widget createConfigurator() {
-            return new WidgetGroup(0, 0, 132, 100)
-                    .addWidget(new LabelWidget(9, 4,
-                            () -> Component.translatable("gui.gtlcore.tag_whitelist").getString()))
-                    .addWidget(new TextFieldWidget(9, 16, 114, 16,
-                            () -> tagWhite,
-                            v -> tagWhite = v))
-                    .addWidget(new LabelWidget(9, 36,
-                            () -> Component.translatable("gui.gtlcore.tag_blacklist").getString()))
-                    .addWidget(new TextFieldWidget(9, 48, 114, 16,
-                            () -> tagBlack,
-                            v -> tagBlack = v))
-                    .addWidget(new LabelWidget(0, 68,
-                            () -> Component.translatable("gui.gtlcore.wildcard_info").getString()))
-                    .addWidget(new LabelWidget(0, 84,
-                            () -> Component.translatable("gui.gtlcore.logic_operators").getString()));
-        }
+    public IFancyConfigurator createTagFilterConfigurator() {
+        return new TagFilterConfigurator(
+                this::getTagWhite, value -> tagWhite = value,
+                this::getTagBlack, value -> tagBlack = value);
     }
 
     private class ExportOnlyAEStockingFluidList extends ExportOnlyAEFluidList implements IOptimizedMEList {

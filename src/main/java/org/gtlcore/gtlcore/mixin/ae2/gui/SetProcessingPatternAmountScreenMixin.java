@@ -1,5 +1,7 @@
 package org.gtlcore.gtlcore.mixin.ae2.gui;
 
+import org.gtlcore.gtlcore.client.gui.widget.IShiftAmountOperations;
+
 import appeng.api.stacks.GenericStack;
 import appeng.client.gui.me.items.PatternEncodingTermScreen;
 import appeng.client.gui.me.items.SetProcessingPatternAmountScreen;
@@ -22,6 +24,7 @@ public abstract class SetProcessingPatternAmountScreenMixin {
     private void gtlcore$allowLongAmountInput(PatternEncodingTermScreen<?> parent, GenericStack currentStack,
                                               Consumer<GenericStack> setter, CallbackInfo ci) {
         ((NumberEntryWidgetAccessor) this.amount).getTextField().setMaxLength(Long.toString(Long.MAX_VALUE).length());
+        ((IShiftAmountOperations) this.amount).gtlcore$enableShiftAmountOperations();
     }
 
     /**

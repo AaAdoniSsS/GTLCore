@@ -314,6 +314,10 @@ public class MEDualHatchStockPartMachine extends MEBusPartMachine implements IDa
         }
     }
 
+    public void setTerminalAutoPullMode(int autoPullMode) {
+        setAutoPullMode(Math.max(AUTO_PULL_OFF, Math.min(AUTO_PULL_FLUID, autoPullMode)));
+    }
+
     protected CompoundTag writeConfigToTag() {
         CompoundTag tag = new CompoundTag();
         tag.putInt("AutoPullMode", autoPullMode);

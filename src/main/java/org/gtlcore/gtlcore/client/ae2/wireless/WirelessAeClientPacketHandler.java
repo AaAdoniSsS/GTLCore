@@ -1,6 +1,7 @@
 package org.gtlcore.gtlcore.client.ae2.wireless;
 
 import org.gtlcore.gtlcore.client.ae2.MeInventoryAmountClient;
+import org.gtlcore.gtlcore.integration.ae2.chamber.MEChamberManagerTerminalMenu;
 import org.gtlcore.gtlcore.integration.ae2.emitter.EmitterManagerTerminalMenu;
 import org.gtlcore.gtlcore.integration.ae2.throughput.ThroughputMonitorTerminalMenu;
 import org.gtlcore.gtlcore.integration.ae2.wireless.MeInventoryAmountPackets;
@@ -48,6 +49,24 @@ public final class WirelessAeClientPacketHandler {
                 Minecraft.getInstance().player.containerMenu instanceof EmitterManagerTerminalMenu menu &&
                 menu.containerId == packet.containerId()) {
             menu.setEntries(packet.entries());
+        }
+    }
+
+    public static void handleMEChamberManagerEntries(
+                                                     WirelessAePackets.SyncMEChamberManagerEntriesPacket packet) {
+        if (Minecraft.getInstance().player != null &&
+                Minecraft.getInstance().player.containerMenu instanceof MEChamberManagerTerminalMenu menu &&
+                menu.containerId == packet.containerId()) {
+            menu.setEntries(packet.entries());
+        }
+    }
+
+    public static void handleMEChamberManagerContents(
+                                                      WirelessAePackets.SyncMEChamberManagerContentsPacket packet) {
+        if (Minecraft.getInstance().player != null &&
+                Minecraft.getInstance().player.containerMenu instanceof MEChamberManagerTerminalMenu menu &&
+                menu.containerId == packet.containerId()) {
+            menu.setSelectedContents(packet.address(), packet.contents(), packet.details());
         }
     }
 }

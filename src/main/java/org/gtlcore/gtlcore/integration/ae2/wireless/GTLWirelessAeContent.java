@@ -2,6 +2,8 @@ package org.gtlcore.gtlcore.integration.ae2.wireless;
 
 import org.gtlcore.gtlcore.GTLCore;
 import org.gtlcore.gtlcore.common.data.GTLCreativeModeTabs;
+import org.gtlcore.gtlcore.integration.ae2.chamber.MEChamberManagerTerminalMenu;
+import org.gtlcore.gtlcore.integration.ae2.chamber.MEChamberManagerTerminalPart;
 import org.gtlcore.gtlcore.integration.ae2.emitter.EmitterManagerTerminalMenu;
 import org.gtlcore.gtlcore.integration.ae2.emitter.EmitterManagerTerminalPart;
 import org.gtlcore.gtlcore.integration.ae2.emitter.WirelessEmitterManagerMenuHost;
@@ -96,6 +98,13 @@ public final class GTLWirelessAeContent {
                     EmitterManagerTerminalPart.class,
                     EmitterManagerTerminalPart::new));
 
+    public static final RegistryObject<PartItem<MEChamberManagerTerminalPart>> ME_CHAMBER_MANAGER_TERMINAL = ITEMS.register(
+            "me_chamber_manager_terminal",
+            () -> new PartItem<>(
+                    new Item.Properties(),
+                    MEChamberManagerTerminalPart.class,
+                    MEChamberManagerTerminalPart::new));
+
     public static final RegistryObject<WirelessThroughputMonitorTerminalItem> WIRELESS_THROUGHPUT_MONITOR_TERMINAL = ITEMS.register(
             "wireless_throughput_monitor_terminal",
             WirelessThroughputMonitorTerminalItem::new);
@@ -150,6 +159,10 @@ public final class GTLWirelessAeContent {
             "wireless_emitter_manager_terminal",
             () -> WIRELESS_EMITTER_MANAGER_TERMINAL_MENU_TYPE);
 
+    public static final RegistryObject<MenuType<MEChamberManagerTerminalMenu>> ME_CHAMBER_MANAGER_TERMINAL_MENU = MENU_TYPES.register(
+            "me_chamber_manager_terminal",
+            () -> IForgeMenuType.create(MEChamberManagerTerminalMenu::createClientMenu));
+
     public static final RegistryObject<MenuType<TagViewCellMenu>> TAG_VIEW_CELL_MENU = MENU_TYPES.register(
             "tag_view_cell",
             () -> TAG_VIEW_CELL_MENU_TYPE);
@@ -160,6 +173,7 @@ public final class GTLWirelessAeContent {
         PatternRelayPart.registerModels();
         ThroughputMonitorTerminalPart.registerModels();
         EmitterManagerTerminalPart.registerModels();
+        MEChamberManagerTerminalPart.registerModels();
         BLOCKS.register(modBus);
         ITEMS.register(modBus);
         BLOCK_ENTITY_TYPES.register(modBus);
@@ -212,6 +226,7 @@ public final class GTLWirelessAeContent {
             event.accept(TAG_VIEW_CELL);
             event.accept(THROUGHPUT_MONITOR_TERMINAL);
             event.accept(EMITTER_MANAGER_TERMINAL);
+            event.accept(ME_CHAMBER_MANAGER_TERMINAL);
             event.accept(WIRELESS_THROUGHPUT_MONITOR_TERMINAL);
             event.accept(WIRELESS_EMITTER_MANAGER_TERMINAL);
         }
