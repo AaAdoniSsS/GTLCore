@@ -26,15 +26,30 @@ public abstract class NumberEntryWidgetMixin implements IShiftAmountOperations {
 
     @Unique
     private static final Component[] GTLCORE$SHIFT_BUTTON_LABELS = {
-            Component.literal("\u00d72"),
-            Component.literal("\u00d75"),
-            Component.literal("int"),
-            Component.literal("long"),
-            Component.literal("\u00f72"),
-            Component.literal("\u00f75"),
-            Component.literal("=1"),
-            Component.literal("=1")
+            Component.literal("*2"),
+            Component.literal("*5"),
+            Component.literal("+int"),
+            Component.literal("=long"),
+            Component.literal("/2"),
+            Component.literal("/5"),
+            Component.literal("-int"),
+            Component.literal("=0")
     };
+
+    @Unique
+    private static final long GTLCORE$MIN_AMOUNT = 0;
+
+    @Unique
+    private static final long GTLCORE$TWO = 2;
+
+    @Unique
+    private static final long GTLCORE$FIVE = 5;
+
+    @Unique
+    private static final long GTLCORE$INT_MAX = Integer.MAX_VALUE;
+
+    @Unique
+    private static final long GTLCORE$LONG_MAX = Long.MAX_VALUE;
 
     @Shadow(remap = false)
     @Final
@@ -62,12 +77,16 @@ public abstract class NumberEntryWidgetMixin implements IShiftAmountOperations {
     public abstract void setMaxValue(long value);
 
     @Shadow(remap = false)
+    public abstract void setMinValue(long value);
+
+    @Shadow(remap = false)
     public abstract void setLongValue(long value);
 
     @Override
     public void gtlcore$enableShiftAmountOperations() {
         this.gtlcore$shiftAmountOperationsEnabled = true;
-        this.setMaxValue(Long.MAX_VALUE);
+        this.setMinValue(GTLCORE$MIN_AMOUNT);
+        this.setMaxValue(GTLCORE$LONG_MAX);
     }
 
     @Inject(method = "drawBackgroundLayer", at = @At("HEAD"), remap = false)
@@ -104,19 +123,21 @@ public abstract class NumberEntryWidgetMixin implements IShiftAmountOperations {
 
         long currentValue = this.getLongValue().orElse(0);
         if (delta == STEPS[0]) {
-            this.gtlcore$multiply(currentValue, 2);
+            this.gtlcore$multiply(currentValue, GTLCORE$TWO);
         } else if (delta == STEPS[1]) {
-            this.gtlcore$multiply(currentValue, 5);
+            this.gtlcore$multiply(currentValue, GTLCORE$FIVE);
         } else if (delta == STEPS[2]) {
-            this.setLongValue(Integer.MAX_VALUE);
+            this.gtlcore$add(currentValue, GTLCORE$INT_MAX);
         } else if (delta == STEPS[3]) {
-            this.setLongValue(Long.MAX_VALUE);
+            this.setLongValue(GTLCORE$LONG_MAX);
         } else if (delta == -STEPS[0]) {
-            this.setLongValue(currentValue / 2);
+            this.setLongValue(currentValue / GTLCORE$TWO);
         } else if (delta == -STEPS[1]) {
-            this.setLongValue(currentValue / 5);
-        } else if (delta == -STEPS[2] || delta == -STEPS[3]) {
-            this.setLongValue(1);
+            this.setLongValue(currentValue / GTLCORE$FIVE);
+        } else if (delta == -STEPS[2]) {
+            this.setLongValue(Math.max(GTLCORE$MIN_AMOUNT, currentValue - GTLCORE$INT_MAX));
+        } else if (delta == -STEPS[3]) {
+            this.setLongValue(GTLCORE$MIN_AMOUNT);
         } else {
             return;
         }
@@ -126,6 +147,12 @@ public abstract class NumberEntryWidgetMixin implements IShiftAmountOperations {
     @Unique
     private void gtlcore$multiply(long currentValue, long factor) {
         long result = currentValue > this.maxValue / factor ? this.maxValue : currentValue * factor;
+        this.setLongValue(result);
+    }
+
+    @Unique
+    private void gtlcore$add(long currentValue, long increment) {
+        long result = currentValue > this.maxValue - increment ? this.maxValue : currentValue + increment;
         this.setLongValue(result);
     }
 }
