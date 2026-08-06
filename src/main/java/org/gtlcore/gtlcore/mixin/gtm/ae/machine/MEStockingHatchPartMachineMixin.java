@@ -1,25 +1,17 @@
 package org.gtlcore.gtlcore.mixin.gtm.ae.machine;
 
 import org.gtlcore.gtlcore.api.machine.trait.MEPart.IModifiableSyncOffset;
-import org.gtlcore.gtlcore.api.machine.trait.MEStock.IMESlot;
-import org.gtlcore.gtlcore.api.machine.trait.MEStock.IOptimizedMEList;
 
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
-import com.gregtechceu.gtceu.common.item.IntCircuitBehaviour;
+import com.gregtechceu.gtceu.api.machine.feature.multiblock.IMultiController;
 import com.gregtechceu.gtceu.integration.ae2.machine.MEInputHatchPartMachine;
 import com.gregtechceu.gtceu.integration.ae2.machine.MEStockingHatchPartMachine;
-import com.gregtechceu.gtceu.integration.ae2.slot.ExportOnlyAEFluidSlot;
 
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.server.TickTask;
-import net.minecraft.server.level.ServerLevel;
 
-import appeng.api.config.Actionable;
-import appeng.api.networking.IGrid;
-import appeng.api.stacks.*;
-import appeng.api.storage.MEStorage;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
-import org.spongepowered.asm.mixin.*;
+import appeng.api.stacks.GenericStack;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Constant;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -33,15 +25,20 @@ import java.util.function.Predicate;
 public abstract class MEStockingHatchPartMachineMixin extends MEInputHatchPartMachine implements IModifiableSyncOffset {
 
     @Shadow(remap = false)
-    private Predicate<GenericStack> autoPullTest;
-
-    @Shadow(remap = false)
-    public void setAutoPull(boolean autoPull) {
-        throw new AssertionError();
-    }
+    public abstract void setAutoPullTest(Predicate<GenericStack> autoPullTest);
 
     public MEStockingHatchPartMachineMixin(IMachineBlockEntity holder, Object... args) {
         super(holder, args);
+    }
+
+    @Inject(method = "<init>", at = @At("RETURN"), remap = false)
+    private void gtlcore$allowStandaloneAutoPull(IMachineBlockEntity holder, Object[] args, CallbackInfo ci) {
+        setAutoPullTest(stack -> true);
+    }
+
+    @Inject(method = "removedFromController", at = @At("RETURN"), remap = false)
+    private void gtlcore$restoreStandaloneAutoPull(IMultiController controller, CallbackInfo ci) {
+        setAutoPullTest(stack -> true);
     }
 
     @ModifyConstant(
@@ -65,83 +62,6 @@ public abstract class MEStockingHatchPartMachineMixin extends MEInputHatchPartMa
     public void readSyncOffset(CompoundTag tag, CallbackInfo ci) {
         if (tag.contains("SyncOffset")) {
             this.setOffset(tag.getInt("SyncOffset"));
-        }
-    }
-
-    /**
-     * @author Dragons
-     * @reason 设置完所有slot才进行onConfigChanged
-     */
-    @Overwrite(remap = false)
-    private void refreshList() {
-        IGrid grid = this.getMainNode().getGrid();
-        if (grid == null) {
-            this.aeFluidHandler.clearInventory(0);
-        } else {
-            var storageService = grid.getStorageService();
-            MEStorage networkStorage = storageService.getInventory();
-            var counter = storageService.getCachedInventory();
-
-            int index = 0;
-
-            for (Object2LongMap.Entry<AEKey> entry : counter) {
-                if (index >= 16) {
-                    break;
-                }
-
-                AEKey what = entry.getKey();
-                long amount = entry.getLongValue();
-                if (amount > 0L && what instanceof AEFluidKey fluidKey) {
-                    long request = networkStorage.extract(what, amount, Actionable.SIMULATE, this.actionSource);
-                    if (request != 0L && (this.autoPullTest == null || this.autoPullTest.test(new GenericStack(fluidKey, amount)))) {
-                        ExportOnlyAEFluidSlot slot = this.aeFluidHandler.getInventory()[index];
-                        ((IMESlot) slot).setConfigWithoutNotify(new GenericStack(what, 1L));
-                        slot.setStock(new GenericStack(what, request));
-                        ++index;
-                    }
-                }
-            }
-
-            this.aeFluidHandler.clearInventory(index);
-        }
-    }
-
-    @Override
-    protected void readConfigFromTag(CompoundTag tag) {
-        if (tag.getBoolean("AutoPull")) {
-            this.setAutoPull(true);
-            this.circuitInventory.setStackInSlot(0, IntCircuitBehaviour.stack(tag.getByte("GhostCircuit")));
-        } else {
-            this.setAutoPull(false);
-            if (tag.contains("ConfigStacks")) {
-                CompoundTag configStacks = tag.getCompound("ConfigStacks");
-
-                final var inventory = this.aeFluidHandler.getInventory();
-
-                for (int i = 0; i < 16; ++i) {
-                    String key = Integer.toString(i);
-                    if (configStacks.contains(key)) {
-                        CompoundTag configTag = configStacks.getCompound(key);
-                        ((IMESlot) inventory[i]).setConfigWithoutNotify(GenericStack.readTag(configTag));
-                    } else {
-                        ((IMESlot) inventory[i]).setConfigWithoutNotify(null);
-                    }
-                }
-
-                ((IOptimizedMEList) this.aeFluidHandler).onConfigChanged();
-            }
-
-            if (tag.contains("GhostCircuit")) {
-                this.circuitInventory.setStackInSlot(0, IntCircuitBehaviour.stack(tag.getByte("GhostCircuit")));
-            }
-        }
-    }
-
-    @Override
-    public void onLoad() {
-        super.onLoad();
-        if (getLevel() instanceof ServerLevel serverLevel) {
-            serverLevel.getServer().tell(new TickTask(1, () -> ((IOptimizedMEList) this.aeFluidHandler).onConfigChanged()));
         }
     }
 }

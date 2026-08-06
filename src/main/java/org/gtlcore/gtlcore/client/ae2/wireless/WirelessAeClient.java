@@ -30,7 +30,8 @@ public final class WirelessAeClient {
         event.register(
                 new StaticItemColor(AEColor.TRANSPARENT),
                 GTLWirelessAeContent.THROUGHPUT_MONITOR_TERMINAL.get(),
-                GTLWirelessAeContent.EMITTER_MANAGER_TERMINAL.get());
+                GTLWirelessAeContent.EMITTER_MANAGER_TERMINAL.get(),
+                GTLWirelessAeContent.ME_CHAMBER_MANAGER_TERMINAL.get());
     }
 
     public static void onClientSetup(FMLClientSetupEvent event) {
@@ -64,6 +65,10 @@ public final class WirelessAeClient {
                     GTLWirelessAeContent.WIRELESS_EMITTER_MANAGER_TERMINAL_MENU.get(),
                     EmitterManagerTerminalScreen::new,
                     "/screens/emitter_manager_terminal.json");
+            InitScreens.register(
+                    GTLWirelessAeContent.ME_CHAMBER_MANAGER_TERMINAL_MENU.get(),
+                    MEChamberManagerTerminalScreen::new,
+                    "/screens/me_chamber_manager_terminal.json");
         });
     }
 }

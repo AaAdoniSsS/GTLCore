@@ -2,6 +2,8 @@ package org.gtlcore.gtlcore.integration.ae2.wireless;
 
 import org.gtlcore.gtlcore.GTLCore;
 import org.gtlcore.gtlcore.client.gui.PatterEncodingTermMenuModify;
+import org.gtlcore.gtlcore.integration.ae2.chamber.MEChamberConfigurator;
+import org.gtlcore.gtlcore.integration.ae2.chamber.MEChamberManagerTerminalMenu;
 import org.gtlcore.gtlcore.integration.ae2.emitter.EmitterManagerTerminalMenu;
 import org.gtlcore.gtlcore.integration.ae2.pattern.PatternQuickUploadSelectionMenu;
 import org.gtlcore.gtlcore.integration.ae2.throughput.ThroughputMonitorTerminalMenu;
@@ -40,7 +42,7 @@ import java.util.function.Supplier;
 
 public final class WirelessAePackets {
 
-    private static final String PROTOCOL_VERSION = "7";
+    private static final String PROTOCOL_VERSION = "10";
     private static int nextPacketId;
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
@@ -171,6 +173,55 @@ public final class WirelessAePackets {
                 SelectEmitterPacket::decode,
                 SelectEmitterPacket::handle,
                 java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
+        CHANNEL.registerMessage(
+                nextPacketId++,
+                SyncMEChamberManagerEntriesPacket.class,
+                SyncMEChamberManagerEntriesPacket::encode,
+                SyncMEChamberManagerEntriesPacket::decode,
+                SyncMEChamberManagerEntriesPacket::handle,
+                java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT));
+        CHANNEL.registerMessage(
+                nextPacketId++,
+                SelectMEChamberPacket.class,
+                SelectMEChamberPacket::encode,
+                SelectMEChamberPacket::decode,
+                SelectMEChamberPacket::handle,
+                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
+        CHANNEL.registerMessage(
+                nextPacketId++,
+                SetMEChamberSlotAmountPacket.class,
+                SetMEChamberSlotAmountPacket::encode,
+                SetMEChamberSlotAmountPacket::decode,
+                SetMEChamberSlotAmountPacket::handle,
+                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
+        CHANNEL.registerMessage(
+                nextPacketId++,
+                SetMEChamberSlotConfigPacket.class,
+                SetMEChamberSlotConfigPacket::encode,
+                SetMEChamberSlotConfigPacket::decode,
+                SetMEChamberSlotConfigPacket::handle,
+                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
+        CHANNEL.registerMessage(
+                nextPacketId++,
+                SetMEChamberControlPacket.class,
+                SetMEChamberControlPacket::encode,
+                SetMEChamberControlPacket::decode,
+                SetMEChamberControlPacket::handle,
+                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
+        CHANNEL.registerMessage(
+                nextPacketId++,
+                MEChamberConfiguratorActionPacket.class,
+                MEChamberConfiguratorActionPacket::encode,
+                MEChamberConfiguratorActionPacket::decode,
+                MEChamberConfiguratorActionPacket::handle,
+                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
+        CHANNEL.registerMessage(
+                nextPacketId++,
+                SyncMEChamberManagerContentsPacket.class,
+                SyncMEChamberManagerContentsPacket::encode,
+                SyncMEChamberManagerContentsPacket::decode,
+                SyncMEChamberManagerContentsPacket::handle,
+                java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT));
         MeInventoryAmountPackets.register(CHANNEL, () -> nextPacketId++);
         JeiWirelessTerminalOrderPackets.register(CHANNEL, () -> nextPacketId++);
     }
@@ -830,6 +881,245 @@ public final class WirelessAePackets {
                 if (player != null && player.containerMenu instanceof EmitterManagerTerminalMenu menu &&
                         menu.containerId == packet.containerId) {
                     menu.setEmitterValue(player, packet.address, packet.kind, packet.value);
+                }
+            });
+            context.setPacketHandled(true);
+        }
+    }
+
+    public record SyncMEChamberManagerEntriesPacket(
+                                                    int containerId,
+                                                    List<MEChamberManagerTerminalMenu.Entry> entries) {
+
+        private static void encode(SyncMEChamberManagerEntriesPacket packet, FriendlyByteBuf buffer) {
+            buffer.writeVarInt(packet.containerId);
+            MEChamberManagerTerminalMenu.writeEntries(buffer, packet.entries);
+        }
+
+        private static SyncMEChamberManagerEntriesPacket decode(FriendlyByteBuf buffer) {
+            return new SyncMEChamberManagerEntriesPacket(
+                    buffer.readVarInt(),
+                    MEChamberManagerTerminalMenu.readEntries(buffer));
+        }
+
+        private static void handle(SyncMEChamberManagerEntriesPacket packet,
+                                   Supplier<NetworkEvent.Context> contextSupplier) {
+            NetworkEvent.Context context = contextSupplier.get();
+            context.enqueueWork(() -> {
+                try {
+                    Class.forName("org.gtlcore.gtlcore.client.ae2.wireless.WirelessAeClientPacketHandler")
+                            .getMethod("handleMEChamberManagerEntries", SyncMEChamberManagerEntriesPacket.class)
+                            .invoke(null, packet);
+                } catch (ReflectiveOperationException | RuntimeException ignored) {
+                    // Client-only handler is not present on dedicated servers.
+                }
+            });
+            context.setPacketHandled(true);
+        }
+    }
+
+    public record SelectMEChamberPacket(int containerId, MEChamberManagerTerminalMenu.Address address) {
+
+        private static void encode(SelectMEChamberPacket packet, FriendlyByteBuf buffer) {
+            buffer.writeVarInt(packet.containerId);
+            packet.address.write(buffer);
+        }
+
+        private static SelectMEChamberPacket decode(FriendlyByteBuf buffer) {
+            return new SelectMEChamberPacket(
+                    buffer.readVarInt(),
+                    MEChamberManagerTerminalMenu.Address.read(buffer));
+        }
+
+        private static void handle(SelectMEChamberPacket packet, Supplier<NetworkEvent.Context> contextSupplier) {
+            NetworkEvent.Context context = contextSupplier.get();
+            context.enqueueWork(() -> {
+                ServerPlayer player = context.getSender();
+                if (player != null && player.containerMenu instanceof MEChamberManagerTerminalMenu menu &&
+                        menu.containerId == packet.containerId) {
+                    menu.selectChamber(player, packet.address);
+                }
+            });
+            context.setPacketHandled(true);
+        }
+    }
+
+    public record SetMEChamberSlotAmountPacket(int containerId, MEChamberManagerTerminalMenu.Address address,
+                                               MEChamberManagerTerminalMenu.StorageKind storage, int slot,
+                                               long amount) {
+
+        private static void encode(SetMEChamberSlotAmountPacket packet, FriendlyByteBuf buffer) {
+            buffer.writeVarInt(packet.containerId);
+            packet.address.write(buffer);
+            buffer.writeEnum(packet.storage);
+            buffer.writeVarInt(packet.slot);
+            buffer.writeVarLong(packet.amount);
+        }
+
+        private static SetMEChamberSlotAmountPacket decode(FriendlyByteBuf buffer) {
+            return new SetMEChamberSlotAmountPacket(
+                    buffer.readVarInt(),
+                    MEChamberManagerTerminalMenu.Address.read(buffer),
+                    buffer.readEnum(MEChamberManagerTerminalMenu.StorageKind.class),
+                    buffer.readVarInt(),
+                    buffer.readVarLong());
+        }
+
+        private static void handle(SetMEChamberSlotAmountPacket packet,
+                                   Supplier<NetworkEvent.Context> contextSupplier) {
+            NetworkEvent.Context context = contextSupplier.get();
+            context.enqueueWork(() -> {
+                ServerPlayer player = context.getSender();
+                if (player != null && player.containerMenu instanceof MEChamberManagerTerminalMenu menu &&
+                        menu.containerId == packet.containerId) {
+                    menu.setSlotAmount(player, packet.address, packet.storage, packet.slot, packet.amount);
+                }
+            });
+            context.setPacketHandled(true);
+        }
+    }
+
+    public record SetMEChamberSlotConfigPacket(int containerId, MEChamberManagerTerminalMenu.Address address,
+                                               MEChamberManagerTerminalMenu.StorageKind storage, int slot,
+                                               @org.jetbrains.annotations.Nullable AEKey key) {
+
+        private static void encode(SetMEChamberSlotConfigPacket packet, FriendlyByteBuf buffer) {
+            buffer.writeVarInt(packet.containerId);
+            packet.address.write(buffer);
+            buffer.writeEnum(packet.storage);
+            buffer.writeVarInt(packet.slot);
+            AEKey.writeOptionalKey(buffer, packet.key);
+        }
+
+        private static SetMEChamberSlotConfigPacket decode(FriendlyByteBuf buffer) {
+            return new SetMEChamberSlotConfigPacket(
+                    buffer.readVarInt(),
+                    MEChamberManagerTerminalMenu.Address.read(buffer),
+                    buffer.readEnum(MEChamberManagerTerminalMenu.StorageKind.class),
+                    buffer.readVarInt(),
+                    AEKey.readOptionalKey(buffer));
+        }
+
+        private static void handle(SetMEChamberSlotConfigPacket packet,
+                                   Supplier<NetworkEvent.Context> contextSupplier) {
+            NetworkEvent.Context context = contextSupplier.get();
+            context.enqueueWork(() -> {
+                ServerPlayer player = context.getSender();
+                if (player != null && player.containerMenu instanceof MEChamberManagerTerminalMenu menu &&
+                        menu.containerId == packet.containerId) {
+                    menu.setSlotConfig(player, packet.address, packet.storage, packet.slot, packet.key);
+                }
+            });
+            context.setPacketHandled(true);
+        }
+    }
+
+    public record SetMEChamberControlPacket(int containerId, MEChamberManagerTerminalMenu.Address address,
+                                            MEChamberManagerTerminalMenu.ControlKind control, int value) {
+
+        private static void encode(SetMEChamberControlPacket packet, FriendlyByteBuf buffer) {
+            buffer.writeVarInt(packet.containerId);
+            packet.address.write(buffer);
+            buffer.writeEnum(packet.control);
+            buffer.writeVarInt(packet.value);
+        }
+
+        private static SetMEChamberControlPacket decode(FriendlyByteBuf buffer) {
+            return new SetMEChamberControlPacket(
+                    buffer.readVarInt(),
+                    MEChamberManagerTerminalMenu.Address.read(buffer),
+                    buffer.readEnum(MEChamberManagerTerminalMenu.ControlKind.class),
+                    buffer.readVarInt());
+        }
+
+        private static void handle(SetMEChamberControlPacket packet,
+                                   Supplier<NetworkEvent.Context> contextSupplier) {
+            NetworkEvent.Context context = contextSupplier.get();
+            context.enqueueWork(() -> {
+                ServerPlayer player = context.getSender();
+                if (player != null && player.containerMenu instanceof MEChamberManagerTerminalMenu menu &&
+                        menu.containerId == packet.containerId) {
+                    menu.setControl(player, packet.address, packet.control, packet.value);
+                }
+            });
+            context.setPacketHandled(true);
+        }
+    }
+
+    public record MEChamberConfiguratorActionPacket(int containerId, MEChamberManagerTerminalMenu.Address address,
+                                                    MEChamberConfigurator.Kind kind, int actionId,
+                                                    byte[] actionData) {
+
+        private static void encode(MEChamberConfiguratorActionPacket packet, FriendlyByteBuf buffer) {
+            buffer.writeVarInt(packet.containerId);
+            packet.address.write(buffer);
+            buffer.writeEnum(packet.kind);
+            buffer.writeVarInt(packet.actionId);
+            buffer.writeByteArray(packet.actionData);
+        }
+
+        private static MEChamberConfiguratorActionPacket decode(FriendlyByteBuf buffer) {
+            return new MEChamberConfiguratorActionPacket(
+                    buffer.readVarInt(),
+                    MEChamberManagerTerminalMenu.Address.read(buffer),
+                    buffer.readEnum(MEChamberConfigurator.Kind.class),
+                    buffer.readVarInt(),
+                    buffer.readByteArray(MEChamberConfigurator.MAX_ACTION_BYTES));
+        }
+
+        private static void handle(MEChamberConfiguratorActionPacket packet,
+                                   Supplier<NetworkEvent.Context> contextSupplier) {
+            NetworkEvent.Context context = contextSupplier.get();
+            context.enqueueWork(() -> {
+                ServerPlayer player = context.getSender();
+                if (player != null && player.containerMenu instanceof MEChamberManagerTerminalMenu menu &&
+                        menu.containerId == packet.containerId) {
+                    menu.handleConfiguratorAction(
+                            player, packet.address, packet.kind, packet.actionId, packet.actionData);
+                }
+            });
+            context.setPacketHandled(true);
+        }
+    }
+
+    public record SyncMEChamberManagerContentsPacket(
+                                                     int containerId,
+                                                     @org.jetbrains.annotations.Nullable MEChamberManagerTerminalMenu.Address address,
+                                                     List<MEChamberManagerTerminalMenu.SlotContent> contents,
+                                                     MEChamberManagerTerminalMenu.ChamberDetails details) {
+
+        private static void encode(SyncMEChamberManagerContentsPacket packet, FriendlyByteBuf buffer) {
+            buffer.writeVarInt(packet.containerId);
+            buffer.writeBoolean(packet.address != null);
+            if (packet.address != null) {
+                packet.address.write(buffer);
+            }
+            MEChamberManagerTerminalMenu.writeContents(buffer, packet.contents);
+            MEChamberManagerTerminalMenu.writeDetails(buffer, packet.details);
+        }
+
+        private static SyncMEChamberManagerContentsPacket decode(FriendlyByteBuf buffer) {
+            int containerId = buffer.readVarInt();
+            MEChamberManagerTerminalMenu.Address address = buffer.readBoolean() ?
+                    MEChamberManagerTerminalMenu.Address.read(buffer) :
+                    null;
+            return new SyncMEChamberManagerContentsPacket(
+                    containerId,
+                    address,
+                    MEChamberManagerTerminalMenu.readContents(buffer),
+                    MEChamberManagerTerminalMenu.readDetails(buffer));
+        }
+
+        private static void handle(SyncMEChamberManagerContentsPacket packet,
+                                   Supplier<NetworkEvent.Context> contextSupplier) {
+            NetworkEvent.Context context = contextSupplier.get();
+            context.enqueueWork(() -> {
+                try {
+                    Class.forName("org.gtlcore.gtlcore.client.ae2.wireless.WirelessAeClientPacketHandler")
+                            .getMethod("handleMEChamberManagerContents", SyncMEChamberManagerContentsPacket.class)
+                            .invoke(null, packet);
+                } catch (ReflectiveOperationException | RuntimeException ignored) {
+                    // Client-only handler is not present on dedicated servers.
                 }
             });
             context.setPacketHandled(true);

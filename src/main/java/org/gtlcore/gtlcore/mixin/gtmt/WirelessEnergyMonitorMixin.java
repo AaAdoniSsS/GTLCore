@@ -1,6 +1,7 @@
 package org.gtlcore.gtlcore.mixin.gtmt;
 
 import org.gtlcore.gtlcore.integration.gtmt.WirelessEnergyDisplayTextLimiter;
+import org.gtlcore.gtlcore.integration.gtmt.WirelessEnergyLocator;
 import org.gtlcore.gtlcore.integration.gtmt.WirelessEnergyMonitorSnapshot;
 
 import com.gregtechceu.gtceu.api.GTValues;
@@ -106,8 +107,15 @@ public abstract class WirelessEnergyMonitorMixin extends MetaMachine {
         ci.cancel();
     }
 
-    @Inject(method = "handleDisplayClick", at = @At("HEAD"), remap = false)
-    private void gtlcore$invalidateDisplayTextCache(String componentData, ClickData clickData, CallbackInfo ci) {
+    @Inject(method = "handleDisplayClick", at = @At("HEAD"), remap = false, cancellable = true)
+    private void gtlcore$handleDisplayClick(String componentData, ClickData clickData, CallbackInfo ci) {
+        if (WirelessEnergyLocator.isLocatorData(componentData)) {
+            ci.cancel();
+            if (clickData.isRemote) {
+                WirelessEnergyLocator.highlightOnClient(componentData);
+            }
+            return;
+        }
         if (!clickData.isRemote && GTLCORE$STATISTICS_SCOPE_BUTTON.equals(componentData)) {
             gtlcore$clearDisplayTextCache();
         }
@@ -249,7 +257,9 @@ public abstract class WirelessEnergyMonitorMixin extends MetaMachine {
                 .append(" EU/t (")
                 .append(GTValues.VNF[GTUtil.getFloorTierByVoltage(absoluteEnergyPerTick)])
                 .append(")")
-                .append(ComponentPanelWidget.withButton(Component.literal(" [ ]"), positionText));
+                .append(ComponentPanelWidget.withButton(
+                        Component.literal(" [ ]"),
+                        WirelessEnergyLocator.encode(machine.getLevel().dimension(), machine.getPos())));
     }
 
     @Unique

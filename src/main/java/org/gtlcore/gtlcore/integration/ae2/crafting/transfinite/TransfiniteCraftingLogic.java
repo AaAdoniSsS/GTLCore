@@ -185,11 +185,21 @@ public final class TransfiniteCraftingLogic implements ICraftingJobSuspension, I
         long dispatchBudget = Math.max(0, this.cpu.getParallelism() - recentlyUsed);
         long dispatchedCalls = 0;
         if (dispatchBudget > 0) {
-            dispatchedCalls = executeCrafting(
-                    dispatchBudget, craftingService, energyService, this.cpu.getLevel(), metrics);
+            long remainingOperations = dispatchBudget;
+            while (remainingOperations > 0) {
+                long pushed = executeCrafting(
+                        remainingOperations, craftingService, energyService, this.cpu.getLevel(), metrics);
+                if (pushed <= 0) {
+                    break;
+                }
+                dispatchedCalls = NumberUtils.saturatedAdd(dispatchedCalls, pushed);
+                remainingOperations -= pushed;
+            }
         } else {
             markAllRemaining(CraftingDispatchReason.CPU_OPERATION_LIMIT);
         }
+
+        recoverFinalOutputFromNetwork();
 
         if (dispatchedCalls >= dispatchBudget && dispatchBudget > 0) {
             markAllUnclassified(CraftingDispatchReason.CPU_OPERATION_LIMIT);
@@ -347,6 +357,49 @@ public final class TransfiniteCraftingLogic implements ICraftingJobSuspension, I
             recordTaskReason(details, taskReasonMask);
         }
         return dispatchedCalls;
+    }
+
+    /**
+     * The crafting storage provider normally claims produced items before they reach regular network storage.
+     * Recover a final output that slipped through that routing boundary, but only after every task that can
+     * produce the same key has been dispatched. This keeps pending production protected from consuming stock
+     * that belongs to a future dispatch.
+     */
+    private void recoverFinalOutputFromNetwork() {
+        TransfiniteCraftingJob currentJob = this.job;
+        if (currentJob == null || currentJob.getFinalOutput() == null) {
+            return;
+        }
+
+        AEKey finalKey = currentJob.getFinalOutput().what();
+        long waiting = currentJob.getWaitingFor().extract(finalKey, Long.MAX_VALUE, Actionable.SIMULATE);
+        if (waiting <= 0 || getPendingOutputs(finalKey) > 0) {
+            return;
+        }
+
+        IGrid grid = this.cpu.getGrid();
+        if (grid == null) {
+            return;
+        }
+
+        var storage = grid.getStorageService().getInventory();
+        long available = storage.extract(finalKey, waiting, Actionable.SIMULATE, this.cpu.getActionSource());
+        if (available <= 0) {
+            return;
+        }
+
+        long extracted = storage.extract(finalKey, Math.min(waiting, available), Actionable.MODULATE,
+                this.cpu.getActionSource());
+        if (extracted > 0) {
+            long inserted = insert(finalKey, extracted, Actionable.MODULATE);
+            if (inserted < extracted) {
+                long remainder = extracted - inserted;
+                long returned = storage.insert(finalKey, remainder, Actionable.MODULATE, this.cpu.getActionSource());
+                if (returned < remainder) {
+                    this.inventory.insert(finalKey, remainder - returned, Actionable.MODULATE);
+                }
+            }
+        }
     }
 
     public long insert(AEKey what, long amount, Actionable mode) {

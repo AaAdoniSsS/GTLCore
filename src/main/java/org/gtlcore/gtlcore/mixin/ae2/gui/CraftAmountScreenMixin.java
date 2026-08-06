@@ -1,5 +1,6 @@
 package org.gtlcore.gtlcore.mixin.ae2.gui;
 
+import org.gtlcore.gtlcore.client.gui.widget.IShiftAmountOperations;
 import org.gtlcore.gtlcore.integration.ae2.common.CraftAmountLimits;
 import org.gtlcore.gtlcore.integration.ae2.common.ILongCraftAmountMenu;
 
@@ -41,6 +42,7 @@ public abstract class CraftAmountScreenMixin extends AEBaseScreen<CraftAmountMen
         this.amountToCraft.setMaxValue(CraftAmountLimits.MAX_MANUAL_CRAFT_AMOUNT);
         ((NumberEntryWidgetAccessor) this.amountToCraft).getTextField()
                 .setMaxLength(CraftAmountLimits.MAX_MANUAL_CRAFT_AMOUNT_DIGITS);
+        ((IShiftAmountOperations) this.amountToCraft).gtlcore$enableShiftAmountOperations();
     }
 
     @Inject(method = "updateBeforeRender", at = @At("TAIL"), remap = false)

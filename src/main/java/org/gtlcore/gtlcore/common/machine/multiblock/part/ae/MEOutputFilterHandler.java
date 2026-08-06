@@ -26,6 +26,7 @@ import appeng.api.stacks.AEItemKey;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import lombok.Getter;
 import lombok.Setter;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Arrays;
 import java.util.List;
@@ -96,6 +97,51 @@ public class MEOutputFilterHandler implements ITagSerializable<CompoundTag> {
         widgetGroup.addWidget(fluidFilter);
         widgetGroup.addWidget(priorityWidget);
         return widgetGroup;
+    }
+
+    public int getFilterSlotCount() {
+        return row * col;
+    }
+
+    public @Nullable AEItemKey getItemFilter(int slot) {
+        if (slot < 0 || slot >= filterSlots.getSlots()) return null;
+        ItemStack stack = filterSlots.getStackInSlot(slot);
+        return stack.isEmpty() ? null : AEItemKey.of(stack);
+    }
+
+    public @Nullable AEFluidKey getFluidFilter(int slot) {
+        if (slot < 0 || slot >= filterTanks.length) return null;
+        FluidStack stack = filterTanks[slot].getFluid();
+        return stack.isEmpty() ? null : AEFluidKey.of(stack.getFluid(), stack.getTag());
+    }
+
+    public void setItemFilter(int slot, @Nullable AEItemKey key) {
+        if (slot < 0 || slot >= filterSlots.getSlots()) return;
+        filterSlots.setStackInSlot(slot, key == null ? ItemStack.EMPTY : key.toStack(1));
+        hasItemFilterChange = true;
+        onUIClosed();
+    }
+
+    public void setFluidFilter(int slot, @Nullable AEFluidKey key) {
+        if (slot < 0 || slot >= filterTanks.length) return;
+        filterTanks[slot].setFluid(key == null ? FluidStack.empty() :
+                FluidStack.create(key.getFluid(), FluidHelper.getBucket(), key.getTag()));
+        hasFluidFilterChange = true;
+        onUIClosed();
+    }
+
+    public void updateItemFilterSettings(boolean blackList, boolean ignoreNbt) {
+        isItemBlackList = blackList;
+        ignoreItemNbt = ignoreNbt;
+        hasItemFilterChange = true;
+        onUIClosed();
+    }
+
+    public void updateFluidFilterSettings(boolean blackList, boolean ignoreNbt) {
+        isFluidBlackList = blackList;
+        ignoreFluidNbt = ignoreNbt;
+        hasFluidFilterChange = true;
+        onUIClosed();
     }
 
     protected WidgetGroup openItemFilterConfigurator(int x, int y, int row, int col) {

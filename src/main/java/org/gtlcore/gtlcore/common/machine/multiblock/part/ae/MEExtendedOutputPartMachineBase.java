@@ -131,6 +131,12 @@ public abstract class MEExtendedOutputPartMachineBase extends MEIOPartMachine im
         }
     }
 
+    public void setTerminalPriority(int priority) {
+        setPriority(Math.max(10, Math.min(100_000, priority)));
+        markDirty();
+        updatePriority();
+    }
+
     // ========================================
     // DataStick Copy
     // ========================================
