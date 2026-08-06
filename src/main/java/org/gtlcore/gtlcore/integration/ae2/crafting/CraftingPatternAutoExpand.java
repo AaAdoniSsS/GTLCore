@@ -4,6 +4,7 @@ import org.gtlcore.gtlcore.api.crafting.IAutoExpandSettings;
 import org.gtlcore.gtlcore.api.machine.trait.AECraft.IMECraftIOPart;
 import org.gtlcore.gtlcore.api.machine.trait.MEPart.IMEPatternPartMachine;
 import org.gtlcore.gtlcore.config.ConfigHolder;
+import org.gtlcore.gtlcore.integration.ae2.patternrelay.PatternRelayPart;
 
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.networking.crafting.ICraftingProvider;
@@ -19,6 +20,11 @@ public final class CraftingPatternAutoExpand {
         }
         if (provider instanceof IMEPatternPartMachine || provider instanceof IMECraftIOPart) {
             return true;
+        }
+        // Pattern relays forward expanded batches to the downstream provider that accepts
+        // them; capacity is negotiated per downstream in gtlcore$getMaxPatternOperations.
+        if (provider instanceof PatternRelayPart relay) {
+            return relay.isAccessMode();
         }
         if (provider instanceof IAutoExpandSettings settings) {
             return settings.isPatternAutoExpand();

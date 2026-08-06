@@ -1,6 +1,11 @@
 package org.gtlcore.gtlcore.integration.ae2.patternrelay;
 
 import org.gtlcore.gtlcore.GTLCore;
+import org.gtlcore.gtlcore.api.machine.trait.AECraft.IMECraftIOPart;
+import org.gtlcore.gtlcore.api.machine.trait.MEPart.IMEPatternPartMachine;
+import org.gtlcore.gtlcore.integration.ae2.AEUtils;
+import org.gtlcore.gtlcore.integration.ae2.crafting.IPatternProviderAutoExpand;
+import org.gtlcore.gtlcore.utils.NumberUtils;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -40,6 +45,7 @@ import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
 import appeng.api.storage.MEStorage;
 import appeng.api.util.AECableType;
+import appeng.helpers.patternprovider.PatternProviderTarget;
 import appeng.parts.AEBasePart;
 import appeng.parts.PartModel;
 import appeng.util.Platform;
@@ -53,7 +59,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-public final class PatternRelayPart extends AEBasePart implements ICraftingProvider, IGridTickable {
+public final class PatternRelayPart extends AEBasePart implements ICraftingProvider, IGridTickable, IPatternProviderAutoExpand {
 
     private static final String TAG_MODE = "mode";
     private static final String TAG_PENDING_OUTPUTS = "pendingOutputs";
@@ -242,13 +248,95 @@ public final class PatternRelayPart extends AEBasePart implements ICraftingProvi
             return false;
         }
         Map<AEKey, Long> outputBaselines = captureOutputBaselines(pattern);
-        for (ICraftingProvider provider : providers) {
+        // Prefer providers that can absorb a full (possibly expanded) batch directly:
+        // ME buffers first, then auto-expand capable providers, plain ones last.
+        List<ICraftingProvider> ordered = new ArrayList<>(providers);
+        ordered.sort((a, b) -> Integer.compare(pushPriority(b), pushPriority(a)));
+        for (ICraftingProvider provider : ordered) {
             if (!provider.isBusy() && provider.pushPattern(pattern, inputHolder)) {
-                trackOutputs(pattern, outputBaselines);
+                trackOutputs(pattern, outputBaselines, deriveMultiplier(pattern, inputHolder));
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * The relay never evaluates P2P output targets; expansion is negotiated via
+     * {@link #gtlcore$getMaxPatternOperations} instead.
+     */
+    @Override
+    public long gtlcore$findMaxOperationsForTarget(PatternProviderTarget target, BlockEntity targetBE, Direction side,
+                                                   KeyCounter baseInputs, long requestedOperations) {
+        return 1;
+    }
+
+    private static int pushPriority(ICraftingProvider provider) {
+        if (provider instanceof IMEPatternPartMachine || provider instanceof IMECraftIOPart) {
+            return 2;
+        }
+        return provider instanceof IPatternProviderAutoExpand ? 1 : 0;
+    }
+
+    /**
+     * Smart-doubling support: the relay reports the best operation count any downstream
+     * provider can absorb. ME buffers accept whole batches by design, auto-expand capable
+     * providers report their own capacity (respecting their per-provider switch), and plain
+     * providers stay at 1x. The push itself is safe for every type: full-capacity providers
+     * validate themselves, others fall back to vanilla sendList overflow handling.
+     */
+    @Override
+    public long gtlcore$getMaxPatternOperations(IPatternDetails pattern, long requestedOperations) {
+        if (mode != Mode.ACCESS || requestedOperations <= 1 || !pattern.supportsPushInputsToExternalInventory()) {
+            return 1;
+        }
+        Set<ICraftingProvider> providers = routeSnapshot.routes().get(pattern);
+        if (providers == null || providers.isEmpty()) {
+            return 1;
+        }
+        long max = 1;
+        for (ICraftingProvider provider : providers) {
+            if (provider.isBusy()) {
+                continue;
+            }
+            if (provider instanceof IMEPatternPartMachine || provider instanceof IMECraftIOPart) {
+                return requestedOperations;
+            }
+            if (provider instanceof IPatternProviderAutoExpand expandable) {
+                max = Math.max(max, expandable.gtlcore$getMaxPatternOperations(pattern, requestedOperations));
+            }
+        }
+        return Math.max(1, max);
+    }
+
+    /**
+     * Derives the applied expansion multiplier from the extracted inputs, so output tracking
+     * moves back the correct amount. Programmed circuits are always extracted 1x and must be
+     * ignored here.
+     */
+    private static long deriveMultiplier(IPatternDetails pattern, KeyCounter[] inputHolder) {
+        var inputs = pattern.getInputs();
+        long multiplier = 1;
+        for (int i = 0; i < inputs.length && i < inputHolder.length; i++) {
+            var possibleInputs = inputs[i].getPossibleInputs();
+            if (possibleInputs.length == 0) {
+                continue;
+            }
+            AEKey key = possibleInputs[0].what();
+            if (AEUtils.isIntegratedCircuit(key)) {
+                continue;
+            }
+            long base = inputs[i].getMultiplier();
+            if (base <= 0) {
+                continue;
+            }
+            for (var entry : inputHolder[i]) {
+                if (entry.getKey().equals(key) && entry.getLongValue() > 0) {
+                    multiplier = Math.max(multiplier, entry.getLongValue() / base);
+                }
+            }
+        }
+        return Math.max(1, multiplier);
     }
 
     @Override
@@ -412,14 +500,14 @@ public final class PatternRelayPart extends AEBasePart implements ICraftingProvi
         return baselines;
     }
 
-    private void trackOutputs(IPatternDetails pattern, Map<AEKey, Long> outputBaselines) {
+    private void trackOutputs(IPatternDetails pattern, Map<AEKey, Long> outputBaselines, long multiplier) {
         for (GenericStack output : pattern.getOutputs()) {
             if (output != null && output.amount() > 0) {
                 Long baseline = outputBaselines.get(output.what());
                 if (baseline != null && pendingOutputs.get(output.what()) <= 0) {
                     observedSupplierStock.set(output.what(), baseline);
                 }
-                pendingOutputs.add(output.what(), output.amount());
+                pendingOutputs.add(output.what(), NumberUtils.saturatedMultiply(output.amount(), multiplier));
             }
         }
         getHost().markForSave();
