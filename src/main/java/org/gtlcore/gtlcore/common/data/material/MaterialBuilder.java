@@ -3957,7 +3957,7 @@ public class MaterialBuilder {
         PNitroaniline = new Material.Builder(GTCEu.id("p_nitroaniline"))
                 .fluid()
                 .color(0xcc9037)
-                .components(Carbon, 6, Hydrogen, 8, Nitrogen, 2)
+                .components(Carbon, 6, Hydrogen, 8, Nitrogen, 2, Oxygen, 2)
                 .iconSet(DULL)
                 .buildAndRegister();
 
