@@ -84,8 +84,12 @@ public class WirelessNetworkCoreBlockEntity extends BlockEntity
             ensureFrequency();
             refreshExposedSides();
             createMainNode(serverLevel);
-            WirelessAeSavedData.get(serverLevel.getServer())
-                    .setCore(this.frequency, GlobalPos.of(serverLevel.dimension(), this.worldPosition));
+            WirelessAeSavedData data = WirelessAeSavedData.get(serverLevel.getServer());
+            data.setCore(this.frequency, GlobalPos.of(serverLevel.dimension(), this.worldPosition));
+            UUID owner = this.mainNode.getNode().getOwningPlayerProfileId();
+            if (owner != null) {
+                data.setNetworkOwner(this.frequency, owner);
+            }
             WirelessAeNetworkRuntime.requestReconnect(this.frequency);
         }
     }
@@ -183,6 +187,9 @@ public class WirelessNetworkCoreBlockEntity extends BlockEntity
 
     public void setOwner(Player player) {
         this.mainNode.setOwningPlayer(player);
+        if (this.level instanceof ServerLevel serverLevel) {
+            WirelessAeSavedData.get(serverLevel.getServer()).setNetworkOwner(getFrequency(), player.getUUID());
+        }
     }
 
     public boolean isLinkedToAeNetwork() {

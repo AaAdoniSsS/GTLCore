@@ -47,7 +47,7 @@ public class WirelessNetworkBookmarkMenu extends AbstractContainerMenu {
     public static void open(ServerPlayer player, WirelessNetworkBookmarkBlockEntity bookmark) {
         WirelessAeSavedData data = WirelessAeSavedData.get(player.serverLevel().getServer());
         BlockPos pos = bookmark.getBlockPos();
-        List<Entry> networks = data.getNetworkInfo(player.serverLevel().getServer()).stream()
+        List<Entry> networks = WirelessAeNetworkRuntime.getAccessibleNetworkInfo(player).stream()
                 .map(network -> new Entry(network.frequency(), network.name()))
                 .toList();
         UUID favoriteNetwork = data.getFavoriteNetwork();

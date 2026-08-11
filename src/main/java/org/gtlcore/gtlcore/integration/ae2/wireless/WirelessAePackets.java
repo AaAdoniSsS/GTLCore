@@ -253,6 +253,9 @@ public final class WirelessAePackets {
 
                 WirelessAeSavedData data = WirelessAeSavedData.get(level.getServer());
                 UUID frequency = core.getFrequency();
+                if (!WirelessAeNetworkRuntime.canAccessNetwork(player, frequency)) {
+                    return;
+                }
                 data.setCore(frequency, GlobalPos.of(level.dimension(), packet.corePos));
                 data.setNetworkName(frequency, packet.name);
                 WirelessAeNetworkRuntime.requestReconnect(frequency);
@@ -289,7 +292,7 @@ public final class WirelessAePackets {
                 }
 
                 WirelessAeSavedData data = WirelessAeSavedData.get(level.getServer());
-                if (!data.getFrequencies().contains(packet.frequency)) {
+                if (!data.getFrequencies().contains(packet.frequency) || !WirelessAeNetworkRuntime.canAccessNetwork(player, packet.frequency)) {
                     return;
                 }
                 boolean removeFavorite = packet.frequency.equals(data.getFavoriteNetwork());
@@ -348,6 +351,9 @@ public final class WirelessAePackets {
                 BlockPos targetPos = target.blockPos();
                 GlobalPos targetGlobalPos = target.pos();
                 WirelessAeSavedData data = WirelessAeSavedData.get(level.getServer());
+                if (!WirelessAeNetworkRuntime.canAccessNetwork(player, packet.frequency)) {
+                    return;
+                }
                 UUID currentNetwork = data.getMemberNetwork(target);
                 UUID wiredNetwork = WirelessAeNetworkRuntime.findWiredNetworkFrequency(level.getServer(), target);
                 UUID connectedNetwork = wiredNetwork == null ? WirelessAeNetworkRuntime.findConnectedNetworkFrequency(level.getServer(), target) : wiredNetwork;
@@ -532,7 +538,7 @@ public final class WirelessAePackets {
 
                 CHANNEL.send(
                         PacketDistributor.PLAYER.with(() -> player),
-                        new SyncTargetNetworksPacket(packet.targetPos, buildTargetEntries(level, target)));
+                        new SyncTargetNetworksPacket(packet.targetPos, buildTargetEntries(player, target)));
             });
             context.setPacketHandled(true);
         }
@@ -1154,13 +1160,15 @@ public final class WirelessAePackets {
         return entries;
     }
 
-    private static List<TargetNetworkEntry> buildTargetEntries(ServerLevel level, WirelessAeSavedData.MemberKey target) {
+    private static List<TargetNetworkEntry> buildTargetEntries(ServerPlayer player,
+                                                               WirelessAeSavedData.MemberKey target) {
+        ServerLevel level = player.serverLevel();
         WirelessAeSavedData data = WirelessAeSavedData.get(level.getServer());
         UUID currentNetwork = data.getMemberNetwork(target);
         UUID wiredNetwork = WirelessAeNetworkRuntime.findWiredNetworkFrequency(level.getServer(), target);
         UUID connectedNetwork = wiredNetwork == null ? WirelessAeNetworkRuntime.findConnectedNetworkFrequency(level.getServer(), target) : wiredNetwork;
         List<TargetNetworkEntry> entries = new ArrayList<>();
-        for (WirelessAeSavedData.NetworkInfo network : data.getNetworkInfo(level.getServer())) {
+        for (WirelessAeSavedData.NetworkInfo network : WirelessAeNetworkRuntime.getAccessibleNetworkInfo(player)) {
             boolean connected = network.frequency().equals(connectedNetwork);
             boolean disconnectable = wiredNetwork == null && connected && network.frequency().equals(currentNetwork) && WirelessAeNetworkRuntime.hasWirelessConnection(network.frequency(), target);
             entries.add(new TargetNetworkEntry(

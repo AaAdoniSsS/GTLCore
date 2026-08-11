@@ -23,4 +23,8 @@ public interface IGTRecipe {
     boolean isBatchProcessed();
 
     void setBatchProcessed(boolean batchProcessed);
+
+    boolean isSubTickParallelized();
+
+    void setSubTickParallelized(boolean subTickParallelized);
 }

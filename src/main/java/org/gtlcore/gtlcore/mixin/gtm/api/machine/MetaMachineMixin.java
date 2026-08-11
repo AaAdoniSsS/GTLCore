@@ -2,6 +2,7 @@ package org.gtlcore.gtlcore.mixin.gtm.api.machine;
 
 import org.gtlcore.gtlcore.api.machine.IPerformanceDisplayMachine;
 import org.gtlcore.gtlcore.api.machine.ISuspendableMachine;
+import org.gtlcore.gtlcore.api.machine.MachineStartupTickBudget;
 import org.gtlcore.gtlcore.api.machine.PerformanceMonitorMachine;
 import org.gtlcore.gtlcore.api.machine.trait.IBatchMachine;
 
@@ -67,6 +68,9 @@ public abstract class MetaMachineMixin implements IPerformanceDisplayMachine, IS
 
     @Unique
     private boolean gtlcore$suspendAfterFinish;
+
+    @Unique
+    private boolean gtlcore$startupTickAdmitted;
 
     @Shadow(remap = false)
     public abstract boolean isRemote();
@@ -142,14 +146,29 @@ public abstract class MetaMachineMixin implements IPerformanceDisplayMachine, IS
     @Overwrite(remap = false)
     public final void serverTick() {
         if (cancelTick()) return;
+        Level level = getLevel();
         long currentTime = System.currentTimeMillis();
         if (currentTime - gtlcore$lastExecutionTime < 40) {
             return;
         }
         gtlcore$lastExecutionTime = currentTime;
+        boolean startupTick = false;
+        ServerLevel startupLevel = null;
+        if (!gtlcore$startupTickAdmitted && level instanceof ServerLevel serverLevel) {
+            if (!MachineStartupTickBudget.tryAcquire(serverLevel, (MetaMachine) (Object) this)) {
+                return;
+            }
+            gtlcore$startupTickAdmitted = true;
+            startupTick = true;
+            startupLevel = serverLevel;
+        }
         boolean observe = PerformanceMonitorMachine.observe || gtlcore$observe;
         if (observe) currentTime = System.nanoTime();
+        long startupStartedNanos = startupTick ? System.nanoTime() : 0;
         runTick();
+        if (startupTick) {
+            MachineStartupTickBudget.recordExecution(startupLevel, System.nanoTime() - startupStartedNanos);
+        }
         if (observe) {
             gtlcore$totaTtickCount += System.nanoTime() - currentTime;
             if (getOffsetTimer() % 40 == 0) {

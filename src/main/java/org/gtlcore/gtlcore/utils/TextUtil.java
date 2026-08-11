@@ -8,6 +8,7 @@ import com.lowdragmc.lowdraglib.side.fluid.FluidStack;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.level.material.Fluid;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 
@@ -89,6 +90,18 @@ public class TextUtil {
             }
         }
         return false;
+    }
+
+    @OnlyIn(Dist.CLIENT)
+    public static void appendChemicalFormulaTooltip(Fluid fluid, List<Component> tooltips) {
+        var material = ChemicalHelper.getMaterial(fluid);
+        if (material == null) return;
+
+        String formula = material.getChemicalFormula();
+        if (formula == null || formula.isEmpty() || tooltips.stream().anyMatch(line -> line.getString().equals(formula))) {
+            return;
+        }
+        tooltips.add(Math.min(1, tooltips.size()), Component.literal(formula).withStyle(ChatFormatting.YELLOW));
     }
 
     @OnlyIn(Dist.CLIENT)

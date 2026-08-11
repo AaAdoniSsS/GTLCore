@@ -34,6 +34,7 @@ public class WirelessAeSavedData extends SavedData {
     private static final String TAG_FAVORITE_NETWORK = "favorite_network";
     private static final String TAG_FREQUENCY = "frequency";
     private static final String TAG_CORE = "core";
+    private static final String TAG_OWNER = "owner";
     private static final String TAG_NAME = "name";
     private static final String TAG_MEMBERS = "members";
     private static final String TAG_DIMENSION = "dimension";
@@ -68,6 +69,9 @@ public class WirelessAeSavedData extends SavedData {
             UUID frequency = networkTag.getUUID(TAG_FREQUENCY);
             NetworkRecord record = data.network(frequency);
             record.core = readGlobalPos(networkTag.getCompound(TAG_CORE));
+            if (networkTag.hasUUID(TAG_OWNER)) {
+                record.owner = networkTag.getUUID(TAG_OWNER);
+            }
             record.name = networkTag.getString(TAG_NAME);
 
             ListTag membersTag = networkTag.getList(TAG_MEMBERS, Tag.TAG_COMPOUND);
@@ -100,6 +104,9 @@ public class WirelessAeSavedData extends SavedData {
             CompoundTag networkTag = new CompoundTag();
             networkTag.putUUID(TAG_FREQUENCY, entry.getKey());
             networkTag.put(TAG_CORE, writeGlobalPos(record.core));
+            if (record.owner != null) {
+                networkTag.putUUID(TAG_OWNER, record.owner);
+            }
             networkTag.putString(TAG_NAME, record.name);
 
             ListTag membersTag = new ListTag();
@@ -124,6 +131,19 @@ public class WirelessAeSavedData extends SavedData {
     public GlobalPos getCore(UUID frequency) {
         NetworkRecord record = this.networks.get(frequency);
         return record == null ? null : record.core;
+    }
+
+    public UUID getNetworkOwner(UUID frequency) {
+        NetworkRecord record = this.networks.get(frequency);
+        return record == null ? null : record.owner;
+    }
+
+    public void setNetworkOwner(UUID frequency, UUID owner) {
+        NetworkRecord record = network(frequency);
+        if (!java.util.Objects.equals(record.owner, owner)) {
+            record.owner = owner;
+            setDirty();
+        }
     }
 
     public void setNetworkName(UUID frequency, String name) {
@@ -395,6 +415,7 @@ public class WirelessAeSavedData extends SavedData {
     private static final class NetworkRecord {
 
         private GlobalPos core;
+        private UUID owner;
         private String name = "";
         private final Set<MemberKey> members = new HashSet<>();
     }

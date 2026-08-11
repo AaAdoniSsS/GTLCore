@@ -1,5 +1,6 @@
 package org.gtlcore.gtlcore.mixin.ae2wtlib;
 
+import org.gtlcore.gtlcore.integration.ae2.chamber.WirelessMEChamberManagerTerminalItem;
 import org.gtlcore.gtlcore.integration.ae2.emitter.WirelessEmitterManagerTerminalItem;
 
 import net.minecraft.world.item.ItemStack;
@@ -21,6 +22,9 @@ public abstract class ItemWUTMixin {
                                     remap = false))
     private int gtlcore$countUpgradeSlotTerminals(int terminalCount, ItemStack stack) {
         if (WUTHandler.hasTerminal(stack, WirelessEmitterManagerTerminalItem.TERMINAL_NAME)) {
+            terminalCount--;
+        }
+        if (WUTHandler.hasTerminal(stack, WirelessMEChamberManagerTerminalItem.TERMINAL_NAME)) {
             terminalCount--;
         }
         return Math.max(0, terminalCount);

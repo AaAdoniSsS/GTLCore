@@ -4,6 +4,8 @@ import org.gtlcore.gtlcore.GTLCore;
 import org.gtlcore.gtlcore.common.data.GTLCreativeModeTabs;
 import org.gtlcore.gtlcore.integration.ae2.chamber.MEChamberManagerTerminalMenu;
 import org.gtlcore.gtlcore.integration.ae2.chamber.MEChamberManagerTerminalPart;
+import org.gtlcore.gtlcore.integration.ae2.chamber.WirelessMEChamberManagerMenuHost;
+import org.gtlcore.gtlcore.integration.ae2.chamber.WirelessMEChamberManagerTerminalItem;
 import org.gtlcore.gtlcore.integration.ae2.emitter.EmitterManagerTerminalMenu;
 import org.gtlcore.gtlcore.integration.ae2.emitter.EmitterManagerTerminalPart;
 import org.gtlcore.gtlcore.integration.ae2.emitter.WirelessEmitterManagerMenuHost;
@@ -47,6 +49,7 @@ public final class GTLWirelessAeContent {
     private static final DeferredRegister<MenuType<?>> MENU_TYPES = DeferredRegister.create(ForgeRegistries.MENU_TYPES, GTLCore.MOD_ID);
     private static final MenuType<ThroughputMonitorTerminalMenu> WIRELESS_THROUGHPUT_MONITOR_TERMINAL_MENU_TYPE = IForgeMenuType.create(ThroughputMonitorTerminalMenu::createWirelessClientMenu);
     private static final MenuType<EmitterManagerTerminalMenu> WIRELESS_EMITTER_MANAGER_TERMINAL_MENU_TYPE = IForgeMenuType.create(EmitterManagerTerminalMenu::createWirelessClientMenu);
+    private static final MenuType<MEChamberManagerTerminalMenu> WIRELESS_ME_CHAMBER_MANAGER_TERMINAL_MENU_TYPE = IForgeMenuType.create(MEChamberManagerTerminalMenu::createWirelessClientMenu);
     private static final MenuType<TagViewCellMenu> TAG_VIEW_CELL_MENU_TYPE = IForgeMenuType.create(TagViewCellMenu::createClientMenu);
 
     public static final RegistryObject<Block> WIRELESS_NETWORK_CORE = BLOCKS.register(
@@ -113,6 +116,10 @@ public final class GTLWirelessAeContent {
             "wireless_emitter_manager_terminal",
             WirelessEmitterManagerTerminalItem::new);
 
+    public static final RegistryObject<WirelessMEChamberManagerTerminalItem> WIRELESS_ME_CHAMBER_MANAGER_TERMINAL = ITEMS.register(
+            "wireless_me_chamber_manager_terminal",
+            WirelessMEChamberManagerTerminalItem::new);
+
     public static final RegistryObject<BlockEntityType<WirelessNetworkCoreBlockEntity>> WIRELESS_NETWORK_CORE_BE = BLOCK_ENTITY_TYPES.register(
             "wireless_network_core",
             () -> BlockEntityType.Builder.of(
@@ -161,7 +168,11 @@ public final class GTLWirelessAeContent {
 
     public static final RegistryObject<MenuType<MEChamberManagerTerminalMenu>> ME_CHAMBER_MANAGER_TERMINAL_MENU = MENU_TYPES.register(
             "me_chamber_manager_terminal",
-            () -> IForgeMenuType.create(MEChamberManagerTerminalMenu::createClientMenu));
+            () -> IForgeMenuType.create(MEChamberManagerTerminalMenu::createWiredClientMenu));
+
+    public static final RegistryObject<MenuType<MEChamberManagerTerminalMenu>> WIRELESS_ME_CHAMBER_MANAGER_TERMINAL_MENU = MENU_TYPES.register(
+            "wireless_me_chamber_manager_terminal",
+            () -> WIRELESS_ME_CHAMBER_MANAGER_TERMINAL_MENU_TYPE);
 
     public static final RegistryObject<MenuType<TagViewCellMenu>> TAG_VIEW_CELL_MENU = MENU_TYPES.register(
             "tag_view_cell",
@@ -197,6 +208,11 @@ public final class GTLWirelessAeContent {
         MenuOpener.addOpener(
                 WIRELESS_EMITTER_MANAGER_TERMINAL_MENU_TYPE,
                 EmitterManagerTerminalMenu::openWireless);
+        WirelessMEChamberManagerTerminalItem chamberItem = WIRELESS_ME_CHAMBER_MANAGER_TERMINAL.get();
+        GridLinkables.register(chamberItem, WirelessTerminalItem.LINKABLE_HANDLER);
+        MenuOpener.addOpener(
+                WIRELESS_ME_CHAMBER_MANAGER_TERMINAL_MENU_TYPE,
+                MEChamberManagerTerminalMenu::openWireless);
         MenuOpener.addOpener(TAG_VIEW_CELL_MENU_TYPE, TagViewCellMenu::open);
         WUTHandler.addTerminal(
                 WirelessThroughputMonitorTerminalItem.TERMINAL_NAME,
@@ -214,6 +230,14 @@ public final class GTLWirelessAeContent {
                 emitterItem,
                 WirelessEmitterManagerTerminalItem.HOTKEY_NAME,
                 emitterItem.getDescriptionId());
+        WUTHandler.addTerminal(
+                WirelessMEChamberManagerTerminalItem.TERMINAL_NAME,
+                chamberItem::tryOpen,
+                WirelessMEChamberManagerMenuHost::new,
+                WIRELESS_ME_CHAMBER_MANAGER_TERMINAL_MENU_TYPE,
+                chamberItem,
+                WirelessMEChamberManagerTerminalItem.HOTKEY_NAME,
+                chamberItem.getDescriptionId());
     }
 
     private static void addCreativeTabItems(BuildCreativeModeTabContentsEvent event) {
@@ -229,6 +253,7 @@ public final class GTLWirelessAeContent {
             event.accept(ME_CHAMBER_MANAGER_TERMINAL);
             event.accept(WIRELESS_THROUGHPUT_MONITOR_TERMINAL);
             event.accept(WIRELESS_EMITTER_MANAGER_TERMINAL);
+            event.accept(WIRELESS_ME_CHAMBER_MANAGER_TERMINAL);
         }
     }
 }

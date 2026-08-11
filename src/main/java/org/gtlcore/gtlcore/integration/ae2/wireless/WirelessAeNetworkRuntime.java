@@ -35,6 +35,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -61,6 +62,7 @@ public final class WirelessAeNetworkRuntime {
     private static int tickCounter;
     private static boolean tickCacheActive;
     private static final String GTCEU_ME_PART_PACKAGE = "com.gregtechceu.gtceu.integration.ae2.";
+    private static final String FTB_TEAMS_API_CLASS = "dev.ftb.mods.ftbteams.api.FTBTeamsAPI";
     private static final String GTMTHINGS_ME_PART_PACKAGE = "com.hepdd.gtmthings.common.block.machine.multiblock.part.appeng.";
     private static final String GTL_ME_PART_PACKAGE = "org.gtlcore.gtlcore.common.machine.multiblock.part.ae.";
     private static final String GTCEU_META_MACHINE_CLASS = "com.gregtechceu.gtceu.api.machine.MetaMachine";
@@ -288,6 +290,35 @@ public final class WirelessAeNetworkRuntime {
         return null;
     }
 
+    public static boolean canAccessNetwork(ServerPlayer player, UUID frequency) {
+        if (player == null || frequency == null) {
+            return false;
+        }
+
+        MinecraftServer server = player.server;
+        WirelessAeSavedData data = WirelessAeSavedData.get(server);
+        UUID owner = data.getNetworkOwner(frequency);
+        if (owner == null) {
+            WirelessNetworkCoreBlockEntity core = getLoadedCore(server, frequency);
+            if (core != null) {
+                IGridNode coreNode = core.getActionableNode();
+                owner = coreNode == null ? null : coreNode.getOwningPlayerProfileId();
+                if (owner != null) {
+                    data.setNetworkOwner(frequency, owner);
+                }
+            }
+        }
+
+        return owner != null && (owner.equals(player.getUUID()) || areInSameFtbTeam(owner, player.getUUID()));
+    }
+
+    public static List<WirelessAeSavedData.NetworkInfo> getAccessibleNetworkInfo(ServerPlayer player) {
+        MinecraftServer server = player.server;
+        return WirelessAeSavedData.get(server).getNetworkInfo(server).stream()
+                .filter(network -> canAccessNetwork(player, network.frequency()))
+                .toList();
+    }
+
     public static boolean canUseAsWirelessTarget(ServerLevel level, BlockPos pos) {
         return isWirelessMeTarget(level, pos) && findTargetNode(level, pos) != null;
     }
@@ -409,6 +440,23 @@ public final class WirelessAeNetworkRuntime {
         IGridNode bridgeNode = findBridgeNode(core);
         IGridNode targetNode = findTargetNode(server, member);
         return bridgeNode != null && targetNode != null && (areConnected(bridgeNode, targetNode) || isSameGrid(bridgeNode, targetNode));
+    }
+
+    private static boolean areInSameFtbTeam(UUID firstPlayer, UUID secondPlayer) {
+        try {
+            Class<?> apiClass = Class.forName(FTB_TEAMS_API_CLASS);
+            Object api = apiClass.getMethod("api").invoke(null);
+            if (api == null || !(Boolean) api.getClass().getMethod("isManagerLoaded").invoke(api)) {
+                return false;
+            }
+
+            Object manager = api.getClass().getMethod("getManager").invoke(api);
+            return (Boolean) manager.getClass()
+                    .getMethod("arePlayersInSameTeam", UUID.class, UUID.class)
+                    .invoke(manager, firstPlayer, secondPlayer);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+            return false;
+        }
     }
 
     public static boolean hasWirelessConnection(UUID frequency, WirelessAeSavedData.MemberKey member) {

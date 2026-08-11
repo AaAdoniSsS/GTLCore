@@ -119,7 +119,8 @@ public abstract class RecipeLogicMixin implements ILockRecipe, IRecipeStatus {
     @Overwrite(remap = false)
     protected boolean handleRecipeIO(GTRecipe recipe, IO io) {
         if (!(this.machine.hasProxies() && io != IO.BOTH)) return false;
-        if (io == IO.IN && !BatchProcessing.applyInPlace(this.machine.self(), recipe)) return false;
+        if (io == IO.IN && !BatchProcessing.applyInPlace(this.machine.self(), this.lastOriginRecipe, recipe))
+            return false;
         return handleRecipeInput(this.machine, recipe);
     }
 
