@@ -9,4 +9,8 @@ public interface IAdvancedOCResult {
     double getDurationFactor();
 
     double getVoltageFactor();
+
+    boolean isSubTickOverclockAvailable();
+
+    void setSubTickOverclockAvailable(boolean available);
 }

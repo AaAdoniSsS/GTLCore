@@ -65,6 +65,9 @@ public class WirelessNetworkCoreMenu extends AbstractContainerMenu {
     public static void open(ServerPlayer player, WirelessNetworkCoreBlockEntity core) {
         WirelessAeSavedData data = WirelessAeSavedData.get(player.serverLevel().getServer());
         UUID frequency = core.getFrequency();
+        if (!WirelessAeNetworkRuntime.canAccessNetwork(player, frequency)) {
+            return;
+        }
         String networkName = data.getNetworkName(frequency);
         boolean linked = core.isLinkedToAeNetwork();
         BlockPos pos = core.getBlockPos();
@@ -109,7 +112,7 @@ public class WirelessNetworkCoreMenu extends AbstractContainerMenu {
         }
 
         BlockEntity blockEntity = player.level().getBlockEntity(this.pos);
-        return blockEntity instanceof WirelessNetworkCoreBlockEntity && player.distanceToSqr(
+        return blockEntity instanceof WirelessNetworkCoreBlockEntity core && player instanceof ServerPlayer serverPlayer && WirelessAeNetworkRuntime.canAccessNetwork(serverPlayer, this.frequency) && player.distanceToSqr(
                 this.pos.getX() + 0.5D,
                 this.pos.getY() + 0.5D,
                 this.pos.getZ() + 0.5D) <= 64.0D;

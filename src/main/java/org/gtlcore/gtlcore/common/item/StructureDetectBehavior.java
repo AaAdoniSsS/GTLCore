@@ -11,7 +11,10 @@ import com.gregtechceu.gtceu.api.machine.MetaMachine;
 import com.gregtechceu.gtceu.api.machine.feature.multiblock.IMultiController;
 import com.gregtechceu.gtceu.api.pattern.*;
 import com.gregtechceu.gtceu.api.pattern.error.*;
+import com.gregtechceu.gtceu.api.pattern.predicates.SimplePredicate;
 import com.gregtechceu.gtceu.common.item.TooltipBehavior;
+
+import com.lowdragmc.lowdraglib.utils.BlockInfo;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
@@ -29,6 +32,7 @@ import net.minecraft.world.level.Level;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
@@ -78,8 +82,8 @@ public class StructureDetectBehavior extends TooltipBehavior implements IToolBeh
                         }
                         try {
                             var result = check(controller, pattern, isFlipped);
-                            for (var patternError : result) {
-                                showError(player, patternError, isFlipped);
+                            for (var detectionError : result) {
+                                showError(player, detectionError, isFlipped);
                             }
                         } finally {
                             LOCK.unlock();
@@ -95,10 +99,10 @@ public class StructureDetectBehavior extends TooltipBehavior implements IToolBeh
         return InteractionResult.PASS;
     }
 
-    private List<PatternError> check(IMultiController controller, BlockPattern pattern, boolean isFlipped) {
-        var errors = new ObjectArrayList<PatternError>();
+    private List<DetectionError> check(IMultiController controller, BlockPattern pattern, boolean isFlipped) {
+        var errors = new ObjectArrayList<DetectionError>();
         if (controller == null) {
-            errors.add(new PatternStringError("no controller found"));
+            errors.add(new DetectionError(new PatternStringError("no controller found"), null));
             return errors;
         }
         var centerPos = controller.self().getPos();
@@ -109,15 +113,16 @@ public class StructureDetectBehavior extends TooltipBehavior implements IToolBeh
             if (machineBlock.rotationState == RotationState.NONE) facings = new Direction[] { frontFacing };
         }
         var upwardsFacing = controller.self().getUpwardsFacing();
-        var worldState = new MultiblockState(controller.self().getLevel(), controller.self().getPos());
         for (var direction : facings) {
+            var worldState = new MultiblockState(controller.self().getLevel(), controller.self().getPos());
             pattern.checkPatternAt(worldState, centerPos, direction, upwardsFacing, isFlipped, false);
-            if (worldState.hasError()) errors.add(worldState.error);
+            if (worldState.hasError()) errors.add(new DetectionError(worldState.error, worldState.predicate));
         }
         return errors;
     }
 
-    private void showError(Player player, PatternError error, boolean flip) {
+    private void showError(Player player, DetectionError detectionError, boolean flip) {
+        var error = detectionError.error();
         var show = new ObjectArrayList<Component>();
         if (error instanceof PatternStringError pe) {
             player.sendSystemMessage(pe.getErrorInfo());
@@ -127,21 +132,46 @@ public class StructureDetectBehavior extends TooltipBehavior implements IToolBeh
         var posComponent = Component.translatable("item.gtlcore.structure_detect.error.2", pos.getX(), pos.getY(), pos.getZ(), flip ?
                 Component.translatable("item.gtlcore.structure_detect.error.3").withStyle(ChatFormatting.GREEN) :
                 Component.translatable("item.gtlcore.structure_detect.error.4").withStyle(ChatFormatting.YELLOW));
-        var candidates = error.getCandidates();
-        if (error instanceof SinglePredicateError) {
-            var root = candidates.get(0).get(0).getHoverName();
+        var candidates = getCandidateNames(detectionError.predicate());
+        if (error instanceof SinglePredicateError singlePredicateError) {
+            var roots = getCandidateNames(singlePredicateError.predicate);
             show.add(Component.translatable("item.gtlcore.structure_detect.error.1", posComponent));
-            show.add(Component.literal(" - ").append(root).append(error.getErrorInfo()));
+            var detail = Component.literal(" - ");
+            if (!roots.isEmpty()) detail.append(roots.get(0));
+            show.add(detail.append(error.getErrorInfo()));
         } else {
             show.add(Component.translatable("item.gtlcore.structure_detect.error.0", posComponent));
             for (var candidate : candidates) {
-                if (!candidate.isEmpty()) {
-                    show.add(Component.literal(" - ").append(candidate.get(0).getDisplayName()));
-                }
+                if (!candidate.isEmpty()) show.add(Component.literal(" - ").append(candidate.get(0)));
             }
         }
         show.forEach(player::sendSystemMessage);
         GTLNetworkHandler.INSTANCE.sendTo(new SStructureDetectHighlight(error.getPos(), error.getWorld().dimension(),
                 System.currentTimeMillis() + 15000), (ServerPlayer) player);
     }
+
+    private List<List<Component>> getCandidateNames(TraceabilityPredicate predicate) {
+        if (predicate == null) return List.of();
+        return java.util.stream.Stream.concat(predicate.common.stream(), predicate.limited.stream())
+                .map(this::getCandidateNames)
+                .filter(candidates -> !candidates.isEmpty())
+                .toList();
+    }
+
+    private List<Component> getCandidateNames(SimplePredicate predicate) {
+        if (predicate.candidates == null) return List.of();
+        return Arrays.stream(predicate.candidates.get())
+                .map(this::getCandidateName)
+                .filter(component -> component != null)
+                .toList();
+    }
+
+    private Component getCandidateName(BlockInfo candidate) {
+        var fluidState = candidate.getBlockState().getFluidState();
+        if (!fluidState.isEmpty()) return fluidState.getType().getFluidType().getDescription();
+        var itemStack = candidate.getItemStackForm();
+        return itemStack.isEmpty() ? null : itemStack.getHoverName();
+    }
+
+    private record DetectionError(PatternError error, TraceabilityPredicate predicate) {}
 }

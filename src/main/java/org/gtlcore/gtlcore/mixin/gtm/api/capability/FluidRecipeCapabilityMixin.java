@@ -109,7 +109,8 @@ public abstract class FluidRecipeCapabilityMixin extends RecipeCapability<FluidI
                     TooltipsHandler.appendFluidTooltips(stack.getFluid(),
                             stack.getAmount(), tooltips::add, TooltipFlag.NORMAL);
                 } else {
-                    // EMI 中在其他地方被添加过了
+                    TextUtil.appendChemicalFormulaTooltip(stack.getFluid(), tooltips);
+                    // EMI 中的来源提示在其他地方被添加过了
                     if (!LDLib.isEmiLoaded()) {
                         SourceTooltip.append(stack.getFluid(), tooltips::add);
                     }

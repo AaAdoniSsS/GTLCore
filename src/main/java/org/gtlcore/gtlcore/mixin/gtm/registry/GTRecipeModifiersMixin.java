@@ -3,7 +3,9 @@ package org.gtlcore.gtlcore.mixin.gtm.registry;
 import org.gtlcore.gtlcore.api.machine.trait.IRecipeCapabilityMachine;
 import org.gtlcore.gtlcore.api.recipe.RecipeResult;
 import org.gtlcore.gtlcore.api.recipe.RecipeRunnerHelper;
+import org.gtlcore.gtlcore.utils.NumberUtils;
 
+import com.gregtechceu.gtceu.api.GTValues;
 import com.gregtechceu.gtceu.api.capability.recipe.IRecipeCapabilityHolder;
 import com.gregtechceu.gtceu.api.machine.MetaMachine;
 import com.gregtechceu.gtceu.api.machine.feature.IRecipeLogicMachine;
@@ -22,9 +24,17 @@ import com.mojang.datafixers.util.Pair;
 import org.jetbrains.annotations.NotNull;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;
+import org.spongepowered.asm.mixin.Unique;
 
 @Mixin(GTRecipeModifiers.class)
 public abstract class GTRecipeModifiersMixin {
+
+    @Unique
+    private static final String EBF_TEMPERATURE_KEY = "ebf_temp";
+    @Unique
+    private static final int EBF_TEMPERATURE_PER_VOLTAGE_TIER = 100;
+    @Unique
+    private static final double MIN_EBF_DURATION_MULTIPLIER = 0.5;
 
     /**
      * @author .
@@ -33,19 +43,39 @@ public abstract class GTRecipeModifiersMixin {
     @Overwrite(remap = false)
     public static GTRecipe ebfOverclock(MetaMachine machine, @NotNull GTRecipe recipe, @NotNull OCParams params, @NotNull OCResult result) {
         if (machine instanceof CoilWorkableElectricMultiblockMachine coilMachine) {
-            int blastFurnaceTemperature = coilMachine.getCoilType().getCoilTemperature() + 100 * Math.max(0, coilMachine.getTier() - 2);
-            if (recipe.data.contains("ebf_temp")) {
-                if (recipe.data.getInt("ebf_temp") <= blastFurnaceTemperature) {
-                    return RecipeHelper.getRecipeEUtTier(recipe) > coilMachine.getTier() ? null :
-                            RecipeHelper.applyOverclock(new OverclockingLogic((p, r, maxVoltage) -> OverclockingLogic.heatingCoilOC(
-                                    params, result, maxVoltage, blastFurnaceTemperature, recipe.data.contains("ebf_temp") ? recipe.data.getInt("ebf_temp") : 0)),
-                                    recipe, coilMachine.getOverclockVoltage(), params, result);
+            int blastFurnaceTemperature = coilMachine.getCoilType().getCoilTemperature() +
+                    EBF_TEMPERATURE_PER_VOLTAGE_TIER * Math.max(0, coilMachine.getTier() - GTValues.MV);
+            if (recipe.data.contains(EBF_TEMPERATURE_KEY)) {
+                int requiredTemperature = recipe.data.getInt(EBF_TEMPERATURE_KEY);
+                if (requiredTemperature <= blastFurnaceTemperature) {
+                    if (RecipeHelper.getRecipeEUtTier(recipe) > coilMachine.getTier()) return null;
+
+                    GTRecipe modifiedRecipe = recipe.copy();
+                    double durationMultiplier = Math.max(MIN_EBF_DURATION_MULTIPLIER,
+                            (double) requiredTemperature / blastFurnaceTemperature);
+                    modifiedRecipe.duration = Math.max(1, (int) (recipe.duration * durationMultiplier));
+                    GTRecipe overclockedRecipe = RecipeHelper.applyOverclock(new OverclockingLogic((p, r, maxVoltage) -> OverclockingLogic.heatingCoilOC(
+                            params, result, maxVoltage, blastFurnaceTemperature, requiredTemperature)),
+                            modifiedRecipe, coilMachine.getOverclockVoltage(), params, result);
+                    int energyDiscounts = Math.max(0, (blastFurnaceTemperature - requiredTemperature) /
+                            OverclockingLogic.COIL_EUT_DISCOUNT_TEMPERATURE);
+                    double energyMultiplier = NumberUtils.pow95(energyDiscounts);
+                    result.setEut(gtlcore$applyEnergyMultiplier(result.getEut(), energyMultiplier));
+                    result.setParallelEUt(gtlcore$applyEnergyMultiplier(result.getParallelEUt(), energyMultiplier));
+                    return overclockedRecipe;
                 } else {
                     RecipeResult.of((IRecipeLogicMachine) machine, RecipeResult.FAIL_NO_ENOUGH_TEMPERATURE);
                     return null;
                 }
             } else return null;
         } else return null;
+    }
+
+    @Unique
+    private static long gtlcore$applyEnergyMultiplier(long eut, double multiplier) {
+        if (eut > 0) return Math.max(1, (long) (eut * multiplier));
+        if (eut < 0) return Math.min(-1, (long) (eut * multiplier));
+        return 0;
     }
 
     /**

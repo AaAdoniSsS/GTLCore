@@ -44,6 +44,10 @@ public abstract class GTRecipeMixin implements IGTRecipe {
     @Setter
     private boolean batchProcessed;
     @Unique
+    @Getter
+    @Setter
+    private boolean subTickParallelized;
+    @Unique
     @Setter
     private boolean hasTick;
     @Unique

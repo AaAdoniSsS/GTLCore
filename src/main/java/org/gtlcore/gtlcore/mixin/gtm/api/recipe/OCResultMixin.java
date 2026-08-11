@@ -5,6 +5,9 @@ import org.gtlcore.gtlcore.api.recipe.IAdvancedOCResult;
 import com.gregtechceu.gtceu.api.recipe.logic.OCResult;
 
 import org.spongepowered.asm.mixin.*;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Implements({
         @Interface(
@@ -31,6 +34,8 @@ public abstract class OCResultMixin {
     private double gTLCore$durationFactor = 0;
     @Unique
     private double gTLCore$voltageFactor = 0;
+    @Unique
+    private boolean gTLCore$subTickOverclockAvailable = false;
 
     /**
      * @author Dragons
@@ -46,6 +51,7 @@ public abstract class OCResultMixin {
         gTLCore$baseOCLevel = ocLevel;
         gTLCore$durationFactor = 0;
         gTLCore$voltageFactor = 0;
+        gTLCore$subTickOverclockAvailable = false;
     }
 
     @Unique
@@ -58,6 +64,7 @@ public abstract class OCResultMixin {
         gTLCore$baseOCLevel = baseOCLevel;
         gTLCore$durationFactor = durationFactor;
         gTLCore$voltageFactor = voltageFactor;
+        gTLCore$subTickOverclockAvailable = false;
     }
 
     @Unique
@@ -73,5 +80,20 @@ public abstract class OCResultMixin {
     @Unique
     public double gTLCore$getVoltageFactor() {
         return gTLCore$voltageFactor;
+    }
+
+    @Unique
+    public boolean gTLCore$isSubTickOverclockAvailable() {
+        return gTLCore$subTickOverclockAvailable;
+    }
+
+    @Unique
+    public void gTLCore$setSubTickOverclockAvailable(boolean available) {
+        gTLCore$subTickOverclockAvailable = available;
+    }
+
+    @Inject(method = "reset", at = @At("HEAD"), remap = false)
+    private void gtlcore$resetSubTickOverclockAvailable(CallbackInfo ci) {
+        gTLCore$subTickOverclockAvailable = false;
     }
 }

@@ -93,7 +93,7 @@ public final class TransfiniteCraftingCPU implements ICraftingCPU {
     }
 
     public long getLongCoProcessors() {
-        return Math.max(0L, this.host.getParallelism() - 1L);
+        return this.host.getParallelism();
     }
 
     @Override

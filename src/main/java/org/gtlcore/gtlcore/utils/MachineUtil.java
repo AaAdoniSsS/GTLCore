@@ -15,14 +15,17 @@ import com.lowdragmc.lowdraglib.side.fluid.FluidStack;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.common.util.Lazy;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.gtlcore.gtlcore.api.recipe.RecipeRunnerHelper.*;
@@ -37,6 +40,15 @@ public class MachineUtil {
             getItem("kubejs:magnetohydrodynamicallyconstrainedstarmatter_leggings"), EquipmentSlot.LEGS,
             getItem("kubejs:magnetohydrodynamicallyconstrainedstarmatter_chestplate"), EquipmentSlot.CHEST,
             getItem("kubejs:magnetohydrodynamicallyconstrainedstarmatter_helmet"), EquipmentSlot.HEAD));
+
+    private static final String LEGGINGS_SUFFIX = "leggings";
+    private static final String PANTS_SUFFIX = "pants";
+
+    private static final List<Map<EquipmentSlot, ResourceLocation>> NO_CLIP_ARMOR_SETS = List.of(
+            createArmorSet("kubejs:fermium_", LEGGINGS_SUFFIX),
+            createArmorSet("kubejs:space_fermium_", LEGGINGS_SUFFIX),
+            createArmorSet("avaritia:infinity_", PANTS_SUFFIX),
+            createArmorSet("kubejs:magnetohydrodynamicallyconstrainedstarmatter_", LEGGINGS_SUFFIX));
 
     private MachineUtil() {
         throw new IllegalAccessError();
@@ -116,5 +128,19 @@ public class MachineUtil {
     public static boolean hasFullArmorSet(ServerPlayer player) {
         return armorMap.get().entrySet().stream()
                 .allMatch(entry -> player.getItemBySlot(entry.getValue()).is(entry.getKey()));
+    }
+
+    public static boolean hasNoClipArmorSet(Player player) {
+        return NO_CLIP_ARMOR_SETS.stream().anyMatch(armorSet -> armorSet.entrySet().stream()
+                .allMatch(entry -> entry.getValue().equals(
+                        Registries.getResourceKey(player.getItemBySlot(entry.getKey())))));
+    }
+
+    private static Map<EquipmentSlot, ResourceLocation> createArmorSet(String prefix, String legsSuffix) {
+        return Map.of(
+                EquipmentSlot.FEET, new ResourceLocation(prefix + "boots"),
+                EquipmentSlot.LEGS, new ResourceLocation(prefix + legsSuffix),
+                EquipmentSlot.CHEST, new ResourceLocation(prefix + "chestplate"),
+                EquipmentSlot.HEAD, new ResourceLocation(prefix + "helmet"));
     }
 }

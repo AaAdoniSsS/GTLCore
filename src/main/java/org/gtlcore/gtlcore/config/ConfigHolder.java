@@ -11,6 +11,10 @@ import dev.toma.configuration.config.format.ConfigFormats;
 public class ConfigHolder {
 
     public static ConfigHolder INSTANCE;
+    public static final int DEFAULT_MACHINE_STARTUP_TICK_BUDGET_PER_LEVEL = 32;
+    public static final int DEFAULT_MACHINE_STARTUP_AE_TICK_BUDGET_PER_LEVEL = 32;
+    public static final int DEFAULT_MACHINE_STARTUP_TICK_TIME_BUDGET_MILLIS = 10;
+    public static final int DEFAULT_GTCEU_JEI_SLOW_RECIPE_TYPE_WARNING_MILLIS = 100;
     private static final Object LOCK = new Object();
 
     public static void init() {
@@ -100,6 +104,37 @@ public class ConfigHolder {
     @Configurable
     @Configurable.Comment("是否将原生 AE2 CPU 与超限演算阵列的慢发配写入独立日志；关闭时不执行性能计时")
     public boolean enableAe2CraftingDispatchPerformanceLogging = false;
+    @Configurable
+    @Configurable.Comment({
+            "将超限演算阵列的结构检测、成型、失效与 AE 联网检测写入独立日志。",
+            "日志文件：logs/gtlcore/transfinite-computation-array-lifecycle-*.log"
+    })
+    public boolean enableTransfiniteComputationArrayLifecycleLogging = false;
+    @Configurable
+    @Configurable.Comment({
+            "世界加载时分批执行普通 GT 机器的首次 tick，避免大量强加载区块在同一 tick 集中激活。",
+            "不延迟 NBT、能力、结构与 AE 节点加载；超限演算阵列本体优先执行。"
+    })
+    public boolean enableMachineStartupTickBudget = true;
+    @Configurable
+    @Configurable.Comment("每个维度每 tick 最多首次激活的普通 GT 机器数量")
+    @Configurable.Range(min = 1, max = 4096)
+    public int machineStartupTickBudgetPerLevel = DEFAULT_MACHINE_STARTUP_TICK_BUDGET_PER_LEVEL;
+    @Configurable
+    @Configurable.Comment("每个维度每 tick 最多首次激活的 AE 联网 GT 机器数量；不影响 AE 节点加载与拓扑计算")
+    @Configurable.Range(min = 1, max = 4096)
+    public int machineStartupAeTickBudgetPerLevel = DEFAULT_MACHINE_STARTUP_AE_TICK_BUDGET_PER_LEVEL;
+    @Configurable
+    @Configurable.Comment("每个维度每 tick 用于首次机器 tick 的最长累计时间；达到后延迟剩余机器到下一 tick")
+    @Configurable.Range(min = 1, max = 50)
+    public int machineStartupTickTimeBudgetMillis = DEFAULT_MACHINE_STARTUP_TICK_TIME_BUDGET_MILLIS;
+    @Configurable
+    @Configurable.Comment("延迟 GTCEu JEI 配方注册期间不参与配方索引的文本与按钮，降低客户端启动分配开销")
+    public boolean optimizeGtceuJeiRegistration = true;
+    @Configurable
+    @Configurable.Comment("单个 GTCEu JEI 配方类型注册超过此毫秒数时记录警告")
+    @Configurable.Range(min = 1, max = 60000)
+    public int gtceuJeiSlowRecipeTypeWarningMillis = DEFAULT_GTCEU_JEI_SLOW_RECIPE_TYPE_WARNING_MILLIS;
     @Configurable
     @Configurable.Comment("单个 AE2 CPU 调度超过此微秒数时记录性能警告")
     @Configurable.Range(min = 1)

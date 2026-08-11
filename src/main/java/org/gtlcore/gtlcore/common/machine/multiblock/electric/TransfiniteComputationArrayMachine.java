@@ -2,6 +2,7 @@ package org.gtlcore.gtlcore.common.machine.multiblock.electric;
 
 import org.gtlcore.gtlcore.api.machine.trait.ICheckPatternMachine;
 import org.gtlcore.gtlcore.common.machine.multiblock.part.ae.MECraftingCPUInterfacePartMachine;
+import org.gtlcore.gtlcore.integration.ae2.crafting.transfinite.TransfiniteComputationArrayLifecycleLogger;
 import org.gtlcore.gtlcore.integration.ae2.crafting.transfinite.TransfiniteCraftingCPU;
 import org.gtlcore.gtlcore.utils.NumberUtils;
 
@@ -24,7 +25,6 @@ import com.lowdragmc.lowdraglib.gui.widget.ButtonWidget;
 import com.lowdragmc.lowdraglib.gui.widget.ComponentPanelWidget;
 import com.lowdragmc.lowdraglib.gui.widget.DraggableScrollableWidgetGroup;
 import com.lowdragmc.lowdraglib.gui.widget.LabelWidget;
-import com.lowdragmc.lowdraglib.gui.widget.TextFieldWidget;
 import com.lowdragmc.lowdraglib.gui.widget.Widget;
 import com.lowdragmc.lowdraglib.gui.widget.WidgetGroup;
 import com.lowdragmc.lowdraglib.syncdata.annotation.DescSynced;
@@ -52,7 +52,6 @@ import appeng.crafting.execution.CraftingSubmitResult;
 import appeng.me.service.CraftingService;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
-import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -99,20 +98,11 @@ public class TransfiniteComputationArrayMachine extends MultiblockControllerMach
     private static final int STATUS_Y = 17;
     private static final int STATUS_WIDTH = SCREEN_WIDTH - 12;
     private static final int SELECTION_MODE_BUTTON_Y = 61;
+    private static final int SELECTION_MODE_BUTTON_WIDTH = SCREEN_WIDTH - 8;
     private static final int SELECTION_MODE_BUTTON_HEIGHT = 18;
-    private static final int PARALLELISM_LABEL_Y = 86;
-    private static final int PARALLELISM_FIELD_Y = 97;
-    private static final int PARALLELISM_FIELD_WIDTH = SCREEN_WIDTH - 8;
-    private static final int PARALLELISM_FIELD_HEIGHT = 18;
-    private static final int MAX_PARALLELISM_TEXT_LENGTH = Long.toString(MAX_PARALLELISM).length();
 
     protected static final ManagedFieldHolder MANAGED_FIELD_HOLDER = new ManagedFieldHolder(
             TransfiniteComputationArrayMachine.class, MultiblockControllerMachine.MANAGED_FIELD_HOLDER);
-
-    @Persisted
-    @DescSynced
-    @Getter
-    private long parallelism = DEFAULT_PARALLELISM;
 
     @Persisted
     @DescSynced
@@ -136,12 +126,12 @@ public class TransfiniteComputationArrayMachine extends MultiblockControllerMach
         super.onLoad();
         // Entering the world should settle the structure as soon as possible, so prioritise it over the
         // throttled cadence until it forms or the window runs out.
-        this.eagerCheckTicks.set(isFormed() ? 0 : EAGER_CHECK_TICKS);
+        this.eagerCheckTicks.set(!isFormed() || this.networkInterface == null ? EAGER_CHECK_TICKS : 0);
     }
 
     @Override
     public void asyncCheckPattern(long periodID) {
-        if (isFormed() && !getMultiblockState().hasError()) {
+        if (isFormed() && !getMultiblockState().hasError() && this.networkInterface != null) {
             return;
         }
         boolean eager = this.eagerCheckTicks.get() > 0 && this.eagerCheckTicks.getAndDecrement() > 0;
@@ -155,31 +145,101 @@ public class TransfiniteComputationArrayMachine extends MultiblockControllerMach
             this.patternCheckQueued.set(false);
             return;
         }
-        serverLevel.getServer().execute(() -> {
-            try {
-                if (isInValid() || getLevel() != serverLevel) return;
-                if (checkPatternWithLock()) {
-                    this.eagerCheckTicks.set(0);
+        boolean lifecycleLogging = TransfiniteComputationArrayLifecycleLogger.isEnabled();
+        long startedAtNanos = lifecycleLogging ? System.nanoTime() : 0L;
+        long startedGameTime = serverLevel.getGameTime();
+        boolean formedBefore = isFormed();
+        TransfiniteComputationArrayLifecycleLogger.logStructureCheckStarted(
+                serverLevel, getPos(), periodID, eager, formedBefore, startedGameTime, startedGameTime, 0L);
+
+        if (isInValid()) {
+            TransfiniteComputationArrayLifecycleLogger.logStructureCheckAborted(
+                    serverLevel, getPos(), periodID, eager, "machine_invalid", 0L,
+                    System.nanoTime() - startedAtNanos);
+            this.patternCheckQueued.set(false);
+            return;
+        }
+        if (getLevel() != serverLevel) {
+            TransfiniteComputationArrayLifecycleLogger.logStructureCheckAborted(
+                    serverLevel, getPos(), periodID, eager, "level_changed", 0L,
+                    System.nanoTime() - startedAtNanos);
+            this.patternCheckQueued.set(false);
+            return;
+        }
+
+        long checkStartedAtNanos = lifecycleLogging ? System.nanoTime() : 0L;
+        final boolean matched;
+        try {
+            matched = checkPatternWithTryLock();
+        } catch (RuntimeException | Error exception) {
+            TransfiniteComputationArrayLifecycleLogger.logStructureCheckFailure(
+                    serverLevel, getPos(), periodID, eager, 0L,
+                    System.nanoTime() - startedAtNanos, exception);
+            this.patternCheckQueued.set(false);
+            throw exception;
+        }
+        long checkFinishedAtNanos = lifecycleLogging ? System.nanoTime() : 0L;
+        long checkNanos = checkFinishedAtNanos - checkStartedAtNanos;
+        if (!matched) {
+            TransfiniteComputationArrayLifecycleLogger.logStructureCheck(
+                    serverLevel, getPos(), periodID, eager, formedBefore, false,
+                    0L, checkNanos, checkFinishedAtNanos - startedAtNanos);
+            this.patternCheckQueued.set(false);
+            return;
+        }
+
+        this.eagerCheckTicks.set(0);
+        try {
+            serverLevel.getServer().execute(() -> {
+                long formationStartedAtNanos = lifecycleLogging ? System.nanoTime() : 0L;
+                long queuedNanos = formationStartedAtNanos - checkFinishedAtNanos;
+                getPatternLock().lock();
+                try {
+                    if (isInValid()) {
+                        TransfiniteComputationArrayLifecycleLogger.logStructureCheckAborted(
+                                serverLevel, getPos(), periodID, eager, "machine_invalid", queuedNanos,
+                                System.nanoTime() - startedAtNanos);
+                        return;
+                    }
+                    if (getLevel() != serverLevel) {
+                        TransfiniteComputationArrayLifecycleLogger.logStructureCheckAborted(
+                                serverLevel, getPos(), periodID, eager, "level_changed", queuedNanos,
+                                System.nanoTime() - startedAtNanos);
+                        return;
+                    }
+                    TransfiniteComputationArrayLifecycleLogger.logStructureCheck(
+                            serverLevel, getPos(), periodID, eager, formedBefore, true,
+                            queuedNanos, checkNanos, System.nanoTime() - startedAtNanos);
                     setFlipped(getMultiblockState().isNeededFlip());
                     onStructureFormed();
                     var savedData = MultiblockWorldSavedData.getOrCreate(serverLevel);
                     savedData.addMapping(getMultiblockState());
                     savedData.removeAsyncLogic(this);
+                } catch (RuntimeException | Error exception) {
+                    TransfiniteComputationArrayLifecycleLogger.logStructureCheckFailure(
+                            serverLevel, getPos(), periodID, eager, queuedNanos,
+                            System.nanoTime() - startedAtNanos, exception);
+                    throw exception;
+                } finally {
+                    getPatternLock().unlock();
+                    this.patternCheckQueued.set(false);
                 }
-            } finally {
-                this.patternCheckQueued.set(false);
-            }
-        });
+            });
+        } catch (RuntimeException | Error exception) {
+            TransfiniteComputationArrayLifecycleLogger.logStructureCheckFailure(
+                    serverLevel, getPos(), periodID, eager, 0L,
+                    System.nanoTime() - startedAtNanos, exception);
+            this.patternCheckQueued.set(false);
+            throw exception;
+        }
     }
 
-    public void setParallelism(long parallelism) {
-        long clamped = Math.max(MIN_PARALLELISM, parallelism);
-        if (this.parallelism == clamped) {
-            return;
-        }
-        this.parallelism = clamped;
-        markDirty();
-        notifyCraftingCpuChange();
+    public long getParallelism() {
+        return this.networkInterface == null ? DEFAULT_PARALLELISM : this.networkInterface.getParallelism();
+    }
+
+    public void restoreNetworkInterface(@NotNull MECraftingCPUInterfacePartMachine networkInterface) {
+        this.networkInterface = networkInterface;
     }
 
     public boolean isOperational() {
@@ -377,23 +437,61 @@ public class TransfiniteComputationArrayMachine extends MultiblockControllerMach
 
     @Override
     public void onStructureFormed() {
-        super.onStructureFormed();
-        this.networkInterface = getParts().stream()
-                .filter(MECraftingCPUInterfacePartMachine.class::isInstance)
-                .map(MECraftingCPUInterfacePartMachine.class::cast)
-                .findFirst()
-                .orElse(null);
-        notifyCraftingCpuChange();
+        TransfiniteComputationArrayLifecycleLogger.logStructureFormationStarted(getLevel(), getPos());
+        boolean lifecycleLogging = TransfiniteComputationArrayLifecycleLogger.isEnabled();
+        long startedAtNanos = lifecycleLogging ? System.nanoTime() : 0L;
+        try {
+            long superclassStartedAtNanos = lifecycleLogging ? System.nanoTime() : 0L;
+            super.onStructureFormed();
+            long superclassFinishedAtNanos = lifecycleLogging ? System.nanoTime() : 0L;
+
+            long interfaceLookupStartedAtNanos = lifecycleLogging ? System.nanoTime() : 0L;
+            var parts = getParts();
+            this.networkInterface = parts.stream()
+                    .filter(MECraftingCPUInterfacePartMachine.class::isInstance)
+                    .map(MECraftingCPUInterfacePartMachine.class::cast)
+                    .findFirst()
+                    .orElse(null);
+            long interfaceLookupFinishedAtNanos = lifecycleLogging ? System.nanoTime() : 0L;
+
+            long notificationStartedAtNanos = lifecycleLogging ? System.nanoTime() : 0L;
+            notifyCraftingCpuChange();
+            long finishedAtNanos = lifecycleLogging ? System.nanoTime() : 0L;
+            TransfiniteComputationArrayLifecycleLogger.logStructureFormed(
+                    getLevel(), getPos(), parts.size(),
+                    this.networkInterface == null ? null : this.networkInterface.getPos(),
+                    this.networkInterface != null && this.networkInterface.isOnline(),
+                    this.networkInterface != null && this.networkInterface.getMainNode().isOnline(),
+                    this.networkInterface != null && this.networkInterface.getMainNode().isPowered(),
+                    this.networkInterface != null && this.networkInterface.getMainNode().isActive(),
+                    this.networkInterface != null && this.networkInterface.getMainNode().getGrid() != null,
+                    superclassFinishedAtNanos - superclassStartedAtNanos,
+                    interfaceLookupFinishedAtNanos - interfaceLookupStartedAtNanos,
+                    finishedAtNanos - notificationStartedAtNanos, finishedAtNanos - startedAtNanos);
+        } catch (RuntimeException | Error exception) {
+            TransfiniteComputationArrayLifecycleLogger.logStructureFormationFailure(
+                    getLevel(), getPos(), System.nanoTime() - startedAtNanos, exception);
+            throw exception;
+        }
     }
 
     @Override
     public void onStructureInvalid() {
         MECraftingCPUInterfacePartMachine previousInterface = this.networkInterface;
+        boolean lifecycleLogging = TransfiniteComputationArrayLifecycleLogger.isEnabled();
+        long startedAtNanos = lifecycleLogging ? System.nanoTime() : 0L;
+        boolean previousInterfaceOnline = previousInterface != null && previousInterface.isOnline();
+        boolean previousNodeActive = previousInterface != null && previousInterface.getMainNode().isActive();
+        boolean previousGridPresent = previousInterface != null && previousInterface.getMainNode().getGrid() != null;
         super.onStructureInvalid();
         this.networkInterface = null;
         if (previousInterface != null) {
             previousInterface.notifyCraftingCpuChange();
         }
+        TransfiniteComputationArrayLifecycleLogger.logStructureInvalidated(
+                getLevel(), getPos(), previousInterface == null ? null : previousInterface.getPos(),
+                previousInterfaceOnline, previousNodeActive, previousGridPresent,
+                System.nanoTime() - startedAtNanos);
     }
 
     private void notifyCraftingCpuChange() {
@@ -421,7 +519,6 @@ public class TransfiniteComputationArrayMachine extends MultiblockControllerMach
     @Override
     public void loadCustomPersistedData(@NotNull CompoundTag tag) {
         super.loadCustomPersistedData(tag);
-        this.parallelism = Math.max(MIN_PARALLELISM, this.parallelism);
         if (this.selectionMode == null) {
             this.selectionMode = DEFAULT_SELECTION_MODE;
         }
@@ -457,7 +554,7 @@ public class TransfiniteComputationArrayMachine extends MultiblockControllerMach
     public @NotNull Widget createUIWidget() {
         var selectionModeButton = new ButtonWidget(
                 SCREEN_CONTENT_X, SELECTION_MODE_BUTTON_Y,
-                PARALLELISM_FIELD_WIDTH, SELECTION_MODE_BUTTON_HEIGHT,
+                SELECTION_MODE_BUTTON_WIDTH, SELECTION_MODE_BUTTON_HEIGHT,
                 new GuiTextureGroup(GuiTextures.BUTTON, new TextTexture(this::getSelectionModeButtonText)),
                 clickData -> cycleSelectionMode())
                 .setHoverTooltips(
@@ -465,11 +562,6 @@ public class TransfiniteComputationArrayMachine extends MultiblockControllerMach
                         Component.translatable("gui.gtlcore.transfinite_computation_array.selection_mode.any.tooltip"),
                         Component.translatable("gui.gtlcore.transfinite_computation_array.selection_mode.player_only.tooltip"),
                         Component.translatable("gui.gtlcore.transfinite_computation_array.selection_mode.machine_only.tooltip"));
-        var parallelField = new TextFieldWidget(SCREEN_CONTENT_X, PARALLELISM_FIELD_Y,
-                PARALLELISM_FIELD_WIDTH, PARALLELISM_FIELD_HEIGHT,
-                () -> Long.toString(this.parallelism), this::setParallelismFromText)
-                .setNumbersOnly(MIN_PARALLELISM, MAX_PARALLELISM)
-                .setMaxStringLength(MAX_PARALLELISM_TEXT_LENGTH);
 
         var screen = new DraggableScrollableWidgetGroup(
                 SCREEN_MARGIN, SCREEN_MARGIN, SCREEN_WIDTH, SCREEN_HEIGHT)
@@ -480,9 +572,6 @@ public class TransfiniteComputationArrayMachine extends MultiblockControllerMach
                 .textSupplier(isRemote() ? null : this::addDisplayText)
                 .setMaxWidthLimit(STATUS_WIDTH));
         screen.addWidget(selectionModeButton);
-        screen.addWidget(new LabelWidget(SCREEN_CONTENT_X, PARALLELISM_LABEL_Y,
-                "gui.gtlcore.transfinite_computation_array.parallelism"));
-        screen.addWidget(parallelField);
 
         var mainPage = new WidgetGroup(0, 0, MAIN_PAGE_WIDTH, MAIN_PAGE_HEIGHT);
         mainPage.addWidget(screen);
@@ -528,14 +617,6 @@ public class TransfiniteComputationArrayMachine extends MultiblockControllerMach
         textList.add(Component.translatable("gui.gtlcore.transfinite_computation_array.storage")
                 .withStyle(ChatFormatting.LIGHT_PURPLE));
         IDisplayUIMachine.super.addDisplayText(textList);
-    }
-
-    private void setParallelismFromText(String text) {
-        try {
-            setParallelism(Long.parseLong(text));
-        } catch (NumberFormatException ignored) {
-            setParallelism(DEFAULT_PARALLELISM);
-        }
     }
 
     private void cycleSelectionMode() {

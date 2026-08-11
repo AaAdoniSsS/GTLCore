@@ -1,0 +1,7 @@
+{
+  "type": "ae2wtlib:upgrade",
+  "terminal": {
+    "item": "gtlcore:wireless_me_chamber_manager_terminal"
+  },
+  "terminalName": "me_chamber_manager"
+}

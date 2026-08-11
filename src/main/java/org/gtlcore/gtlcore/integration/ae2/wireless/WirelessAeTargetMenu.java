@@ -71,7 +71,7 @@ public class WirelessAeTargetMenu extends AbstractContainerMenu {
         UUID wiredNetwork = WirelessAeNetworkRuntime.findWiredNetworkFrequency(level.getServer(), target);
         UUID connectedNetwork = wiredNetwork == null ? WirelessAeNetworkRuntime.findConnectedNetworkFrequency(level.getServer(), target) : wiredNetwork;
         List<Entry> entries = new ArrayList<>();
-        for (WirelessAeSavedData.NetworkInfo network : data.getNetworkInfo(level.getServer())) {
+        for (WirelessAeSavedData.NetworkInfo network : WirelessAeNetworkRuntime.getAccessibleNetworkInfo(player)) {
             boolean connected = network.frequency().equals(connectedNetwork);
             boolean disconnectable = wiredNetwork == null && connected && network.frequency().equals(currentNetwork) && WirelessAeNetworkRuntime.hasWirelessConnection(network.frequency(), target);
             entries.add(new Entry(

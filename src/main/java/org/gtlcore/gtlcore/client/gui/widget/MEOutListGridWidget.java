@@ -1,10 +1,12 @@
 package org.gtlcore.gtlcore.client.gui.widget;
 
 import org.gtlcore.gtlcore.integration.ae2.MEFluidUnits;
+import org.gtlcore.gtlcore.integration.jei.JeiMissingIngredientBookmarks;
 
 import com.gregtechceu.gtceu.api.gui.GuiTextures;
 import com.gregtechceu.gtceu.client.TooltipsHandler;
 
+import com.lowdragmc.lowdraglib.gui.ingredient.IIngredientSlot;
 import com.lowdragmc.lowdraglib.gui.util.DrawerHelper;
 import com.lowdragmc.lowdraglib.gui.widget.DraggableScrollableWidgetGroup;
 import com.lowdragmc.lowdraglib.gui.widget.Widget;
@@ -14,6 +16,7 @@ import com.lowdragmc.lowdraglib.utils.Size;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
@@ -223,7 +226,7 @@ public class MEOutListGridWidget extends DraggableScrollableWidgetGroup {
         };
     }
 
-    public static class DisplaySlot extends Widget {
+    public static class DisplaySlot extends Widget implements IIngredientSlot {
 
         private final MEOutListGridWidget gridWidget;
         private final int index;
@@ -232,6 +235,21 @@ public class MEOutListGridWidget extends DraggableScrollableWidgetGroup {
             super(new Position(x, y), new Size(18, 18));
             this.gridWidget = gridWidget;
             this.index = index;
+        }
+
+        @Override
+        public Object getXEIIngredientOverMouse(double mouseX, double mouseY) {
+            if (!isMouseOverElement(mouseX, mouseY)) {
+                return null;
+            }
+
+            GenericStack stack = gridWidget.getAt(index);
+            if (stack == null) {
+                return null;
+            }
+
+            var area = new Rect2i(getPositionX(), getPositionY(), getSizeWidth(), getSizeHeight());
+            return JeiMissingIngredientBookmarks.createClickableIngredient(stack.what(), area).orElse(null);
         }
 
         @Override

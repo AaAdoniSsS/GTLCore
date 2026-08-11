@@ -19,8 +19,10 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
 import net.minecraftforge.client.event.ScreenEvent;
+import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -37,6 +39,23 @@ public class ForgeClientEventListener {
 
     private static final int JEI_TERMINAL_SEARCH_KEY = InputConstants.KEY_F;
     private static final int JEI_WIRELESS_ORDER_MOUSE_BUTTON = GLFW.GLFW_MOUSE_BUTTON_MIDDLE;
+
+    @SubscribeEvent
+    public static void onClientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase == TickEvent.Phase.END) {
+            org.gtlcore.gtlcore.client.NoClipClient.clientTick();
+        }
+    }
+
+    @SubscribeEvent
+    public static void onClientLogin(ClientPlayerNetworkEvent.LoggingIn event) {
+        org.gtlcore.gtlcore.client.NoClipClient.reset(event.getPlayer());
+    }
+
+    @SubscribeEvent
+    public static void onClientLogout(ClientPlayerNetworkEvent.LoggingOut event) {
+        org.gtlcore.gtlcore.client.NoClipClient.reset(event.getPlayer());
+    }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onJeiTerminalSearchKeyPressed(ScreenEvent.KeyPressed.Pre event) {

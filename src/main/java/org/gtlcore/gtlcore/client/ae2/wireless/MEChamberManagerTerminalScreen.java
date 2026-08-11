@@ -43,6 +43,8 @@ import appeng.client.gui.AEBaseScreen;
 import appeng.client.gui.Icon;
 import appeng.client.gui.style.BackgroundGenerator;
 import appeng.client.gui.style.ScreenStyle;
+import de.mari_023.ae2wtlib.wut.CycleTerminalButton;
+import de.mari_023.ae2wtlib.wut.IUniversalTerminalCapable;
 import mezz.jei.api.gui.handlers.IGhostIngredientHandler;
 import mezz.jei.api.ingredients.ITypedIngredient;
 import mezz.jei.api.runtime.IClickableIngredient;
@@ -55,7 +57,8 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
-public final class MEChamberManagerTerminalScreen extends AEBaseScreen<MEChamberManagerTerminalMenu> {
+public final class MEChamberManagerTerminalScreen extends AEBaseScreen<MEChamberManagerTerminalMenu>
+                                                  implements IUniversalTerminalCapable {
 
     private static final int SEARCH_MAX_LENGTH = 80;
     private static final int SLOT_BACKGROUND_OFFSET = 1;
@@ -91,11 +94,13 @@ public final class MEChamberManagerTerminalScreen extends AEBaseScreen<MEChamber
     private ChamberControlButton itemNbtButton;
     private ChamberControlButton fluidBlacklistButton;
     private ChamberControlButton fluidNbtButton;
+    private CycleTerminalButton cycleTerminalButton;
     private @Nullable MEChamberManagerTerminalMenu.StorageKind selectedStorage;
     private int selectedSlot = -1;
     private int listScrollOffset;
     private int contentPageIndex;
     private boolean draggingListScrollbar;
+    private boolean cyclingToPreviousTerminal;
     private final MEChamberConfiguratorOverlay configuratorOverlay;
 
     public MEChamberManagerTerminalScreen(MEChamberManagerTerminalMenu menu, Inventory inventory, Component title,
@@ -122,6 +127,14 @@ public final class MEChamberManagerTerminalScreen extends AEBaseScreen<MEChamber
         searchField.setHint(Component.translatable("field.gtlcore.me_chamber_manager_terminal.search_hint"));
         searchField.setResponder(ignored -> listScrollOffset = 0);
         addRenderableWidget(searchField);
+        if (menu.isUniversalTerminal()) {
+            cycleTerminalButton = new CycleTerminalButton(ignored -> cycleTerminal());
+            cycleTerminalButton.setPosition(
+                    leftPos - cycleTerminalButton.getWidth() -
+                            MEChamberManagerTerminalLayout.UNIVERSAL_TERMINAL_BUTTON_GAP,
+                    topPos + MEChamberManagerTerminalLayout.UNIVERSAL_TERMINAL_BUTTON_Y);
+            addRenderableWidget(cycleTerminalButton);
+        }
         amountField = new EditBox(
                 font,
                 leftPos + MEChamberManagerTerminalLayout.AMOUNT_INPUT_X,
@@ -381,6 +394,12 @@ public final class MEChamberManagerTerminalScreen extends AEBaseScreen<MEChamber
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (button == 1 && cycleTerminalButton != null && cycleTerminalButton.isMouseOver(mouseX, mouseY)) {
+            cyclingToPreviousTerminal = true;
+            cycleTerminal();
+            cyclingToPreviousTerminal = false;
+            return true;
+        }
         if (configuratorOverlay.mouseClicked(mouseX, mouseY, button)) {
             return true;
         }
@@ -390,6 +409,14 @@ public final class MEChamberManagerTerminalScreen extends AEBaseScreen<MEChamber
         }
         return super.mouseClicked(mouseX, mouseY, button);
     }
+
+    @Override
+    public boolean isHandlingRightClick() {
+        return cyclingToPreviousTerminal;
+    }
+
+    @Override
+    public void storeState() {}
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
@@ -1214,7 +1241,7 @@ public final class MEChamberManagerTerminalScreen extends AEBaseScreen<MEChamber
             return Optional.empty();
         }
         MEChamberManagerTerminalMenu.SlotContent content = page.contents().get(index);
-        if (!isMarkable(content) || content.key() == null) {
+        if (content.key() == null) {
             return Optional.empty();
         }
         return JeiMissingIngredientBookmarks.createClickableIngredient(

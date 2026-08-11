@@ -69,6 +69,10 @@ public final class WirelessAeClient {
                     GTLWirelessAeContent.ME_CHAMBER_MANAGER_TERMINAL_MENU.get(),
                     MEChamberManagerTerminalScreen::new,
                     "/screens/me_chamber_manager_terminal.json");
+            InitScreens.register(
+                    GTLWirelessAeContent.WIRELESS_ME_CHAMBER_MANAGER_TERMINAL_MENU.get(),
+                    MEChamberManagerTerminalScreen::new,
+                    "/screens/me_chamber_manager_terminal.json");
         });
     }
 }

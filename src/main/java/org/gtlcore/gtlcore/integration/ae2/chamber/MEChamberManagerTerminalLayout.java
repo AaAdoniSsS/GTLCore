@@ -14,6 +14,8 @@ public final class MEChamberManagerTerminalLayout {
     public static final int DETAIL_CONTENT_INSET = 1;
     public static final int TITLE_X = 8;
     public static final int TITLE_Y = 8;
+    public static final int UNIVERSAL_TERMINAL_BUTTON_GAP = 2;
+    public static final int UNIVERSAL_TERMINAL_BUTTON_Y = TITLE_Y;
     public static final int SEARCH_PANEL_X = 8;
     public static final int SEARCH_PANEL_Y = 21;
     public static final int SEARCH_PANEL_WIDTH = 193;

@@ -1,5 +1,6 @@
 package org.gtlcore.gtlcore.api.recipe;
 
+import org.gtlcore.gtlcore.api.machine.multiblock.ParallelMachine;
 import org.gtlcore.gtlcore.api.machine.trait.IBatchMachine;
 import org.gtlcore.gtlcore.api.recipe.ingredient.LongIngredient;
 import org.gtlcore.gtlcore.common.machine.trait.MultipleRecipesLogic;
@@ -10,10 +11,13 @@ import com.gregtechceu.gtceu.api.capability.recipe.ItemRecipeCapability;
 import com.gregtechceu.gtceu.api.capability.recipe.RecipeCapability;
 import com.gregtechceu.gtceu.api.machine.MetaMachine;
 import com.gregtechceu.gtceu.api.machine.feature.IRecipeLogicMachine;
+import com.gregtechceu.gtceu.api.machine.multiblock.WorkableElectricMultiblockMachine;
 import com.gregtechceu.gtceu.api.recipe.GTRecipe;
+import com.gregtechceu.gtceu.api.recipe.RecipeHelper;
 import com.gregtechceu.gtceu.api.recipe.content.Content;
 import com.gregtechceu.gtceu.api.recipe.ingredient.FluidIngredient;
 import com.gregtechceu.gtceu.api.recipe.ingredient.SizedIngredient;
+import com.gregtechceu.gtceu.api.recipe.logic.OCResult;
 
 import net.minecraft.world.item.crafting.Ingredient;
 
@@ -60,8 +64,9 @@ public final class BatchProcessing {
         return access.useModesGetter().isEmpty() || invokeBoolean(access.useModesGetter().get(), machine, true);
     }
 
-    public static GTRecipe apply(MetaMachine machine, GTRecipe recipe) {
-        if (!isEnabled(machine) || IGTRecipe.of(recipe).isBatchProcessed() ||
+    public static GTRecipe apply(MetaMachine machine, GTRecipe recipe, boolean isSubTickParallelized) {
+        if (!(isSubTickParallelized || IGTRecipe.of(recipe).isSubTickParallelized()) || !isEnabled(machine) ||
+                IGTRecipe.of(recipe).isBatchProcessed() ||
                 !(machine instanceof IRecipeLogicMachine recipeMachine)) {
             return recipe;
         }
@@ -75,8 +80,21 @@ public final class BatchProcessing {
         return result;
     }
 
+    /**
+     * Compatibility overload for addons compiled against the original batch-processing API.
+     */
+    public static GTRecipe apply(MetaMachine machine, GTRecipe recipe) {
+        return apply(machine, recipe, isCustomSubTickParallelized(machine, recipe));
+    }
+
     public static boolean applyInPlace(MetaMachine machine, GTRecipe recipe) {
-        GTRecipe result = apply(machine, recipe);
+        return applyInPlace(machine, null, recipe);
+    }
+
+    public static boolean applyInPlace(MetaMachine machine, GTRecipe originalRecipe, GTRecipe recipe) {
+        boolean isSubTickParallelized = isCustomSubTickParallelized(machine, recipe) ||
+                originalRecipe != null && isCustomSubTickParallelized(machine, originalRecipe, recipe);
+        GTRecipe result = apply(machine, recipe, isSubTickParallelized);
         if (result == null) return false;
         if (result == recipe) return true;
 
@@ -96,6 +114,42 @@ public final class BatchProcessing {
         recipe.ocTier = result.ocTier;
         RecipeExtensionCopier.copy(result, recipe);
         return true;
+    }
+
+    public static boolean isCustomSubTickParallelized(MetaMachine machine, GTRecipe recipe) {
+        if (recipe == null) {
+            return false;
+        }
+        if (IGTRecipe.of(recipe).isSubTickParallelized()) return true;
+        if (!(machine instanceof ParallelMachine parallelMachine)) return false;
+
+        return IGTRecipe.of(recipe).getRealParallels() > Math.max(1L, parallelMachine.getMaxParallel());
+    }
+
+    public static boolean isCustomSubTickParallelized(MetaMachine machine, GTRecipe originalRecipe,
+                                                      GTRecipe modifiedRecipe) {
+        if (!(machine instanceof IRecipeLogicMachine recipeMachine) || modifiedRecipe == null ||
+                modifiedRecipe == originalRecipe) {
+            return false;
+        }
+
+        long regularParallelLimit = IParallelLogic.getMaxParallel(recipeMachine, originalRecipe, Long.MAX_VALUE);
+        if (machine instanceof ParallelMachine parallelMachine) {
+            regularParallelLimit = Math.min(regularParallelLimit, parallelMachine.getMaxParallel());
+        }
+        if (machine instanceof WorkableElectricMultiblockMachine electricMachine) {
+            long recipeEUt = RecipeHelper.getInputEUt(originalRecipe);
+            if (recipeEUt > 0) {
+                regularParallelLimit = Math.min(regularParallelLimit,
+                        electricMachine.getOverclockVoltage() / recipeEUt);
+            }
+        }
+
+        return IGTRecipe.of(modifiedRecipe).getRealParallels() > Math.max(1, regularParallelLimit);
+    }
+
+    public static boolean canOverclockBelowOneTick(OCResult result) {
+        return ((IAdvancedOCResult) (Object) result).isSubTickOverclockAvailable();
     }
 
     private static int getBatchSize(IRecipeLogicMachine machine, GTRecipe recipe) {

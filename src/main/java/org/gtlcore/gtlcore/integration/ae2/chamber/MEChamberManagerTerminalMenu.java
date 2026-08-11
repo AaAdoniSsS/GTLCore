@@ -59,10 +59,15 @@ import appeng.api.stacks.AEFluidKey;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
+import appeng.api.util.DimensionalBlockPos;
 import appeng.menu.AEBaseMenu;
 import appeng.menu.SlotSemantics;
+import appeng.menu.locator.MenuLocator;
+import appeng.menu.locator.MenuLocators;
 import appeng.util.Platform;
 import com.hepdd.gtmthings.common.block.machine.multiblock.part.appeng.MEOutputPartMachine;
+import de.mari_023.ae2wtlib.terminal.WTMenuHost;
+import de.mari_023.ae2wtlib.wut.ItemWUT;
 import io.netty.buffer.Unpooled;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -86,27 +91,55 @@ public final class MEChamberManagerTerminalMenu extends AEBaseMenu {
             .thenComparingInt(entry -> entry.address().pos().getZ());
 
     private final @Nullable MEChamberManagerTerminalPart terminal;
+    private final @Nullable WTMenuHost wirelessHost;
     private final Player menuPlayer;
+    private final boolean universalTerminal;
     private List<Entry> entries = List.of();
     private @Nullable Address selectedAddress;
     private List<SlotContent> selectedContents = List.of();
     private ChamberDetails selectedDetails = ChamberDetails.EMPTY;
     private int ticksUntilSync;
 
-    public static MEChamberManagerTerminalMenu createClientMenu(int containerId, Inventory inventory,
-                                                                FriendlyByteBuf data) {
+    public static MEChamberManagerTerminalMenu createWiredClientMenu(int containerId, Inventory inventory,
+                                                                     FriendlyByteBuf data) {
         return new MEChamberManagerTerminalMenu(
                 GTLWirelessAeContent.ME_CHAMBER_MANAGER_TERMINAL_MENU.get(),
                 containerId,
                 inventory,
-                null);
+                null,
+                null,
+                null,
+                false);
+    }
+
+    public static MEChamberManagerTerminalMenu createWirelessClientMenu(int containerId, Inventory inventory,
+                                                                        FriendlyByteBuf data) {
+        MenuLocator locator = MenuLocators.readFromPacket(data);
+        boolean returningFromSubmenu = data.readBoolean();
+        WTMenuHost host = locator.locate(inventory.player, WTMenuHost.class);
+        return new MEChamberManagerTerminalMenu(
+                GTLWirelessAeContent.WIRELESS_ME_CHAMBER_MANAGER_TERMINAL_MENU.get(),
+                containerId,
+                inventory,
+                null,
+                host,
+                locator,
+                returningFromSubmenu);
     }
 
     private MEChamberManagerTerminalMenu(MenuType<?> menuType, int containerId, Inventory inventory,
-                                         @Nullable MEChamberManagerTerminalPart terminal) {
-        super(menuType, containerId, inventory, terminal);
+                                         @Nullable MEChamberManagerTerminalPart terminal,
+                                         @Nullable WTMenuHost wirelessHost, @Nullable MenuLocator locator,
+                                         boolean returningFromSubmenu) {
+        super(menuType, containerId, inventory, terminal == null ? wirelessHost : terminal);
         this.terminal = terminal;
+        this.wirelessHost = wirelessHost;
         this.menuPlayer = inventory.player;
+        this.universalTerminal = wirelessHost != null && wirelessHost.getItemStack().getItem() instanceof ItemWUT;
+        if (locator != null) {
+            setLocator(locator);
+            setReturnedFromSubScreen(returningFromSubmenu);
+        }
         addPlayerInventorySlots(inventory);
     }
 
@@ -125,9 +158,51 @@ public final class MEChamberManagerTerminalMenu extends AEBaseMenu {
                         GTLWirelessAeContent.ME_CHAMBER_MANAGER_TERMINAL_MENU.get(),
                         containerId,
                         inventory,
-                        terminal);
+                        terminal,
+                        null,
+                        null,
+                        false);
             }
         }, buffer -> {});
+    }
+
+    public static boolean openWireless(Player player, MenuLocator locator, boolean returningFromSubmenu) {
+        if (!(player instanceof ServerPlayer serverPlayer)) {
+            return false;
+        }
+
+        WTMenuHost host = locator.locate(player, WTMenuHost.class);
+        if (host == null || !host.rangeCheck()) {
+            return false;
+        }
+
+        NetworkHooks.openScreen(
+                serverPlayer,
+                new MenuProvider() {
+
+                    @Override
+                    public @NotNull Component getDisplayName() {
+                        return Component.translatable("screen.gtlcore.wireless_me_chamber_manager_terminal");
+                    }
+
+                    @Override
+                    public AbstractContainerMenu createMenu(int containerId, @NotNull Inventory inventory,
+                                                            @NotNull Player menuPlayer) {
+                        return new MEChamberManagerTerminalMenu(
+                                GTLWirelessAeContent.WIRELESS_ME_CHAMBER_MANAGER_TERMINAL_MENU.get(),
+                                containerId,
+                                inventory,
+                                null,
+                                host,
+                                locator,
+                                returningFromSubmenu);
+                    }
+                },
+                buffer -> {
+                    MenuLocators.writeToPacket(buffer, locator);
+                    buffer.writeBoolean(returningFromSubmenu);
+                });
+        return true;
     }
 
     public List<Entry> getEntries() {
@@ -144,6 +219,10 @@ public final class MEChamberManagerTerminalMenu extends AEBaseMenu {
 
     public ChamberDetails getSelectedDetails() {
         return selectedDetails;
+    }
+
+    public boolean isUniversalTerminal() {
+        return universalTerminal;
     }
 
     public void setEntries(List<Entry> entries) {
@@ -308,7 +387,7 @@ public final class MEChamberManagerTerminalMenu extends AEBaseMenu {
     @Override
     public void broadcastChanges() {
         super.broadcastChanges();
-        if (terminal == null || menuPlayer.level().isClientSide() || !isValidMenu() || --ticksUntilSync > 0) {
+        if (!hasDataSource() || menuPlayer.level().isClientSide() || !isValidMenu() || --ticksUntilSync > 0) {
             return;
         }
         ticksUntilSync = SYNC_INTERVAL_TICKS;
@@ -364,7 +443,7 @@ public final class MEChamberManagerTerminalMenu extends AEBaseMenu {
     }
 
     private List<Entry> collectEntries() {
-        IGrid grid = terminal == null ? null : terminal.getMainNode().getGrid();
+        IGrid grid = getGrid();
         if (grid == null) {
             return List.of();
         }
@@ -382,17 +461,36 @@ public final class MEChamberManagerTerminalMenu extends AEBaseMenu {
     }
 
     private @Nullable MetaMachine findAccessibleChamber(ServerPlayer player, Address address) {
-        IGrid grid = terminal == null ? null : terminal.getMainNode().getGrid();
+        IGrid grid = getGrid();
         if (grid == null) {
             return null;
         }
         for (IGridNode node : grid.getNodes()) {
             if (node.getOwner() instanceof MetaMachine machine && isMEChamber(machine) &&
-                    address.equals(Address.of(machine)) && Platform.hasPermissions(terminal.getHost().getLocation(), player)) {
+                    address.equals(Address.of(machine)) && hasEditPermission(machine, player)) {
                 return machine;
             }
         }
         return null;
+    }
+
+    private @Nullable IGrid getGrid() {
+        if (terminal != null) {
+            return terminal.getMainNode().getGrid();
+        }
+        IGridNode node = wirelessHost == null ? null : wirelessHost.getActionableNode();
+        return node == null ? null : node.getGrid();
+    }
+
+    private boolean hasDataSource() {
+        return terminal != null || wirelessHost != null;
+    }
+
+    private boolean hasEditPermission(MetaMachine machine, Player player) {
+        DimensionalBlockPos location = terminal == null ?
+                new DimensionalBlockPos(machine.getLevel(), machine.getPos()) :
+                terminal.getHost().getLocation();
+        return Platform.hasPermissions(location, player);
     }
 
     private static boolean isMEChamber(MetaMachine machine) {

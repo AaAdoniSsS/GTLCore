@@ -1,6 +1,7 @@
 package org.gtlcore.gtlcore.mixin.gtm.ae.machine;
 
 import org.gtlcore.gtlcore.api.machine.trait.MEPart.IModifiableSyncOffset;
+import org.gtlcore.gtlcore.api.machine.trait.MEStock.IOptimizedMEList;
 
 import com.gregtechceu.gtceu.api.capability.recipe.IO;
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
@@ -10,7 +11,9 @@ import com.gregtechceu.gtceu.integration.ae2.machine.MEStockingBusPartMachine;
 
 import net.minecraft.nbt.CompoundTag;
 
+import appeng.api.networking.IGridNodeListener;
 import appeng.api.stacks.GenericStack;
+import org.jetbrains.annotations.NotNull;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -40,6 +43,33 @@ public abstract class MEStockingBusPartMachineMixin extends MEInputBusPartMachin
     @Inject(method = "removedFromController", at = @At("RETURN"), remap = false)
     private void gtlcore$restoreStandaloneAutoPull(IMultiController controller, CallbackInfo ci) {
         setAutoPullTest(stack -> true);
+    }
+
+    @Override
+    public void loadCustomPersistedData(@NotNull CompoundTag tag) {
+        super.loadCustomPersistedData(tag);
+        gtlcore$rebuildConfigCache();
+    }
+
+    @Override
+    public void onMainNodeStateChanged(IGridNodeListener.State reason) {
+        super.onMainNodeStateChanged(reason);
+        gtlcore$restoreStock();
+    }
+
+    private void gtlcore$restoreStock() {
+        if (getMainNode().isOnline()) {
+            gtlcore$rebuildConfigCache();
+            syncME();
+            updateInventorySubscription();
+            aeItemHandler.notifyListeners();
+        }
+    }
+
+    private void gtlcore$rebuildConfigCache() {
+        if (aeItemHandler instanceof IOptimizedMEList optimized) {
+            optimized.onConfigChanged();
+        }
     }
 
     @ModifyConstant(

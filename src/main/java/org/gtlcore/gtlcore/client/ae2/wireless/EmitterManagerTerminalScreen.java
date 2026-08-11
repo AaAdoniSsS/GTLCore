@@ -21,6 +21,7 @@ import appeng.api.config.FuzzyMode;
 import appeng.api.config.RedstoneMode;
 import appeng.api.config.Settings;
 import appeng.api.config.YesNo;
+import appeng.api.stacks.AEFluidKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.AmountFormat;
 import appeng.client.gui.AEBaseScreen;
@@ -34,6 +35,8 @@ import de.mari_023.ae2wtlib.wut.IUniversalTerminalCapable;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -44,7 +47,7 @@ public final class EmitterManagerTerminalScreen extends AEBaseScreen<EmitterMana
                                                 implements IUniversalTerminalCapable {
 
     private static final int SEARCH_MAX_LENGTH = 80;
-    private static final int VALUE_MAX_LENGTH = 19;
+    private static final int VALUE_MAX_LENGTH = Long.toString(Long.MAX_VALUE).length() + 1;
     private static final int ROW_ICON_X = EmitterManagerTerminalLayout.LIST_X + 2;
     private static final int ROW_TEXT_X = EmitterManagerTerminalLayout.LIST_X + 21;
     private static final int ROW_TEXT_WIDTH = EmitterManagerTerminalLayout.LIST_CONTENT_WIDTH - 23;
@@ -440,6 +443,34 @@ public final class EmitterManagerTerminalScreen extends AEBaseScreen<EmitterMana
                     WirelessAeStyle.TEXT,
                     false);
         }
+        drawValueUnits(graphics, selected);
+    }
+
+    private void drawValueUnits(GuiGraphics graphics, EmitterManagerTerminalMenu.Entry entry) {
+        String unit = getValueUnit(entry);
+        if (unit == null) {
+            return;
+        }
+        int unitX = EmitterManagerTerminalLayout.VALUE_PANEL_X + EmitterManagerTerminalLayout.VALUE_PANEL_WIDTH -
+                EmitterManagerTerminalLayout.TEXT_FIELD_PADDING - this.font.width(unit);
+        if (this.primaryValue.visible) {
+            graphics.drawString(
+                    this.font,
+                    unit,
+                    unitX,
+                    EmitterManagerTerminalLayout.PRIMARY_INPUT_Y + EmitterManagerTerminalLayout.TEXT_FIELD_PADDING,
+                    WirelessAeStyle.TEXT,
+                    false);
+        }
+        if (this.secondaryValue.visible) {
+            graphics.drawString(
+                    this.font,
+                    unit,
+                    unitX,
+                    EmitterManagerTerminalLayout.SECONDARY_INPUT_Y + EmitterManagerTerminalLayout.TEXT_FIELD_PADDING,
+                    WirelessAeStyle.TEXT,
+                    false);
+        }
     }
 
     @Override
@@ -585,17 +616,32 @@ public final class EmitterManagerTerminalScreen extends AEBaseScreen<EmitterMana
     }
 
     private void syncControlValues(@Nullable EmitterManagerTerminalMenu.Entry entry) {
+        updateValueFieldWidths(entry);
         if (entry == null) {
             this.primaryValue.setValue("");
             this.secondaryValue.setValue("");
             return;
         }
         boolean threshold = entry.function() == EmitterManagerTerminalMenu.Function.THRESHOLD;
-        this.primaryValue.setValue(Long.toString(threshold ? entry.upperValue() : entry.reportingValue()));
-        this.secondaryValue.setValue(Long.toString(entry.lowerValue()));
+        this.primaryValue.setValue(formatEditableValue(
+                entry,
+                threshold ? entry.upperValue() : entry.reportingValue()));
+        this.secondaryValue.setValue(formatEditableValue(entry, entry.lowerValue()));
         setSettingButton(this.redstoneMode, entry.settingValue(Settings.REDSTONE_EMITTER.getName()), RedstoneMode.class);
         setSettingButton(this.craftingMode, entry.settingValue(Settings.CRAFT_VIA_REDSTONE.getName()), YesNo.class);
         setSettingButton(this.fuzzyMode, entry.settingValue(Settings.FUZZY_MODE.getName()), FuzzyMode.class);
+    }
+
+    private void updateValueFieldWidths(@Nullable EmitterManagerTerminalMenu.Entry entry) {
+        String unit = getValueUnit(entry);
+        int width = WirelessAeStyle.ae2TextFieldTextWidth(
+                this.font,
+                EmitterManagerTerminalLayout.VALUE_PANEL_WIDTH);
+        if (unit != null) {
+            width -= this.font.width(unit) + EmitterManagerTerminalLayout.TEXT_FIELD_PADDING;
+        }
+        this.primaryValue.setWidth(width);
+        this.secondaryValue.setWidth(width);
     }
 
     private void setControlsEnabled(@Nullable EmitterManagerTerminalMenu.Entry entry) {
@@ -665,27 +711,40 @@ public final class EmitterManagerTerminalScreen extends AEBaseScreen<EmitterMana
             return;
         }
         if (entry.function() == EmitterManagerTerminalMenu.Function.THRESHOLD) {
-            parseValue(this.primaryValue).ifPresent(value -> sendValue(
+            parseValue(this.primaryValue, entry).ifPresent(value -> sendValue(
                     entry,
                     EmitterManagerTerminalMenu.ValueKind.UPPER_THRESHOLD,
                     value));
-            parseValue(this.secondaryValue).ifPresent(value -> sendValue(
+            parseValue(this.secondaryValue, entry).ifPresent(value -> sendValue(
                     entry,
                     EmitterManagerTerminalMenu.ValueKind.LOWER_THRESHOLD,
                     value));
         } else {
-            parseValue(this.primaryValue).ifPresent(value -> sendValue(
+            parseValue(this.primaryValue, entry).ifPresent(value -> sendValue(
                     entry,
                     EmitterManagerTerminalMenu.ValueKind.REPORTING,
                     value));
         }
     }
 
-    private static OptionalLong parseValue(EditBox field) {
+    private static OptionalLong parseValue(EditBox field, EmitterManagerTerminalMenu.Entry entry) {
         try {
-            long value = Long.parseLong(field.getValue().trim());
+            String text = field.getValue().trim();
+            long value;
+            if (entry.configuredKey() instanceof AEFluidKey fluidKey) {
+                BigDecimal displayValue = new BigDecimal(text);
+                if (displayValue.signum() < 0) {
+                    return OptionalLong.empty();
+                }
+                value = displayValue
+                        .multiply(BigDecimal.valueOf(fluidKey.getAmountPerUnit()))
+                        .setScale(0, RoundingMode.UP)
+                        .longValueExact();
+            } else {
+                value = Long.parseLong(text);
+            }
             return value < 0 ? OptionalLong.empty() : OptionalLong.of(value);
-        } catch (NumberFormatException ignored) {
+        } catch (ArithmeticException | NumberFormatException ignored) {
             return OptionalLong.empty();
         }
     }
@@ -790,6 +849,9 @@ public final class EmitterManagerTerminalScreen extends AEBaseScreen<EmitterMana
 
     private static Component formatAmount(EmitterManagerTerminalMenu.Entry entry, long amount) {
         AEKey key = entry.configuredKey();
+        if (key instanceof AEFluidKey fluidKey) {
+            return Component.literal(fluidKey.formatAmount(amount, AmountFormat.FULL));
+        }
         if (key != null) {
             return Component.literal(key.formatAmount(amount, AmountFormat.SLOT));
         }
@@ -798,6 +860,22 @@ public final class EmitterManagerTerminalScreen extends AEBaseScreen<EmitterMana
                     formatCompact(amount));
         }
         return Component.literal(formatCompact(amount));
+    }
+
+    private static String formatEditableValue(EmitterManagerTerminalMenu.Entry entry, long amount) {
+        if (entry.configuredKey() instanceof AEFluidKey fluidKey) {
+            return BigDecimal.valueOf(amount)
+                    .divide(BigDecimal.valueOf(fluidKey.getAmountPerUnit()))
+                    .stripTrailingZeros()
+                    .toPlainString();
+        }
+        return Long.toString(amount);
+    }
+
+    private static @Nullable String getValueUnit(@Nullable EmitterManagerTerminalMenu.Entry entry) {
+        return entry != null && entry.configuredKey() instanceof AEFluidKey fluidKey ?
+                fluidKey.getUnitSymbol() :
+                null;
     }
 
     private static String formatCompact(long amount) {
