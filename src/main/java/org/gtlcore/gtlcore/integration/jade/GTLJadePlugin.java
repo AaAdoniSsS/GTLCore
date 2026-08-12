@@ -21,6 +21,7 @@ public class GTLJadePlugin implements IWailaPlugin {
 
     @Override
     public void register(IWailaCommonRegistration registration) {
+        registration.registerItemStorage(QuantumChestItemStorageProvider.INSTANCE, MetaMachineBlockEntity.class);
         registration.registerItemStorage(MEStockingItemStorageProvider.INSTANCE, MetaMachineBlockEntity.class);
         registration.registerFluidStorage(MEStockingFluidStorageProvider.INSTANCE, MetaMachineBlockEntity.class);
         registration.registerBlockDataProvider(new WirelessOpticalDataHatchProvide(), BlockEntity.class);
@@ -40,6 +41,7 @@ public class GTLJadePlugin implements IWailaPlugin {
         var patternRelayProvider = new PatternRelayJadeProvider();
         registration.addConfig(patternRelayProvider.getUid(), true);
         registration.registerBlockComponent(patternRelayProvider, Block.class);
+        registration.registerItemStorageClient(QuantumChestItemStorageProvider.INSTANCE);
         registration.registerItemStorageClient(MEStockingItemStorageProvider.INSTANCE);
         registration.registerFluidStorageClient(MEStockingFluidStorageProvider.INSTANCE);
         registration.registerBlockComponent(new WirelessOpticalDataHatchProvide(), Block.class);

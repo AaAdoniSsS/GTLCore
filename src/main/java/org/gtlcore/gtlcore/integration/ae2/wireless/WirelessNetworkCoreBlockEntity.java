@@ -192,6 +192,21 @@ public class WirelessNetworkCoreBlockEntity extends BlockEntity
         }
     }
 
+    public boolean migrateLegacyOwner(Player player) {
+        if (!(this.level instanceof ServerLevel serverLevel)) {
+            return false;
+        }
+
+        WirelessAeSavedData data = WirelessAeSavedData.get(serverLevel.getServer());
+        UUID frequency = getFrequency();
+        if (data.getNetworkOwner(frequency) != null || this.mainNode.getNode().getOwningPlayerProfileId() != null) {
+            return false;
+        }
+
+        setOwner(player);
+        return true;
+    }
+
     public boolean isLinkedToAeNetwork() {
         return WirelessAeNetworkRuntime.findBridgeNode(this) != null;
     }
