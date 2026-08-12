@@ -188,6 +188,7 @@
     "gtm.ftb.TeleportFromMapPacketMixin",
     "gtm.gui.AmountSetWidgetMixin",
     "gtm.gui.BatchConfiguratorMixin",
+    "gtm.gui.GTRecipeWidgetMixin",
     "gtm.gui.MachineModeFancyConfiguratorMixin",
     "gtm.gui.ProspectorScannerBehaviorMixin",
     "gtm.machine.ActiveTransformerMachineMixin",
