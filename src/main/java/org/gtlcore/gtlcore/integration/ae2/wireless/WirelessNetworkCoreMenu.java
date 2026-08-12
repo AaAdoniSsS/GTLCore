@@ -65,7 +65,7 @@ public class WirelessNetworkCoreMenu extends AbstractContainerMenu {
     public static void open(ServerPlayer player, WirelessNetworkCoreBlockEntity core) {
         WirelessAeSavedData data = WirelessAeSavedData.get(player.serverLevel().getServer());
         UUID frequency = core.getFrequency();
-        if (!WirelessAeNetworkRuntime.canAccessNetwork(player, frequency)) {
+        if (!WirelessAeNetworkRuntime.canAccessNetwork(player, frequency) && (!core.migrateLegacyOwner(player) || !WirelessAeNetworkRuntime.canAccessNetwork(player, frequency))) {
             return;
         }
         String networkName = data.getNetworkName(frequency);

@@ -1,5 +1,7 @@
 package org.gtlcore.gtlcore.mixin.ldlib;
 
+import org.gtlcore.gtlcore.api.machine.trait.IDirectItemStackTransfer;
+
 import com.lowdragmc.lowdraglib.misc.ItemStackTransfer;
 
 import net.minecraft.core.NonNullList;
@@ -16,10 +18,15 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * @author EasterFG on 2025/4/8
  */
 @Mixin(ItemStackTransfer.class)
-public abstract class ItemStackTransferMixin {
+public abstract class ItemStackTransferMixin implements IDirectItemStackTransfer {
 
     @Shadow(remap = false)
     protected NonNullList<ItemStack> stacks;
+
+    @Override
+    public void gtlcore$setStackWithoutNotify(int slot, ItemStack stack) {
+        stacks.set(slot, stack);
+    }
 
     @Inject(method = "insertItem", at = @At(value = "INVOKE", target = "Lcom/lowdragmc/lowdraglib/misc/ItemStackTransfer;validateSlotIndex(I)V"), remap = false, cancellable = true)
     public void insertItemHook(int slot, ItemStack stack, boolean simulate, boolean notifyChanges, CallbackInfoReturnable<ItemStack> cir) {
