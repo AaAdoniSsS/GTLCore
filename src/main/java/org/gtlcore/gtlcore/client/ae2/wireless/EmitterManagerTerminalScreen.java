@@ -153,8 +153,8 @@ public final class EmitterManagerTerminalScreen extends AEBaseScreen<EmitterMana
                 EmitterManagerTerminalLayout.VALUE_INPUT_HEIGHT,
                 hint);
         field.setBordered(false);
-        field.setTextColor(0xFFFFFFFF);
-        field.setTextColorUneditable(0xFFAAAAAA);
+        field.setTextColor(WirelessAeStyle.TEXT_FIELD_TEXT);
+        field.setTextColorUneditable(WirelessAeStyle.TEXT_FIELD_UNEDITABLE);
         field.setHint(hint);
         this.addRenderableWidget(field);
         return field;
@@ -481,7 +481,19 @@ public final class EmitterManagerTerminalScreen extends AEBaseScreen<EmitterMana
             applyValues();
             return true;
         }
+        if (this.searchField.keyPressed(keyCode, scanCode, modifiers) ||
+                this.primaryValue.keyPressed(keyCode, scanCode, modifiers) ||
+                this.secondaryValue.keyPressed(keyCode, scanCode, modifiers)) {
+            return true;
+        }
+        if (isTextFieldFocused() && keyCode == this.minecraft.options.keyInventory.getKey().getValue()) {
+            return true;
+        }
         return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    private boolean isTextFieldFocused() {
+        return this.searchField.isFocused() || this.primaryValue.isFocused() || this.secondaryValue.isFocused();
     }
 
     @Override

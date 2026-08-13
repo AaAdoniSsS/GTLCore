@@ -4,13 +4,19 @@ import org.gtlcore.gtlcore.common.machine.multiblock.part.ae.MEPatternBufferPart
 
 import com.gregtechceu.gtceu.api.blockentity.MetaMachineBlockEntity;
 import com.gregtechceu.gtceu.api.item.component.IInteractionItem;
+import com.gregtechceu.gtceu.api.item.tool.ToolHelper;
 import com.gregtechceu.gtceu.common.item.TooltipBehavior;
 
+import net.minecraft.ChatFormatting;
+import net.minecraft.core.BlockPos;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.context.UseOnContext;
+import net.minecraft.world.level.Level;
 
 import org.jetbrains.annotations.NotNull;
 
@@ -21,6 +27,9 @@ import static com.gregtechceu.gtceu.api.item.tool.ToolHelper.getBehaviorsTag;
 
 public class MEPatternBufferCutBehavior extends TooltipBehavior implements IInteractionItem {
 
+    private static final String CUT_TAG = "cut";
+    private static final String PATTERNS_TAG = "patterns";
+
     public static final MEPatternBufferCutBehavior INSTANCE = new MEPatternBufferCutBehavior((list -> {
         list.add(Component.translatable("tooltip.gtlcore.cut_pattern_buffer_sneak_right_click"));
         list.add(Component.translatable("tooltip.gtlcore.apply_cut_pattern_buffer_right_click"));
@@ -28,6 +37,35 @@ public class MEPatternBufferCutBehavior extends TooltipBehavior implements IInte
 
     public MEPatternBufferCutBehavior(@NotNull Consumer<List<Component>> tooltips) {
         super(tooltips);
+    }
+
+    @Override
+    public void appendHoverText(ItemStack stack, Level level, List<Component> tooltip, TooltipFlag flag) {
+        super.appendHoverText(stack, level, tooltip, flag);
+        var cut = getBehaviorsTag(stack).getCompound(CUT_TAG);
+        if (cut.isEmpty()) {
+            return;
+        }
+
+        var patterns = cut.getList(PATTERNS_TAG, Tag.TAG_COMPOUND);
+        tooltip.add(Component.translatable(
+                "tooltip.gtlcore.pattern_buffer_cut_patterns",
+                patterns.size()).withStyle(ChatFormatting.GOLD));
+        tooltip.add(Component.translatable(
+                "tooltip.gtlcore.pattern_buffer_cut_source",
+                cut.getString("name")).withStyle(ChatFormatting.AQUA));
+        if (cut.contains("bufferPos", Tag.TAG_LONG)) {
+            BlockPos pos = BlockPos.of(cut.getLong("bufferPos"));
+            tooltip.add(Component.translatable(
+                    "tooltip.gtlcore.pattern_buffer_cut_position",
+                    pos.getX(),
+                    pos.getY(),
+                    pos.getZ(),
+                    cut.getString("dimension")).withStyle(ChatFormatting.GREEN));
+        } else {
+            tooltip.add(Component.translatable("tooltip.gtlcore.pattern_buffer_cut_position_legacy")
+                    .withStyle(ChatFormatting.LIGHT_PURPLE));
+        }
     }
 
     @Override
@@ -45,6 +83,12 @@ public class MEPatternBufferCutBehavior extends TooltipBehavior implements IInte
                             } else tags.remove("cut");
                         }
                     } else {
+                        if (hasCutData(itemStack)) {
+                            serverPlayer.displayClientMessage(
+                                    Component.translatable("message.gtlcore.pattern_buffer_cut_already_present"),
+                                    true);
+                            return InteractionResult.CONSUME;
+                        }
                         tags = partMachine.cutToTag(tags);
                         if (tags.isEmpty() || !tags.contains("cut") || tags.getCompound("cut").isEmpty()) serverPlayer.displayClientMessage(Component.translatable("message.gtlcore.pattern_buffer_cut_failed"), true);
                         else serverPlayer.displayClientMessage(Component.translatable("message.gtlcore.pattern_buffer_cut"), true);
@@ -53,5 +97,10 @@ public class MEPatternBufferCutBehavior extends TooltipBehavior implements IInte
             }
         }
         return InteractionResult.PASS;
+    }
+
+    public static boolean hasCutData(ItemStack stack) {
+        var behaviors = stack.getTagElement(ToolHelper.BEHAVIOURS_TAG_KEY);
+        return behaviors != null && !behaviors.getCompound(CUT_TAG).isEmpty();
     }
 }

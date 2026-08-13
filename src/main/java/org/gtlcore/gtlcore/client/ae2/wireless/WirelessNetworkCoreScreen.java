@@ -40,8 +40,8 @@ public class WirelessNetworkCoreScreen extends AbstractContainerScreen<WirelessN
                 Component.translatable("field.gtlcore.wireless_core.name"));
         this.nameField.setMaxLength(32);
         this.nameField.setBordered(false);
-        this.nameField.setTextColor(0xFFFFFFFF);
-        this.nameField.setTextColorUneditable(0xFFAAAAAA);
+        this.nameField.setTextColor(WirelessAeStyle.TEXT_FIELD_TEXT);
+        this.nameField.setTextColorUneditable(WirelessAeStyle.TEXT_FIELD_UNEDITABLE);
         this.nameField.setValue(this.menu.getNetworkName());
         this.addRenderableWidget(this.nameField);
 

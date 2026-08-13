@@ -565,6 +565,8 @@ public class MEPatternBufferPartMachine extends MEPatternBufferPartMachineBase {
     public CompoundTag cutToTag(CompoundTag tags) {
         var tag = new CompoundTag();
         tag.putString("name", customName);
+        tag.putString("dimension", Objects.requireNonNull(getLevel()).dimension().location().toString());
+        tag.putLong("bufferPos", getPos().asLong());
 
         var listPattern = new ListTag();
         for (int slotIndex : patternSlotMap.values().stream().toList()) {

@@ -307,8 +307,8 @@ public class GTLItems {
             .model(NonNullBiConsumer.noop())
             .register();
 
-    public static ItemEntry<ComponentItem> ME_PATTERN_BUFFER_CUT = REGISTRATE
-            .item("me_pattern_buffer_cut", ComponentItem::create)
+    public static ItemEntry<MEPatternBufferCutItem> ME_PATTERN_BUFFER_CUT = REGISTRATE
+            .item("me_pattern_buffer_cut", MEPatternBufferCutItem::new)
             .properties(stack -> stack.stacksTo(1))
             .onRegister(attach(MEPatternBufferCutBehavior.INSTANCE))
             .model(NonNullBiConsumer.noop())

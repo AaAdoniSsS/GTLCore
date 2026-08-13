@@ -126,8 +126,8 @@ public class ThroughputMonitorTerminalScreen extends AEBaseScreen<ThroughputMoni
                 Component.translatable("field.gtlcore.throughput_monitor_terminal.search"));
         this.searchField.setMaxLength(SEARCH_MAX_LENGTH);
         this.searchField.setBordered(false);
-        this.searchField.setTextColor(0xFFFFFFFF);
-        this.searchField.setTextColorUneditable(0xFFAAAAAA);
+        this.searchField.setTextColor(WirelessAeStyle.TEXT_FIELD_TEXT);
+        this.searchField.setTextColorUneditable(WirelessAeStyle.TEXT_FIELD_UNEDITABLE);
         this.searchField.setHint(Component.translatable("field.gtlcore.throughput_monitor_terminal.search_hint"));
         this.searchField.setResponder(ignored -> this.scrollOffset = 0);
         this.addRenderableWidget(this.searchField);
