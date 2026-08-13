@@ -122,8 +122,8 @@ public final class MEChamberManagerTerminalScreen extends AEBaseScreen<MEChamber
                 Component.translatable("field.gtlcore.me_chamber_manager_terminal.search"));
         searchField.setMaxLength(SEARCH_MAX_LENGTH);
         searchField.setBordered(false);
-        searchField.setTextColor(WirelessAeStyle.TEXT);
-        searchField.setTextColorUneditable(WirelessAeStyle.MUTED_TEXT);
+        searchField.setTextColor(WirelessAeStyle.TEXT_FIELD_TEXT);
+        searchField.setTextColorUneditable(WirelessAeStyle.TEXT_FIELD_UNEDITABLE);
         searchField.setHint(Component.translatable("field.gtlcore.me_chamber_manager_terminal.search_hint"));
         searchField.setResponder(ignored -> listScrollOffset = 0);
         addRenderableWidget(searchField);

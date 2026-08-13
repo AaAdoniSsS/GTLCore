@@ -15,6 +15,8 @@ final class WirelessAeStyle {
 
     static final int TEXT = 0xFF303030;
     static final int MUTED_TEXT = 0xFF5A5A5A;
+    static final int TEXT_FIELD_TEXT = 0xFFFFFFFF;
+    static final int TEXT_FIELD_UNEDITABLE = 0xFFAAAAAA;
     static final int WARNING_TEXT = 0xFFA33A2A;
     static final int ONLINE_TEXT = 0xFF245F68;
     static final int AE2_SCROLLBAR_WIDTH = Scrollbar.SMALL.handleWidth();
