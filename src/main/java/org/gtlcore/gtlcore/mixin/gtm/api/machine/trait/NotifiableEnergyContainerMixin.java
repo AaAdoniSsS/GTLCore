@@ -60,9 +60,9 @@ public abstract class NotifiableEnergyContainerMixin extends NotifiableRecipeHan
     public void updateTick() {
         if (getMachine().getOffsetTimer() % 20 == 0) {
             gTLCore$lastEnergyOutputPerSec = gTLCore$energyOutputPerSec.copy();
-            gTLCore$lastEnergyInputPerSec = gTLCore$energyOutputPerSec.copy();
+            gTLCore$lastEnergyInputPerSec = gTLCore$energyInputPerSec.copy();
             gTLCore$energyOutputPerSec.set(0, 0);
-            gTLCore$energyOutputPerSec.set(0, 0);
+            gTLCore$energyInputPerSec.set(0, 0);
         }
     }
 
