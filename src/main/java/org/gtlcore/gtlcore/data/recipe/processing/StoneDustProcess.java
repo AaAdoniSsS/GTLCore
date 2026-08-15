@@ -119,7 +119,7 @@ public class StoneDustProcess {
                 .save(provider);
 
         CHEMICAL_RECIPES.recipeBuilder("titanyl_sulfate")
-                .inputFluids(HydrofluoricAcid.getFluid(4000))
+                .inputFluids(HydrochloricAcid.getFluid(4000))
                 .inputFluids(TitanylSulfate.getFluid(1000))
                 .outputFluids(TitaniumTetrachloride.getFluid(1000))
                 .outputFluids(SulfuricAcid.getFluid(1000))
