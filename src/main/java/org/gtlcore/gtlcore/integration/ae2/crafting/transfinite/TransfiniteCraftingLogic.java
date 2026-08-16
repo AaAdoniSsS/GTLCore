@@ -569,6 +569,18 @@ public final class TransfiniteCraftingLogic implements ICraftingJobSuspension, I
                 this.job.getWaitingFor().extract(key, Long.MAX_VALUE, Actionable.SIMULATE);
     }
 
+    public boolean isRequesting(AEKey key) {
+        if (this.job == null) {
+            return false;
+        }
+        GenericStack finalOutput = this.job.getFinalOutput();
+        return finalOutput != null && key.matches(finalOutput) || this.getWaitingFor(key) > 0;
+    }
+
+    public boolean isRequestingAny() {
+        return this.job != null;
+    }
+
     public long getPendingOutputs(AEKey key) {
         long count = 0;
         if (this.job != null) {

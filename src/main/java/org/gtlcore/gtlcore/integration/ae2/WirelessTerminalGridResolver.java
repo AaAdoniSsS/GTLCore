@@ -27,29 +27,46 @@ public final class WirelessTerminalGridResolver {
     private WirelessTerminalGridResolver() {}
 
     public static @Nullable IGrid find(Player player, Level level) {
+        Connection connection = findConnection(player, level);
+        return connection == null ? null : connection.grid();
+    }
+
+    public static boolean hasWirelessTerminal(Player player) {
+        IItemHandler handler = player.getCapability(ForgeCapabilities.ITEM_HANDLER).resolve().orElse(null);
+        if (handler != null && containsWirelessTerminal(
+                handler,
+                Collections.newSetFromMap(new IdentityHashMap<>()),
+                new SearchBudget(MAX_NESTED_HANDLER_DEPTH, MAX_SCANNED_SLOTS),
+                0)) {
+            return true;
+        }
+        return CuriosCompat.findWirelessTerminal(player) != null;
+    }
+
+    public static @Nullable Connection findConnection(Player player, Level level) {
         IItemHandler handler = player.getCapability(ForgeCapabilities.ITEM_HANDLER).resolve().orElse(null);
         if (handler != null) {
-            IGrid grid = find(
+            Connection connection = findConnection(
                     player,
                     handler,
                     level,
                     Collections.newSetFromMap(new IdentityHashMap<>()),
                     new SearchBudget(MAX_NESTED_HANDLER_DEPTH, MAX_SCANNED_SLOTS),
                     0);
-            if (grid != null) {
-                return grid;
+            if (connection != null) {
+                return connection;
             }
         }
 
         CuriosCompat.TerminalSlot curiosSlot = CuriosCompat.findWirelessTerminal(player);
         if (curiosSlot != null && curiosSlot.stack().getItem() instanceof WirelessTerminalItem terminal) {
-            return findUsableGrid(player, level, curiosSlot.stack(), terminal);
+            return findUsableConnection(player, level, curiosSlot.stack(), terminal, curiosSlot);
         }
         return null;
     }
 
-    private static @Nullable IGrid find(Player player, IItemHandler handler, Level level, Set<IItemHandler> visited,
-                                        SearchBudget budget, int depth) {
+    private static @Nullable Connection findConnection(Player player, IItemHandler handler, Level level,
+                                                       Set<IItemHandler> visited, SearchBudget budget, int depth) {
         if (handler == null || !budget.canEnter(depth) || !visited.add(handler)) {
             return null;
         }
@@ -63,23 +80,48 @@ public final class WirelessTerminalGridResolver {
             }
 
             if (stack.getItem() instanceof WirelessTerminalItem terminal) {
-                IGrid grid = findUsableGrid(player, level, stack, terminal);
-                if (grid != null) {
-                    return grid;
+                Connection connection = findUsableConnection(player, level, stack, terminal, null);
+                if (connection != null) {
+                    return connection;
                 }
             }
 
             IItemHandler nested = stack.getCapability(ForgeCapabilities.ITEM_HANDLER).resolve().orElse(null);
-            IGrid nestedGrid = find(player, nested, level, visited, budget, depth + 1);
-            if (nestedGrid != null) {
-                return nestedGrid;
+            Connection nestedConnection = findConnection(player, nested, level, visited, budget, depth + 1);
+            if (nestedConnection != null) {
+                return nestedConnection;
             }
         }
         return null;
     }
 
-    private static @Nullable IGrid findUsableGrid(Player player, Level level, ItemStack stack,
-                                                  WirelessTerminalItem terminal) {
+    private static boolean containsWirelessTerminal(IItemHandler handler, Set<IItemHandler> visited,
+                                                    SearchBudget budget, int depth) {
+        if (handler == null || !budget.canEnter(depth) || !visited.add(handler)) {
+            return false;
+        }
+        for (int slot = 0; slot < handler.getSlots(); slot++) {
+            if (!budget.tryScanSlot()) {
+                return false;
+            }
+            ItemStack stack = handler.getStackInSlot(slot);
+            if (stack.isEmpty()) {
+                continue;
+            }
+            if (stack.getItem() instanceof WirelessTerminalItem) {
+                return true;
+            }
+            IItemHandler nested = stack.getCapability(ForgeCapabilities.ITEM_HANDLER).resolve().orElse(null);
+            if (containsWirelessTerminal(nested, visited, budget, depth + 1)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static @Nullable Connection findUsableConnection(Player player, Level level, ItemStack stack,
+                                                             WirelessTerminalItem terminal,
+                                                             @Nullable CuriosCompat.TerminalSlot curiosSlot) {
         IGrid grid = terminal.getLinkedGrid(stack, level, null);
         if (grid == null || !terminal.hasPower(player, MIN_TERMINAL_POWER, stack)) {
             return null;
@@ -88,7 +130,18 @@ public final class WirelessTerminalGridResolver {
         if (!(menuHost instanceof WirelessTerminalMenuHost wirelessHost) || !wirelessHost.rangeCheck()) {
             return null;
         }
-        return grid;
+        return new Connection(grid, wirelessHost, stack, curiosSlot);
+    }
+
+    public record Connection(IGrid grid, WirelessTerminalMenuHost host, ItemStack terminalStack,
+                             @Nullable CuriosCompat.TerminalSlot curiosSlot) {
+
+        public void syncTerminalStack(Player player) {
+            if (curiosSlot != null) {
+                CuriosCompat.writeStackBack(
+                        curiosSlot.identifier(), curiosSlot.index(), player, terminalStack);
+            }
+        }
     }
 
     static final class SearchBudget {

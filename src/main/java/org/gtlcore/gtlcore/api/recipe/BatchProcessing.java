@@ -27,6 +27,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
 
+import static org.gtlcore.gtlcore.api.recipe.BatchProcessingDecisionLogger.Eligibility.*;
+import static org.gtlcore.gtlcore.api.recipe.BatchProcessingDecisionLogger.Outcome.BATCH_NOT_TRIGGERED;
+import static org.gtlcore.gtlcore.api.recipe.BatchProcessingDecisionLogger.Outcome.BATCH_TRIGGERED;
+import static org.gtlcore.gtlcore.api.recipe.BatchProcessingDecisionLogger.Reason.*;
 import static org.gtlcore.gtlcore.api.recipe.IAdvancedContentModifier.preciseMultiplier;
 
 public final class BatchProcessing {
@@ -65,13 +69,37 @@ public final class BatchProcessing {
     }
 
     public static GTRecipe apply(MetaMachine machine, GTRecipe recipe, boolean isSubTickParallelized) {
-        if (!(isSubTickParallelized || IGTRecipe.of(recipe).isSubTickParallelized()) || !isEnabled(machine) ||
-                IGTRecipe.of(recipe).isBatchProcessed() ||
-                !(machine instanceof IRecipeLogicMachine recipeMachine)) {
+        boolean subTickEligible = isSubTickParallelized || IGTRecipe.of(recipe).isSubTickParallelized();
+        int timeLimit = Math.max(1, ConfigHolder.INSTANCE.batchProcessingTimeLimitTicks);
+        boolean timeWindowEligible = recipe.duration > 0 && recipe.duration <= timeLimit / 2;
+        BatchProcessingDecisionLogger.Eligibility eligibility = subTickEligible ?
+                timeWindowEligible ? SUB_TICK_AND_TIME_WINDOW : SUB_TICK :
+                timeWindowEligible ? TIME_WINDOW : NONE;
+        if (!isEnabled(machine)) {
+            BatchProcessingDecisionLogger.log(machine, recipe, BATCH_NOT_TRIGGERED, UNSUPPORTED_MACHINE_MODE,
+                    eligibility, timeLimit, 0, 0, 1);
+            return recipe;
+        }
+        if (IGTRecipe.of(recipe).isBatchProcessed()) {
+            return recipe;
+        }
+        if (!(machine instanceof IRecipeLogicMachine recipeMachine)) {
+            BatchProcessingDecisionLogger.log(machine, recipe, BATCH_NOT_TRIGGERED, NOT_RECIPE_LOGIC_MACHINE,
+                    eligibility, timeLimit, 0, 0, 1);
+            return recipe;
+        }
+        if (eligibility == NONE) {
+            int timeLimitedCycles = recipe.duration > 0 ? timeLimit / recipe.duration : 0;
+            BatchProcessingDecisionLogger.log(machine, recipe, BATCH_NOT_TRIGGERED, NO_ELIGIBLE_PATH,
+                    NONE, timeLimit, timeLimitedCycles, timeLimitedCycles, 1);
             return recipe;
         }
 
-        int batchSize = getBatchSize(recipeMachine, recipe);
+        BatchSizeDecision decision = getBatchSize(recipeMachine, recipe, timeLimit);
+        int batchSize = decision.batchSize();
+        BatchProcessingDecisionLogger.log(machine, recipe,
+                batchSize > 1 ? BATCH_TRIGGERED : BATCH_NOT_TRIGGERED, decision.reason(), eligibility,
+                timeLimit, decision.timeLimitedCycles(), decision.amountLimitedCycles(), batchSize);
         if (batchSize == 0) return null;
         GTRecipe result = batchSize > 1 ? scaleRecipe(recipe, batchSize) : recipe;
         result = IParallelLogic.getRecipeOutputChance(recipeMachine, result);
@@ -152,57 +180,63 @@ public final class BatchProcessing {
         return ((IAdvancedOCResult) (Object) result).isSubTickOverclockAvailable();
     }
 
-    private static int getBatchSize(IRecipeLogicMachine machine, GTRecipe recipe) {
-        if (recipe.duration <= 0) return 1;
+    private static BatchSizeDecision getBatchSize(IRecipeLogicMachine machine, GTRecipe recipe, int timeLimit) {
+        if (recipe.duration <= 0) return new BatchSizeDecision(1, NON_POSITIVE_DURATION, 1, 1);
 
-        int timeLimit = Math.max(1, ConfigHolder.INSTANCE.batchProcessingTimeLimitTicks);
         int maxCycles = timeLimit / recipe.duration;
         long realParallels = Math.max(1, IGTRecipe.of(recipe).getRealParallels());
         maxCycles = (int) Math.min(maxCycles, Long.MAX_VALUE / realParallels);
-        maxCycles = limitByLongAmounts(recipe, maxCycles);
-        if (maxCycles <= 0) return 0;
-        if (maxCycles == 1) return 1;
+        if (maxCycles <= 0) return new BatchSizeDecision(0, TIME_LIMIT_REJECTED, maxCycles, maxCycles);
+        if (maxCycles == 1) return new BatchSizeDecision(1, TIME_LIMIT_SINGLE_CYCLE, maxCycles, maxCycles);
 
-        return getParallelAmountWithoutEU(machine, recipe, maxCycles);
+        int amountLimitedCycles = limitByLongAmounts(recipe, maxCycles);
+        if (amountLimitedCycles <= 0)
+            return new BatchSizeDecision(0, AMOUNT_OVERFLOW, maxCycles, amountLimitedCycles);
+        if (amountLimitedCycles == 1)
+            return new BatchSizeDecision(1, AMOUNT_LIMIT_SINGLE_CYCLE, maxCycles, amountLimitedCycles);
+
+        int batchSize = getParallelAmountWithoutEU(machine, recipe, amountLimitedCycles);
+        return new BatchSizeDecision(batchSize,
+                batchSize <= 0 ? CAPACITY_REJECTED :
+                        batchSize == 1 ? CAPACITY_SINGLE_CYCLE : MULTIPLE_CYCLES_AVAILABLE,
+                maxCycles, amountLimitedCycles);
     }
 
     private static int limitByLongAmounts(GTRecipe recipe, int limit) {
-        limit = limitByTotalAmount(limit, getTotalItemAmount(recipe.getInputContents(ItemRecipeCapability.CAP)));
-        limit = limitByTotalAmount(limit, getTotalFluidAmount(recipe.getInputContents(FluidRecipeCapability.CAP)));
-        limit = limitByTotalAmount(limit, getTotalItemAmount(recipe.getOutputContents(ItemRecipeCapability.CAP)));
-        return limitByTotalAmount(limit, getTotalFluidAmount(recipe.getOutputContents(FluidRecipeCapability.CAP)));
+        limit = limitByMaximumAmount(limit, getMaximumItemAmount(recipe.getInputContents(ItemRecipeCapability.CAP)));
+        limit = limitByMaximumAmount(limit, getMaximumFluidAmount(recipe.getInputContents(FluidRecipeCapability.CAP)));
+        limit = limitByMaximumAmount(limit, getMaximumItemAmount(recipe.getOutputContents(ItemRecipeCapability.CAP)));
+        return limitByMaximumAmount(limit, getMaximumFluidAmount(recipe.getOutputContents(FluidRecipeCapability.CAP)));
     }
 
-    private static int limitByTotalAmount(int limit, long totalAmount) {
-        if (totalAmount < 0) return 0;
-        if (totalAmount == 0) return limit;
-        return (int) Math.min(limit, Long.MAX_VALUE / totalAmount);
+    private static int limitByMaximumAmount(int limit, long maximumAmount) {
+        if (maximumAmount < 0) return 0;
+        if (maximumAmount == 0) return limit;
+        return (int) Math.min(limit, Long.MAX_VALUE / maximumAmount);
     }
 
-    private static long getTotalItemAmount(List<Content> contents) {
-        long total = 0;
+    private static long getMaximumItemAmount(List<Content> contents) {
+        long maximum = 0;
         for (Content content : contents) {
             Ingredient ingredient = ItemRecipeCapability.CAP.of(content.content);
             long amount = ingredient instanceof LongIngredient longIngredient ?
                     longIngredient.getActualAmount() :
                     ingredient instanceof SizedIngredient sizedIngredient ? sizedIngredient.getAmount() : 1;
             if (amount < 0) return -1;
-            if (amount > Long.MAX_VALUE - total) return -1;
-            total += amount;
+            maximum = Math.max(maximum, amount);
         }
-        return total;
+        return maximum;
     }
 
-    private static long getTotalFluidAmount(List<Content> contents) {
-        long total = 0;
+    private static long getMaximumFluidAmount(List<Content> contents) {
+        long maximum = 0;
         for (Content content : contents) {
             FluidIngredient ingredient = FluidRecipeCapability.CAP.of(content.content);
             long amount = ingredient.getAmount();
             if (amount < 0) return -1;
-            if (amount > Long.MAX_VALUE - total) return -1;
-            total += amount;
+            maximum = Math.max(maximum, amount);
         }
-        return total;
+        return maximum;
     }
 
     private static int getParallelAmountWithoutEU(IRecipeLogicMachine machine, GTRecipe recipe, int limit) {
@@ -260,4 +294,7 @@ public final class BatchProcessing {
 
     private record MultipleRecipeModeAccess(Optional<Method> modeGetter, Optional<Method> modeSetter,
                                             Optional<Method> useModesGetter) {}
+
+    private record BatchSizeDecision(int batchSize, BatchProcessingDecisionLogger.Reason reason,
+                                     int timeLimitedCycles, int amountLimitedCycles) {}
 }

@@ -544,13 +544,13 @@ public final class WirelessAeNetworkRuntime {
     }
 
     private static void requestFavoriteNetworkBindOnSneakPlace(ServerLevel level, BlockEvent.EntityPlaceEvent event) {
-        if (!(event.getEntity() instanceof Player player) || !player.isShiftKeyDown()) {
+        if (!(event.getEntity() instanceof ServerPlayer player) || !player.isShiftKeyDown()) {
             return;
         }
 
         WirelessAeSavedData data = WirelessAeSavedData.get(level.getServer());
-        UUID favoriteNetwork = data.getFavoriteNetwork();
-        if (favoriteNetwork == null) {
+        UUID favoriteNetwork = data.getFavoriteNetwork(player);
+        if (favoriteNetwork == null || !canAccessNetwork(player, favoriteNetwork)) {
             return;
         }
 

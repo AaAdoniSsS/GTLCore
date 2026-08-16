@@ -50,7 +50,7 @@ public class WirelessNetworkBookmarkMenu extends AbstractContainerMenu {
         List<Entry> networks = WirelessAeNetworkRuntime.getAccessibleNetworkInfo(player).stream()
                 .map(network -> new Entry(network.frequency(), network.name()))
                 .toList();
-        UUID favoriteNetwork = data.getFavoriteNetwork();
+        UUID favoriteNetwork = data.getFavoriteNetwork(player);
         NetworkHooks.openScreen(
                 player,
                 new MenuProvider() {

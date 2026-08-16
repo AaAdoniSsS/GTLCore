@@ -97,7 +97,7 @@ public class ConfigHolder {
     public boolean enableAe2ManualCraftingInventoryLockLogging = false;
     @Configurable
     @Configurable.Comment("AE2合成计算模式: LEGACY(原版), FAST(快速), ULTRA_FAST(极快), MAX_FAST(需求聚合)")
-    public AE2CalculationMode ae2CalculationMode = AE2CalculationMode.ULTRA_FAST;
+    public AE2CalculationMode ae2CalculationMode = AE2CalculationMode.MAX_FAST;
     @Configurable
     @Configurable.Comment("是否启用 MAX_FAST 独立计算性能日志")
     public boolean enableMaxFastCalculationLogging = false;
@@ -165,6 +165,15 @@ public class ConfigHolder {
     @Configurable
     @Configurable.Comment("Whether newly placed machines enable batch processing by default when supported")
     public boolean batchProcessingEnabledByDefault = false;
+
+    @Configurable
+    @Configurable.Comment({
+            "是否将已开启批处理的机器的触发与未触发原因写入独立日志；诊断期间可能增加磁盘 I/O",
+            "每台机器一个日志文件：logs/gtlcore/batch-processing/<时间戳>-<机器名称>-<维度>-<坐标>.jsonl",
+            "Write batch-triggered and batch-not-triggered reasons for batch-enabled machines to dedicated logs; diagnostic use may increase disk I/O.",
+            "One log per machine: logs/gtlcore/batch-processing/<timestamp>-<machine-name>-<dimension>-<position>.jsonl"
+    })
+    public boolean enableBatchProcessingLogging = false;
 
     @Configurable
     public String[] mobList1 = new String[] { "chicken", "rabbit", "sheep", "cow", "horse", "pig", "donkey", "skeleton_horse", "iron_golem", "wolf", "goat", "parrot", "camel", "cat", "fox", "llama", "panda", "polar_bear" };

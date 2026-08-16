@@ -3,6 +3,7 @@ package org.gtlcore.gtlcore.common.data;
 import org.gtlcore.gtlcore.api.machine.trait.IRecipeCapabilityMachine;
 import org.gtlcore.gtlcore.api.machine.trait.MEPatternRecipeHandlePart;
 import org.gtlcore.gtlcore.api.machine.trait.RecipeHandlePart;
+import org.gtlcore.gtlcore.api.recipe.RecipeMultiplierTracker;
 import org.gtlcore.gtlcore.api.recipe.RecipeResult;
 import org.gtlcore.gtlcore.common.machine.multiblock.electric.StorageMachine;
 import org.gtlcore.gtlcore.common.machine.multiblock.steam.LargeSteamParallelMultiblockMachine;
@@ -148,6 +149,7 @@ public class GTLRecipeModifiers {
             if (reductionDuration != 1) {
                 recipe1.duration = (int) Math.max(1, recipe.duration * reductionDuration);
             }
+            RecipeMultiplierTracker.captureReduction(machine, recipe, reductionEUt, reductionDuration);
             return recipe1;
         }
         return recipe;

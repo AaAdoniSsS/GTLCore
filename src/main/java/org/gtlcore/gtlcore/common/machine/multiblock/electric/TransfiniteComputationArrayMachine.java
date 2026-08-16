@@ -335,6 +335,16 @@ public class TransfiniteComputationArrayMachine extends MultiblockControllerMach
         output.addAll(this.waitingIndex.keySet());
     }
 
+    public void collectRequestingKeys(Set<AEKey> output) {
+        output.addAll(this.waitingIndex.keySet());
+        for (TransfiniteCraftingCPU cpu : this.activeCpus.values()) {
+            var finalOutput = cpu.getCraftingLogic().getFinalJobOutput();
+            if (finalOutput != null) {
+                output.add(finalOutput.what());
+            }
+        }
+    }
+
     public long insertIntoCpus(AEKey key, long amount, Actionable mode) {
         if (amount <= 0) {
             return 0;
@@ -382,6 +392,30 @@ public class TransfiniteComputationArrayMachine extends MultiblockControllerMach
             requested = NumberUtils.saturatedAdd(requested, cpu.getCraftingLogic().getWaitingFor(key));
         }
         return requested;
+    }
+
+    public boolean isRequesting(AEKey key) {
+        if (this.waitingIndex.containsKey(key)) {
+            return true;
+        }
+        for (TransfiniteCraftingCPU cpu : this.activeCpus.values()) {
+            if (cpu.getCraftingLogic().isRequesting(key)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean isRequestingAny() {
+        if (!this.waitingIndex.isEmpty()) {
+            return true;
+        }
+        for (TransfiniteCraftingCPU cpu : this.activeCpus.values()) {
+            if (cpu.getCraftingLogic().isRequestingAny()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public boolean containsCpu(TransfiniteCraftingCPU cpu) {

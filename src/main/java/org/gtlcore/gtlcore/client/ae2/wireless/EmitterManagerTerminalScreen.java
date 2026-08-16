@@ -1,5 +1,6 @@
 package org.gtlcore.gtlcore.client.ae2.wireless;
 
+import org.gtlcore.gtlcore.client.ae2.JeiTerminalSearchTarget;
 import org.gtlcore.gtlcore.client.renderer.BlockHighlightHandler;
 import org.gtlcore.gtlcore.integration.ae2.emitter.EmitterManagerTerminalLayout;
 import org.gtlcore.gtlcore.integration.ae2.emitter.EmitterManagerTerminalMenu;
@@ -44,7 +45,7 @@ import java.util.Objects;
 import java.util.OptionalLong;
 
 public final class EmitterManagerTerminalScreen extends AEBaseScreen<EmitterManagerTerminalMenu>
-                                                implements IUniversalTerminalCapable {
+                                                implements IUniversalTerminalCapable, JeiTerminalSearchTarget {
 
     private static final int SEARCH_MAX_LENGTH = 80;
     private static final int VALUE_MAX_LENGTH = Long.toString(Long.MAX_VALUE).length() + 1;
@@ -62,16 +63,22 @@ public final class EmitterManagerTerminalScreen extends AEBaseScreen<EmitterMana
     private SettingToggleButton<YesNo> craftingMode;
     private SettingToggleButton<FuzzyMode> fuzzyMode;
     private HighlightEmitterButton locateButton;
-    private CycleTerminalButton cycleTerminalButton;
     private @Nullable EmitterManagerTerminalMenu.Address selectedAddress;
     private @Nullable ControlState controlState;
     private int scrollOffset;
     private boolean draggingScrollbar;
-    private boolean cyclingToPreviousTerminal;
 
     public EmitterManagerTerminalScreen(EmitterManagerTerminalMenu menu, Inventory inventory, Component title,
                                         ScreenStyle style) {
         super(menu, inventory, title, style);
+        if (menu.isUniversalTerminal()) {
+            addToLeftToolbar(new CycleTerminalButton(ignored -> cycleTerminal()));
+        }
+    }
+
+    @Override
+    public void gtlcore$setJeiSearchText(String searchText) {
+        this.searchField.setValue(searchText);
     }
 
     @Override
@@ -123,20 +130,7 @@ public final class EmitterManagerTerminalScreen extends AEBaseScreen<EmitterMana
                 Component.translatable("tooltip.gtlcore.emitter_manager_terminal.locate"),
                 ignored -> locateSelected());
         this.addRenderableWidget(this.locateButton);
-        if (this.menu.isUniversalTerminal()) {
-            this.cycleTerminalButton = new CycleTerminalButton(ignored -> cycleTerminal());
-            this.cycleTerminalButton.setPosition(
-                    this.leftPos - this.cycleTerminalButton.getWidth() -
-                            EmitterManagerTerminalLayout.UNIVERSAL_TERMINAL_BUTTON_GAP,
-                    this.topPos + EmitterManagerTerminalLayout.UNIVERSAL_TERMINAL_BUTTON_Y);
-            this.addRenderableWidget(this.cycleTerminalButton);
-        }
         updateControls();
-    }
-
-    @Override
-    public boolean isHandlingRightClick() {
-        return cyclingToPreviousTerminal;
     }
 
     @Override
@@ -498,13 +492,6 @@ public final class EmitterManagerTerminalScreen extends AEBaseScreen<EmitterMana
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (button == 1 && this.cycleTerminalButton != null &&
-                this.cycleTerminalButton.isMouseOver(mouseX, mouseY)) {
-            this.cyclingToPreviousTerminal = true;
-            cycleTerminal();
-            this.cyclingToPreviousTerminal = false;
-            return true;
-        }
         if (button == 1 && handleBackwardsSettingClick(mouseX, mouseY)) {
             return true;
         }

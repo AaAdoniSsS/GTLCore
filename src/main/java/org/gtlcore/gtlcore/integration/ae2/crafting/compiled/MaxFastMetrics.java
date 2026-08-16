@@ -4,11 +4,17 @@ import org.gtlcore.gtlcore.utils.NumberUtils;
 
 import net.minecraft.world.level.Level;
 
+import appeng.api.crafting.IPatternDetails;
 import appeng.api.networking.crafting.CalculationStrategy;
 import appeng.api.networking.crafting.ICraftingPlan;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.Collection;
+import java.util.IdentityHashMap;
+import java.util.SortedSet;
+import java.util.TreeSet;
 
 public final class MaxFastMetrics {
 
@@ -48,6 +54,17 @@ public final class MaxFastMetrics {
     private static final double NANOS_PER_MILLISECOND = 1_000_000.0D;
     private static final long UNAVAILABLE_VALUE = -1L;
     private static final String NO_FAILURE = "none";
+
+    private final long calculationId = MaxFastCalculationLogger.nextCalculationId();
+    private final boolean diagnosticLoggingEnabled = MaxFastCalculationLogger.isEnabled();
+    private long craftingProviderVersionTick;
+    private MaxFastFingerprint.Result inventoryFingerprint = new MaxFastFingerprint.Result(MaxFastFingerprint.UNAVAILABLE, 0, 0L);
+    private final SortedSet<String> patternStructureEntries = new TreeSet<>();
+    private final IdentityHashMap<IPatternDetails, String> patternFingerprints = new IdentityHashMap<>();
+    private long unavailablePatternStructureEntries;
+    private long patternStructureCollectionNanos;
+    private long structurePatternCacheHits;
+    private long structurePatternCacheMisses;
 
     private long calculationNanos;
     private boolean attemptActive;
@@ -90,6 +107,26 @@ public final class MaxFastMetrics {
     private long aggregationCompileNanos;
     private long aggregationExpansionNanos;
     private long aggregationSccNanos;
+    private long sccProgramCompileNanos;
+    private long sccProgramsCompiled;
+    private long sccNodes;
+    private long sccInternalEdges;
+    private long sccBoundaryNodesReused;
+    private long sccBoundaryDemandMerges;
+    private long sccRuns;
+    private long sccSuccesses;
+    private long sccWorklistWakeups;
+    private long sccBatchExecutions;
+    private long sccCertifiedBlocked;
+    private long sccRuntimeFallbacks;
+    private long sccRuntimeBypasses;
+    private long sccPreflightRejections;
+    private long sccContractFallbacks;
+    private long sccPlanningFallbacks;
+    private long sccExecutionFallbacks;
+    private long sccExternalDependencyDeferrals;
+    private long sccPhysicalProcessesAvoided;
+    private long sccExecutionNanos;
     private long aggregationExecutableNanos;
     private long aggregationFinalizationNanos;
     private long aggregationPropagationNanos;
@@ -125,6 +162,8 @@ public final class MaxFastMetrics {
     private long aggregationCycleCandidateGraphStructuralFallbacks;
     private long aggregationCycleCandidateGraphExecutionFallbacks;
     private long aggregationCycleCandidateGraphDeferredBypasses;
+    private long aggregationCycleCandidateGraphSharedFailureCacheHits;
+    private long aggregationCycleCandidateGraphSharedFailureCacheStores;
     private long aggregationCycleCandidateGraphAborts;
     private long aggregationBoundaryTransactionGuardGraphs;
     private long aggregationBoundaryTransactionGuardRuns;
@@ -211,6 +250,48 @@ public final class MaxFastMetrics {
     private int maxRawCandidates;
     private long validationEpochBumps;
     private long planBuildNanos;
+
+    public void recordDiagnosticContext(long craftingProviderVersionTick,
+                                        MaxFastFingerprint.Result inventoryFingerprint) {
+        if (!this.diagnosticLoggingEnabled) {
+            return;
+        }
+        this.craftingProviderVersionTick = craftingProviderVersionTick;
+        this.inventoryFingerprint = inventoryFingerprint;
+    }
+
+    public void recordAnalyzedProgramStructure(AEKey key, boolean emitter,
+                                               Collection<IPatternDetails> candidates) {
+        if (!this.diagnosticLoggingEnabled) {
+            return;
+        }
+        long startedNanos = System.nanoTime();
+        try {
+            MaxFastFingerprint.AnalyzedProgramResult structure = MaxFastFingerprint.analyzedProgram(
+                    key,
+                    emitter,
+                    candidates,
+                    this.patternFingerprints);
+            this.patternStructureEntries.add(structure.value());
+            if (structure.unavailable()) {
+                this.unavailablePatternStructureEntries++;
+            }
+            this.structurePatternCacheHits = NumberUtils.saturatedAdd(
+                    this.structurePatternCacheHits,
+                    structure.patternCacheHits());
+            this.structurePatternCacheMisses = NumberUtils.saturatedAdd(
+                    this.structurePatternCacheMisses,
+                    structure.patternCacheMisses());
+        } finally {
+            this.patternStructureCollectionNanos = NumberUtils.saturatedAdd(
+                    this.patternStructureCollectionNanos,
+                    System.nanoTime() - startedNanos);
+        }
+    }
+
+    public boolean isDiagnosticLoggingEnabled() {
+        return this.diagnosticLoggingEnabled;
+    }
 
     public void beginAttempt(long requestedAmount, boolean simulation) {
         abortActiveAttempt();
@@ -338,6 +419,78 @@ public final class MaxFastMetrics {
         this.aggregationSccNanos += nanos;
     }
 
+    public void recordSccProgramCompileNanos(long nanos) {
+        this.sccProgramCompileNanos += nanos;
+    }
+
+    public void recordSccProgramCompiled(int nodes, int internalEdges) {
+        this.sccProgramsCompiled++;
+        this.sccNodes = NumberUtils.saturatedAdd(this.sccNodes, nodes);
+        this.sccInternalEdges = NumberUtils.saturatedAdd(this.sccInternalEdges, internalEdges);
+    }
+
+    public void recordSccBoundaryNodeReuse() {
+        this.sccBoundaryNodesReused++;
+    }
+
+    public void recordSccBoundaryDemandMerge() {
+        this.sccBoundaryDemandMerges++;
+    }
+
+    public void recordSccRun() {
+        this.sccRuns++;
+    }
+
+    public void recordSccWorklistWakeup() {
+        this.sccWorklistWakeups++;
+    }
+
+    public void recordSccCertifiedBlocked() {
+        this.sccCertifiedBlocked++;
+    }
+
+    public void recordSccRuntimeBypass() {
+        this.sccRuntimeBypasses++;
+    }
+
+    public void recordSccPreflightRejection() {
+        this.sccPreflightRejections++;
+        this.sccRuntimeFallbacks++;
+    }
+
+    public void recordSccContractFallback() {
+        this.sccContractFallbacks++;
+        this.sccRuntimeFallbacks++;
+    }
+
+    public void recordSccPlanningFallback() {
+        this.sccPlanningFallbacks++;
+        this.sccRuntimeFallbacks++;
+    }
+
+    public void recordSccExecutionFallback() {
+        this.sccExecutionFallbacks++;
+        this.sccRuntimeFallbacks++;
+    }
+
+    public void recordSccExternalDependencyDeferral() {
+        this.sccExternalDependencyDeferrals++;
+    }
+
+    public void recordSccSuccess(long worklistWakeups, long batchExecutions,
+                                 long physicalProcessesAvoided) {
+        this.sccSuccesses++;
+        this.sccWorklistWakeups = NumberUtils.saturatedAdd(this.sccWorklistWakeups, worklistWakeups);
+        this.sccBatchExecutions = NumberUtils.saturatedAdd(this.sccBatchExecutions, batchExecutions);
+        this.sccPhysicalProcessesAvoided = NumberUtils.saturatedAdd(
+                this.sccPhysicalProcessesAvoided,
+                physicalProcessesAvoided);
+    }
+
+    public void recordSccExecutionNanos(long nanos) {
+        this.sccExecutionNanos += nanos;
+    }
+
     public void recordAggregationExecutableNanos(long nanos) {
         this.aggregationExecutableNanos += nanos;
     }
@@ -437,6 +590,14 @@ public final class MaxFastMetrics {
 
     public void recordAggregationCycleCandidateGraphDeferredBypass() {
         this.aggregationCycleCandidateGraphDeferredBypasses++;
+    }
+
+    public void recordAggregationCycleCandidateGraphSharedFailureCacheHit() {
+        this.aggregationCycleCandidateGraphSharedFailureCacheHits++;
+    }
+
+    public void recordAggregationCycleCandidateGraphSharedFailureCacheStore() {
+        this.aggregationCycleCandidateGraphSharedFailureCacheStores++;
     }
 
     public void recordAggregationCycleCandidateGraphAbort() {
@@ -782,9 +943,53 @@ public final class MaxFastMetrics {
         Result result = failure instanceof InterruptedException ? Result.INTERRUPTED : failure != null ? Result.ERROR :
                 !planAvailable ? Result.NO_PLAN : simulation ? Result.SIMULATED_MISSING : Result.CRAFTABLE;
         String failureType = failure == null ? NO_FAILURE : failure.getClass().getName();
+        MaxFastFingerprint.Result patternStructureFingerprint = MaxFastFingerprint.ofStructureEntries(this.patternStructureEntries);
+        MaxFastFingerprint.PlanResult planFingerprint = planAvailable ?
+                MaxFastFingerprint.ofPlan(plan, this.patternFingerprints) :
+                new MaxFastFingerprint.PlanResult(
+                        new MaxFastFingerprint.Result(MaxFastFingerprint.UNAVAILABLE, 0, 0L),
+                        0,
+                        0);
+        MaxFastFingerprint.Result planFingerprintValue = planFingerprint.fingerprint();
+        long diagnosticTotalNanos = NumberUtils.saturatedAdd(
+                NumberUtils.saturatedAdd(
+                        NumberUtils.saturatedAdd(this.inventoryFingerprint.nanos(), this.patternStructureCollectionNanos),
+                        patternStructureFingerprint.nanos()),
+                planFingerprintValue.nanos());
 
         MaxFastCalculationLogger.info(
-                "[MAX_FAST] result={} elapsed_ms={} dimension={} output={} requested={} planned={} strategy={} " +
+                "[MAX_FAST_CONTEXT] calculation_id={} fingerprint_schema={} crafting_provider_version_tick={} " +
+                        "inventory_fingerprint_source=ae2_cached_inventory " +
+                        "inventory_cache_fingerprint={} inventory_cache_entries={} inventory_fingerprint_ms={} " +
+                        "pattern_fingerprint_scope=calculation_analyzed_programs " +
+                        "pattern_structure_fingerprint={} pattern_structure_entries={} " +
+                        "pattern_structure_unavailable_entries={} structure_pattern_cache_hits={} " +
+                        "structure_pattern_cache_misses={} pattern_collection_ms={} pattern_fingerprint_ms={} " +
+                        "plan_fingerprint_scope=final_crafting_plan " +
+                        "plan_fingerprint={} plan_fingerprint_entries={} plan_pattern_cache_hits={} " +
+                        "plan_pattern_cache_misses={} plan_fingerprint_ms={} diagnostic_total_ms={}",
+                this.calculationId,
+                MaxFastFingerprint.SCHEMA,
+                this.craftingProviderVersionTick,
+                this.inventoryFingerprint.value(),
+                this.inventoryFingerprint.entries(),
+                toMilliseconds(this.inventoryFingerprint.nanos()),
+                patternStructureFingerprint.value(),
+                patternStructureFingerprint.entries(),
+                this.unavailablePatternStructureEntries,
+                this.structurePatternCacheHits,
+                this.structurePatternCacheMisses,
+                toMilliseconds(this.patternStructureCollectionNanos),
+                toMilliseconds(patternStructureFingerprint.nanos()),
+                planFingerprintValue.value(),
+                planFingerprintValue.entries(),
+                planFingerprint.patternCacheHits(),
+                planFingerprint.patternCacheMisses(),
+                toMilliseconds(planFingerprintValue.nanos()),
+                toMilliseconds(diagnosticTotalNanos));
+
+        MaxFastCalculationLogger.info(
+                "[MAX_FAST] calculation_id={} result={} elapsed_ms={} dimension={} output={} requested={} planned={} strategy={} " +
                         "plan_available={} simulation={} multiple_paths={} bytes={} pattern_types={} " +
                         "pattern_operations={} used_types={} emitted_types={} missing_types={} " +
                         "missing_first_key_type={} missing_first_key_id={} missing_first_amount={} failure={} " +
@@ -802,6 +1007,17 @@ public final class MaxFastMetrics {
                         "aggregation_context_cache_misses={} aggregation_analysis_cache_hits={} " +
                         "aggregation_analysis_cache_misses={} aggregation_compile_ms={} " +
                         "aggregation_expansion_ms={} aggregation_scc_ms={} " +
+                        "scc_program_compile_ms={} scc_programs_compiled={} scc_nodes={} " +
+                        "scc_internal_edges={} scc_boundary_nodes_reused={} " +
+                        "scc_boundary_demand_merges={} " +
+                        "scc_runs={} scc_successes={} " +
+                        "scc_worklist_wakeups={} scc_batch_executions={} " +
+                        "scc_certified_blocked={} scc_runtime_fallbacks={} " +
+                        "scc_runtime_bypasses={} scc_preflight_rejections={} " +
+                        "scc_contract_fallbacks={} scc_planning_fallbacks={} " +
+                        "scc_execution_fallbacks={} " +
+                        "scc_external_dependency_deferrals={} " +
+                        "scc_physical_processes_avoided={} scc_execution_ms={} " +
                         "aggregation_executable_ms={} aggregation_finalization_ms={} " +
                         "aggregation_propagation_ms={} " +
                         "aggregation_completion_ms={} aggregation_unique_nodes={} " +
@@ -827,6 +1043,8 @@ public final class MaxFastMetrics {
                         "aggregation_cycle_candidate_graph_structural_fallbacks={} " +
                         "aggregation_cycle_candidate_graph_execution_fallbacks={} " +
                         "aggregation_cycle_candidate_graph_deferred_bypasses={} " +
+                        "aggregation_cycle_candidate_graph_shared_failure_cache_hits={} " +
+                        "aggregation_cycle_candidate_graph_shared_failure_cache_stores={} " +
                         "aggregation_cycle_candidate_graph_aborts={} " +
                         "aggregation_boundary_transaction_guard_graphs={} " +
                         "aggregation_boundary_transaction_guard_runs={} " +
@@ -896,6 +1114,7 @@ public final class MaxFastMetrics {
                         "aggregation_compile_failure_key_type={} aggregation_compile_failure_key_id={} " +
                         "aggregation_compile_failure_pattern_candidates={} " +
                         "aggregation_compile_failure_scanned_nodes={}",
+                this.calculationId,
                 result,
                 toMilliseconds(this.calculationNanos),
                 level.dimension().location(),
@@ -952,6 +1171,26 @@ public final class MaxFastMetrics {
                 toMilliseconds(this.aggregationCompileNanos),
                 toMilliseconds(this.aggregationExpansionNanos),
                 toMilliseconds(this.aggregationSccNanos),
+                toMilliseconds(this.sccProgramCompileNanos),
+                this.sccProgramsCompiled,
+                this.sccNodes,
+                this.sccInternalEdges,
+                this.sccBoundaryNodesReused,
+                this.sccBoundaryDemandMerges,
+                this.sccRuns,
+                this.sccSuccesses,
+                this.sccWorklistWakeups,
+                this.sccBatchExecutions,
+                this.sccCertifiedBlocked,
+                this.sccRuntimeFallbacks,
+                this.sccRuntimeBypasses,
+                this.sccPreflightRejections,
+                this.sccContractFallbacks,
+                this.sccPlanningFallbacks,
+                this.sccExecutionFallbacks,
+                this.sccExternalDependencyDeferrals,
+                this.sccPhysicalProcessesAvoided,
+                toMilliseconds(this.sccExecutionNanos),
                 toMilliseconds(this.aggregationExecutableNanos),
                 toMilliseconds(this.aggregationFinalizationNanos),
                 toMilliseconds(this.aggregationPropagationNanos),
@@ -987,6 +1226,8 @@ public final class MaxFastMetrics {
                 this.aggregationCycleCandidateGraphStructuralFallbacks,
                 this.aggregationCycleCandidateGraphExecutionFallbacks,
                 this.aggregationCycleCandidateGraphDeferredBypasses,
+                this.aggregationCycleCandidateGraphSharedFailureCacheHits,
+                this.aggregationCycleCandidateGraphSharedFailureCacheStores,
                 this.aggregationCycleCandidateGraphAborts,
                 this.aggregationBoundaryTransactionGuardGraphs,
                 this.aggregationBoundaryTransactionGuardRuns,

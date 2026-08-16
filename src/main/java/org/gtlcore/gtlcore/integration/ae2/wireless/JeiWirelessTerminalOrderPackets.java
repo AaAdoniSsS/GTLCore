@@ -30,11 +30,24 @@ public final class JeiWirelessTerminalOrderPackets {
                 Request::decode,
                 Request::handle,
                 Optional.of(NetworkDirection.PLAY_TO_SERVER));
+        channel.registerMessage(
+                packetIds.getAsInt(),
+                ExtractionRequest.class,
+                ExtractionRequest::encode,
+                ExtractionRequest::decode,
+                ExtractionRequest::handle,
+                Optional.of(NetworkDirection.PLAY_TO_SERVER));
     }
 
     public static void sendRequest(AEKey key) {
         if (WirelessAeKeyPacketCodec.supports(key)) {
             WirelessAePackets.CHANNEL.sendToServer(new Request(key));
+        }
+    }
+
+    public static void sendExtractionRequest(AEKey key) {
+        if (WirelessAeKeyPacketCodec.supports(key)) {
+            WirelessAePackets.CHANNEL.sendToServer(new ExtractionRequest(key));
         }
     }
 
@@ -54,6 +67,28 @@ public final class JeiWirelessTerminalOrderPackets {
                 ServerPlayer player = context.getSender();
                 if (player != null && REQUEST_LIMITER.tryAcquire(player, player.serverLevel().getGameTime())) {
                     WirelessTerminalCraftingMenuService.open(player, packet.key);
+                }
+            });
+            context.setPacketHandled(true);
+        }
+    }
+
+    public record ExtractionRequest(AEKey key) {
+
+        private static void encode(ExtractionRequest packet, FriendlyByteBuf buffer) {
+            WirelessAeKeyPacketCodec.write(buffer, packet.key);
+        }
+
+        private static ExtractionRequest decode(FriendlyByteBuf buffer) {
+            return new ExtractionRequest(WirelessAeKeyPacketCodec.read(buffer));
+        }
+
+        private static void handle(ExtractionRequest packet, Supplier<NetworkEvent.Context> contextSupplier) {
+            NetworkEvent.Context context = contextSupplier.get();
+            context.enqueueWork(() -> {
+                ServerPlayer player = context.getSender();
+                if (player != null && REQUEST_LIMITER.tryAcquire(player, player.serverLevel().getGameTime())) {
+                    WirelessTerminalExtractionService.extractToCursor(player, packet.key);
                 }
             });
             context.setPacketHandled(true);

@@ -104,6 +104,8 @@ public interface IParallelLogic {
 
     static long getInputItemParallel(IRecipeCapabilityHolder holder, GTRecipe recipe, long parallelAmount) {
         if (parallelAmount <= 1) return parallelAmount;
+        parallelAmount = limitItemAmount(recipe.getInputContents(ItemRecipeCapability.CAP), parallelAmount);
+        if (parallelAmount <= 1) return parallelAmount;
         if (!(holder instanceof IRecipeCapabilityMachine machine)) return 1;
         if (machine.emptyRecipeHandlePart()) return 0;
 
@@ -148,6 +150,8 @@ public interface IParallelLogic {
     }
 
     static long getInputFluidParallel(IRecipeCapabilityHolder holder, GTRecipe recipe, long parallelAmount) {
+        if (parallelAmount <= 1) return parallelAmount;
+        parallelAmount = limitFluidAmount(recipe.getInputContents(FluidRecipeCapability.CAP), parallelAmount);
         if (parallelAmount <= 1) return parallelAmount;
         if (!(holder instanceof IRecipeCapabilityMachine machine)) return 1;
         if (machine.emptyRecipeHandlePart()) return 0;
@@ -220,6 +224,8 @@ public interface IParallelLogic {
 
     static long getOutputItemParallel(IRecipeCapabilityHolder holder, GTRecipe recipe, List<Content> contents, long multiplier) {
         if (multiplier <= 1L || contents.isEmpty()) return multiplier;
+        multiplier = limitItemAmount(contents, multiplier);
+        if (multiplier <= 1L) return multiplier;
         if (!(holder instanceof IRecipeCapabilityMachine machine)) return 1;
         if (machine.itemOutPutAlwaysMatch()) return multiplier;
 
@@ -250,6 +256,8 @@ public interface IParallelLogic {
 
     static long getOutputFluidParallel(IRecipeCapabilityHolder holder, GTRecipe recipe, List<Content> contents, long multiplier) {
         if (multiplier <= 1L || contents.isEmpty()) return multiplier;
+        multiplier = limitFluidAmount(contents, multiplier);
+        if (multiplier <= 1L) return multiplier;
         if (!(holder instanceof IRecipeCapabilityMachine machine)) return 1;
         if (machine.fluidOutPutAlwaysMatch()) return multiplier;
 
@@ -272,6 +280,27 @@ public interface IParallelLogic {
         if (ingredients.isEmpty()) return multiplier;
 
         return binarySearchMaxParallel(machine, recipe, FluidRecipeCapability.CAP, ingredients, multiplier);
+    }
+
+    private static long limitFluidAmount(List<Content> contents, long parallelAmount) {
+        for (Content content : contents) {
+            long amount = FluidRecipeCapability.CAP.of(content.content).getAmount();
+            if (amount <= 0) return 0;
+            parallelAmount = Math.min(parallelAmount, Long.MAX_VALUE / amount);
+        }
+        return parallelAmount;
+    }
+
+    private static long limitItemAmount(List<Content> contents, long parallelAmount) {
+        for (Content content : contents) {
+            Ingredient ingredient = ItemRecipeCapability.CAP.of(content.content);
+            long amount = ingredient instanceof LongIngredient longIngredient ?
+                    longIngredient.getActualAmount() :
+                    ingredient instanceof SizedIngredient sizedIngredient ? sizedIngredient.getAmount() : 1;
+            if (amount <= 0) return 0;
+            parallelAmount = Math.min(parallelAmount, Long.MAX_VALUE / amount);
+        }
+        return parallelAmount;
     }
 
     @SuppressWarnings("unchecked")

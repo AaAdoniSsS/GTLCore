@@ -36,7 +36,7 @@ public abstract class ContentModifierMixin implements IAdvancedContentModifier {
     @Overwrite(remap = false)
     public Number apply(Number number) {
         if (number instanceof Long l) {
-            if (useFraction) return l / denominator * numerator;
+            if (useFraction) return gtlcore$saturatedFraction(l);
             return number.doubleValue() * this.multiplier + this.addition;
         } else if (number instanceof BigDecimal decimal) {
             return decimal.multiply(BigDecimal.valueOf(this.multiplier)).add(BigDecimal.valueOf(this.addition));
@@ -45,6 +45,16 @@ public abstract class ContentModifierMixin implements IAdvancedContentModifier {
         } else {
             return number.doubleValue() * this.multiplier + this.addition;
         }
+    }
+
+    @Unique
+    private long gtlcore$saturatedFraction(long value) {
+        BigInteger result = BigInteger.valueOf(value)
+                .multiply(BigInteger.valueOf(numerator))
+                .divide(BigInteger.valueOf(denominator));
+        if (result.compareTo(BigInteger.valueOf(Long.MAX_VALUE)) > 0) return Long.MAX_VALUE;
+        if (result.compareTo(BigInteger.valueOf(Long.MIN_VALUE)) < 0) return Long.MIN_VALUE;
+        return result.longValue();
     }
 
     @Override

@@ -42,7 +42,7 @@ import java.util.function.Supplier;
 
 public final class WirelessAePackets {
 
-    private static final String PROTOCOL_VERSION = "10";
+    private static final String PROTOCOL_VERSION = "11";
     private static int nextPacketId;
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
@@ -295,9 +295,9 @@ public final class WirelessAePackets {
                 if (!data.getFrequencies().contains(packet.frequency) || !WirelessAeNetworkRuntime.canAccessNetwork(player, packet.frequency)) {
                     return;
                 }
-                boolean removeFavorite = packet.frequency.equals(data.getFavoriteNetwork());
+                boolean removeFavorite = packet.frequency.equals(data.getFavoriteNetwork(player));
                 String networkName = data.getNetworkName(packet.frequency);
-                data.setFavoriteNetwork(removeFavorite ? null : packet.frequency);
+                data.setFavoriteNetwork(player, removeFavorite ? null : packet.frequency);
                 player.displayClientMessage(
                         Component.translatable(
                                 removeFavorite ?

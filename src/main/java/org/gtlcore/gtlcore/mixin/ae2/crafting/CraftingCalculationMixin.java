@@ -7,6 +7,8 @@ import org.gtlcore.gtlcore.integration.ae2.crafting.CraftingTemplateHelper.Calcu
 import org.gtlcore.gtlcore.integration.ae2.crafting.ICraftingCalculation;
 import org.gtlcore.gtlcore.integration.ae2.crafting.ICraftingSimulationStateFastAccess;
 import org.gtlcore.gtlcore.integration.ae2.crafting.ICraftingTreeNode;
+import org.gtlcore.gtlcore.integration.ae2.crafting.IMaxFastCraftingProviderVersion;
+import org.gtlcore.gtlcore.integration.ae2.crafting.IMaxFastNetworkInventoryFingerprint;
 import org.gtlcore.gtlcore.integration.ae2.crafting.compiled.MaxFastExecutor.BoundaryFailureDependencies;
 import org.gtlcore.gtlcore.integration.ae2.crafting.compiled.MaxFastExecutor.CompilationCache;
 import org.gtlcore.gtlcore.integration.ae2.crafting.compiled.MaxFastMetrics;
@@ -17,6 +19,7 @@ import net.minecraft.world.level.Level;
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.networking.crafting.CalculationStrategy;
 import appeng.api.networking.crafting.ICraftingPlan;
+import appeng.api.networking.crafting.ICraftingSimulationRequester;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.KeyCounter;
 import appeng.core.AELog;
@@ -27,6 +30,7 @@ import appeng.crafting.CraftingTreeNode;
 import appeng.crafting.execution.InputTemplate;
 import appeng.crafting.inv.CraftingSimulationState;
 import appeng.crafting.inv.ICraftingInventory;
+import appeng.crafting.inv.NetworkCraftingSimulationState;
 import com.google.common.base.Stopwatch;
 import org.spongepowered.asm.mixin.*;
 import org.spongepowered.asm.mixin.injection.At;
@@ -42,7 +46,7 @@ import java.util.function.Supplier;
 public abstract class CraftingCalculationMixin implements ICraftingCalculation {
 
     @Unique
-    private AE2CalculationMode gTLCore$calculationMode = AE2CalculationMode.ULTRA_FAST;
+    private AE2CalculationMode gTLCore$calculationMode = AE2CalculationMode.MAX_FAST;
     @Unique
     private final Map<CalculationTemplateCacheKey, List<InputTemplate>> gTLCore$templateCache = new HashMap<>();
     @Unique
@@ -69,6 +73,12 @@ public abstract class CraftingCalculationMixin implements ICraftingCalculation {
     @Shadow(remap = false)
     @Final
     private Level level;
+    @Shadow(remap = false)
+    @Final
+    private NetworkCraftingSimulationState networkInv;
+    @Shadow(remap = false)
+    @Final
+    private ICraftingSimulationRequester simRequester;
     @Shadow(remap = false)
     @Final
     private CalculationStrategy strategy;
@@ -106,6 +116,16 @@ public abstract class CraftingCalculationMixin implements ICraftingCalculation {
             if (this.gTLCore$calculationMode == AE2CalculationMode.MAX_FAST) {
                 this.gTLCore$maxFastMetrics = new MaxFastMetrics();
                 this.gTLCore$maxFastCompilationCache = new CompilationCache();
+                if (this.gTLCore$maxFastMetrics.isDiagnosticLoggingEnabled()) {
+                    var gridNode = this.simRequester.getGridNode();
+                    long craftingProviderVersionTick = gridNode == null ? 0L :
+                            ((IMaxFastCraftingProviderVersion) gridNode.getGrid().getCraftingService())
+                                    .gtlcore$getMaxFastCraftingProviderVersionTick();
+                    this.gTLCore$maxFastMetrics.recordDiagnosticContext(
+                            craftingProviderVersionTick,
+                            ((IMaxFastNetworkInventoryFingerprint) this.networkInv)
+                                    .gtlcore$getMaxFastInventoryFingerprint());
+                }
                 plan = gTLCore$computeMaxFastPlan();
             } else {
                 plan = this.computePlan();

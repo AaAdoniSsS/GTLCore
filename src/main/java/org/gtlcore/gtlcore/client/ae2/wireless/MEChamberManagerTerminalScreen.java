@@ -2,6 +2,7 @@ package org.gtlcore.gtlcore.client.ae2.wireless;
 
 import org.gtlcore.gtlcore.api.gui.AdvancedMEConfigurator;
 import org.gtlcore.gtlcore.api.gui.TagFilterConfigurator;
+import org.gtlcore.gtlcore.client.ae2.JeiTerminalSearchTarget;
 import org.gtlcore.gtlcore.client.renderer.BlockHighlightHandler;
 import org.gtlcore.gtlcore.integration.ae2.chamber.MEChamberConfigurator;
 import org.gtlcore.gtlcore.integration.ae2.chamber.MEChamberManagerTerminalLayout;
@@ -58,7 +59,7 @@ import java.util.List;
 import java.util.Optional;
 
 public final class MEChamberManagerTerminalScreen extends AEBaseScreen<MEChamberManagerTerminalMenu>
-                                                  implements IUniversalTerminalCapable {
+                                                  implements IUniversalTerminalCapable, JeiTerminalSearchTarget {
 
     private static final int SEARCH_MAX_LENGTH = 80;
     private static final int SLOT_BACKGROUND_OFFSET = 1;
@@ -94,19 +95,25 @@ public final class MEChamberManagerTerminalScreen extends AEBaseScreen<MEChamber
     private ChamberControlButton itemNbtButton;
     private ChamberControlButton fluidBlacklistButton;
     private ChamberControlButton fluidNbtButton;
-    private CycleTerminalButton cycleTerminalButton;
     private @Nullable MEChamberManagerTerminalMenu.StorageKind selectedStorage;
     private int selectedSlot = -1;
     private int listScrollOffset;
     private int contentPageIndex;
     private boolean draggingListScrollbar;
-    private boolean cyclingToPreviousTerminal;
     private final MEChamberConfiguratorOverlay configuratorOverlay;
 
     public MEChamberManagerTerminalScreen(MEChamberManagerTerminalMenu menu, Inventory inventory, Component title,
                                           ScreenStyle style) {
         super(menu, inventory, title, style);
+        if (menu.isUniversalTerminal()) {
+            addToLeftToolbar(new CycleTerminalButton(ignored -> cycleTerminal()));
+        }
         this.configuratorOverlay = new MEChamberConfiguratorOverlay(menu);
+    }
+
+    @Override
+    public void gtlcore$setJeiSearchText(String searchText) {
+        this.searchField.setValue(searchText);
     }
 
     @Override
@@ -127,14 +134,6 @@ public final class MEChamberManagerTerminalScreen extends AEBaseScreen<MEChamber
         searchField.setHint(Component.translatable("field.gtlcore.me_chamber_manager_terminal.search_hint"));
         searchField.setResponder(ignored -> listScrollOffset = 0);
         addRenderableWidget(searchField);
-        if (menu.isUniversalTerminal()) {
-            cycleTerminalButton = new CycleTerminalButton(ignored -> cycleTerminal());
-            cycleTerminalButton.setPosition(
-                    leftPos - cycleTerminalButton.getWidth() -
-                            MEChamberManagerTerminalLayout.UNIVERSAL_TERMINAL_BUTTON_GAP,
-                    topPos + MEChamberManagerTerminalLayout.UNIVERSAL_TERMINAL_BUTTON_Y);
-            addRenderableWidget(cycleTerminalButton);
-        }
         amountField = new EditBox(
                 font,
                 leftPos + MEChamberManagerTerminalLayout.AMOUNT_INPUT_X,
@@ -394,12 +393,6 @@ public final class MEChamberManagerTerminalScreen extends AEBaseScreen<MEChamber
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (button == 1 && cycleTerminalButton != null && cycleTerminalButton.isMouseOver(mouseX, mouseY)) {
-            cyclingToPreviousTerminal = true;
-            cycleTerminal();
-            cyclingToPreviousTerminal = false;
-            return true;
-        }
         if (configuratorOverlay.mouseClicked(mouseX, mouseY, button)) {
             return true;
         }
@@ -408,11 +401,6 @@ public final class MEChamberManagerTerminalScreen extends AEBaseScreen<MEChamber
             return true;
         }
         return super.mouseClicked(mouseX, mouseY, button);
-    }
-
-    @Override
-    public boolean isHandlingRightClick() {
-        return cyclingToPreviousTerminal;
     }
 
     @Override
