@@ -1,6 +1,8 @@
 package org.gtlcore.gtlcore.mixin.ae2.crafting;
 
+import org.gtlcore.gtlcore.integration.ae2.crafting.IMaxFastNetworkInventoryFingerprint;
 import org.gtlcore.gtlcore.integration.ae2.crafting.ManualCraftingInventoryLock;
+import org.gtlcore.gtlcore.integration.ae2.crafting.compiled.MaxFastFingerprint;
 
 import appeng.api.config.Actionable;
 import appeng.api.config.FuzzyMode;
@@ -22,7 +24,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 
 @Mixin(NetworkCraftingSimulationState.class)
-public abstract class NetworkCraftingSimulationStateMixin {
+public abstract class NetworkCraftingSimulationStateMixin implements IMaxFastNetworkInventoryFingerprint {
 
     @Unique
     private IStorageService gTLCore$storageService;
@@ -30,6 +32,16 @@ public abstract class NetworkCraftingSimulationStateMixin {
     private IActionSource gTLCore$actionSource;
     @Unique
     private KeyCounter gTLCore$sourceCache;
+
+    @Override
+    @Unique
+    public MaxFastFingerprint.Result gtlcore$getMaxFastInventoryFingerprint() {
+        KeyCounter sourceCache = this.gTLCore$sourceCache;
+        if (sourceCache == null) {
+            return new MaxFastFingerprint.Result(MaxFastFingerprint.UNAVAILABLE, 0, 0L);
+        }
+        return MaxFastFingerprint.ofKeyCounter(sourceCache);
+    }
 
     @Inject(method = "<init>", at = @At("RETURN"), remap = false)
     private void gTLCore$captureSource(IStorageService storageService, IActionSource actionSource, CallbackInfo ci) {

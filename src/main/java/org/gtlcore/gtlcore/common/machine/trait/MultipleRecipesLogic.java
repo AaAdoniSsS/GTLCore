@@ -38,7 +38,9 @@ public class MultipleRecipesLogic extends RecipeLogic implements ILockRecipe, IR
 
     private static final int MAX_THREADS = 64;
 
-    private double reductionRatio;
+    private double reductionEUt;
+
+    private double reductionDuration;
 
     public MultipleRecipesLogic(ParallelMachine machine) {
         this(machine, null);
@@ -52,11 +54,13 @@ public class MultipleRecipesLogic extends RecipeLogic implements ILockRecipe, IR
         super((IRecipeLogicMachine) machine);
         this.parallel = machine;
         this.dataCheck = dataCheck;
-        this.reductionRatio = reductionEUt * reductionDuration;
+        this.reductionEUt = reductionEUt;
+        this.reductionDuration = reductionDuration;
     }
 
     public void setReduction(double reductionEUt, double reductionDuration) {
-        this.reductionRatio = reductionEUt * reductionDuration;
+        this.reductionEUt = reductionEUt;
+        this.reductionDuration = reductionDuration;
     }
 
     @Override
@@ -84,8 +88,8 @@ public class MultipleRecipesLogic extends RecipeLogic implements ILockRecipe, IR
     protected double getEuMultiplier() {
         var maintenanceMachine = ((IRecipeCapabilityMachine) parallel).getMaintenanceMachine();
         return maintenanceMachine != null ?
-                maintenanceMachine.getDurationMultiplier() * this.reductionRatio :
-                this.reductionRatio;
+                maintenanceMachine.getDurationMultiplier() * this.reductionEUt * this.reductionDuration :
+                this.reductionEUt * this.reductionDuration;
     }
 
     private GTRecipe getRecipe() {

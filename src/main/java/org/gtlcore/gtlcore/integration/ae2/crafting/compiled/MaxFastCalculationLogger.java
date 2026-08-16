@@ -3,8 +3,10 @@ package org.gtlcore.gtlcore.integration.ae2.crafting.compiled;
 import org.gtlcore.gtlcore.GTLCore;
 import org.gtlcore.gtlcore.config.ConfigHolder;
 
+import net.minecraftforge.fml.ModList;
 import net.minecraftforge.fml.loading.FMLPaths;
 
+import appeng.core.AppEng;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -22,6 +24,7 @@ import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicLong;
 
 public final class MaxFastCalculationLogger {
 
@@ -39,11 +42,16 @@ public final class MaxFastCalculationLogger {
     private static final String UNKNOWN_ENVIRONMENT_VALUE = "unknown";
 
     private static final Object INITIALIZATION_LOCK = new Object();
+    private static final AtomicLong CALCULATION_SEQUENCE = new AtomicLong();
     private static volatile Logger logger;
     private static volatile String activeAppenderName;
     private static volatile boolean initializationFailed;
 
     private MaxFastCalculationLogger() {}
+
+    static long nextCalculationId() {
+        return CALCULATION_SEQUENCE.incrementAndGet();
+    }
 
     static boolean isEnabled() {
         return ConfigHolder.INSTANCE == null || ConfigHolder.INSTANCE.enableMaxFastCalculationLogging;
@@ -179,6 +187,10 @@ public final class MaxFastCalculationLogger {
                     logFile.toAbsolutePath(),
                     ROLLOVER_SIZE,
                     ROLLOVER_FILE_COUNT);
+            dedicatedLogger.info(
+                    "[MAX_FAST] versions gtlcore={} ae2={}",
+                    getModVersion(GTLCore.MOD_ID),
+                    getModVersion(AppEng.MOD_ID));
             Runtime runtime = Runtime.getRuntime();
             dedicatedLogger.info(
                     "[MAX_FAST] environment available_processors={} max_heap_bytes={} java_version={} " +
@@ -228,5 +240,17 @@ public final class MaxFastCalculationLogger {
                 .replace('\t', '_')
                 .replace('\r', '_')
                 .replace('\n', '_');
+    }
+
+    private static String getModVersion(String modId) {
+        try {
+            return ModList.get()
+                    .getModContainerById(modId)
+                    .map(container -> container.getModInfo().getVersion().toString())
+                    .filter(version -> !version.isBlank())
+                    .orElse(UNKNOWN_ENVIRONMENT_VALUE);
+        } catch (Throwable ignored) {
+            return UNKNOWN_ENVIRONMENT_VALUE;
+        }
     }
 }

@@ -1,5 +1,6 @@
 package org.gtlcore.gtlcore.client.ae2.wireless;
 
+import org.gtlcore.gtlcore.client.ae2.JeiTerminalSearchTarget;
 import org.gtlcore.gtlcore.client.renderer.BlockHighlightHandler;
 import org.gtlcore.gtlcore.integration.ae2.throughput.METhroughputMonitorPart;
 import org.gtlcore.gtlcore.integration.ae2.throughput.ThroughputMonitorTerminalLayout;
@@ -9,7 +10,6 @@ import org.gtlcore.gtlcore.integration.ae2.throughput.ThroughputMonitorUpdateInt
 import org.gtlcore.gtlcore.integration.ae2.wireless.WirelessAePackets;
 
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
@@ -52,7 +52,7 @@ import java.util.Map;
 import java.util.Set;
 
 public class ThroughputMonitorTerminalScreen extends AEBaseScreen<ThroughputMonitorTerminalMenu>
-                                             implements IUniversalTerminalCapable {
+                                             implements IUniversalTerminalCapable, JeiTerminalSearchTarget {
 
     private static final int SEARCH_MAX_LENGTH = 80;
     private static final int GROUP_ICON_X = ThroughputMonitorTerminalLayout.LIST_X + 19;
@@ -90,11 +90,9 @@ public class ThroughputMonitorTerminalScreen extends AEBaseScreen<ThroughputMoni
     private final List<ItemStack> currentViewCells = new ArrayList<>();
     private @Nullable IPartitionList viewCellFilter;
     private EditBox searchField;
-    private SettingToggleButton<SortOrder> sortByButton;
-    private SettingToggleButton<SortDir> sortDirectionButton;
+    private final SettingToggleButton<SortOrder> sortByButton;
+    private final SettingToggleButton<SortDir> sortDirectionButton;
     private Button updateIntervalButton;
-    private CycleTerminalButton cycleTerminalButton;
-    private boolean cyclingToPreviousTerminal;
     private SortOrder sortOrder = rememberedSortOrder;
     private SortDir sortDirection = rememberedSortDirection;
     private ThroughputMonitorUpdateInterval updateInterval = rememberedUpdateInterval;
@@ -112,6 +110,24 @@ public class ThroughputMonitorTerminalScreen extends AEBaseScreen<ThroughputMoni
     public ThroughputMonitorTerminalScreen(ThroughputMonitorTerminalMenu menu, Inventory inventory,
                                            Component title, ScreenStyle style) {
         super(menu, inventory, title, style);
+        this.sortByButton = new SettingToggleButton<>(
+                Settings.SORT_BY,
+                this.sortOrder,
+                (button, backwards) -> setSortOrder(button.getNextValue(backwards)));
+        addToLeftToolbar(this.sortByButton);
+        this.sortDirectionButton = new SettingToggleButton<>(
+                Settings.SORT_DIRECTION,
+                this.sortDirection,
+                (button, backwards) -> setSortDirection(button.getNextValue(backwards)));
+        addToLeftToolbar(this.sortDirectionButton);
+        if (menu.isUniversalTerminal()) {
+            addToLeftToolbar(new CycleTerminalButton(ignored -> cycleTerminal()));
+        }
+    }
+
+    @Override
+    public void gtlcore$setJeiSearchText(String searchText) {
+        this.searchField.setValue(searchText);
     }
 
     @Override
@@ -131,20 +147,6 @@ public class ThroughputMonitorTerminalScreen extends AEBaseScreen<ThroughputMoni
         this.searchField.setHint(Component.translatable("field.gtlcore.throughput_monitor_terminal.search_hint"));
         this.searchField.setResponder(ignored -> this.scrollOffset = 0);
         this.addRenderableWidget(this.searchField);
-        this.sortByButton = new SettingToggleButton<>(
-                Settings.SORT_BY,
-                this.sortOrder,
-                (button, backwards) -> setSortOrder(button.getNextValue(backwards)));
-        positionLeftToolbarButton(this.sortByButton, ThroughputMonitorTerminalLayout.SORT_BY_BUTTON_Y);
-        this.addRenderableWidget(this.sortByButton);
-        this.sortDirectionButton = new SettingToggleButton<>(
-                Settings.SORT_DIRECTION,
-                this.sortDirection,
-                (button, backwards) -> setSortDirection(button.getNextValue(backwards)));
-        positionLeftToolbarButton(
-                this.sortDirectionButton,
-                ThroughputMonitorTerminalLayout.SORT_DIRECTION_BUTTON_Y);
-        this.addRenderableWidget(this.sortDirectionButton);
         this.updateIntervalButton = WirelessAeStyle.button(
                 this.leftPos + ThroughputMonitorTerminalLayout.UPDATE_INTERVAL_BUTTON_X,
                 this.topPos + ThroughputMonitorTerminalLayout.UPDATE_INTERVAL_BUTTON_Y,
@@ -155,20 +157,7 @@ public class ThroughputMonitorTerminalScreen extends AEBaseScreen<ThroughputMoni
         updateIntervalButtonTooltip();
         this.addRenderableWidget(this.updateIntervalButton);
         sendUpdateInterval();
-        if (this.menu.isUniversalTerminal()) {
-            this.cycleTerminalButton = new CycleTerminalButton(ignored -> cycleTerminal());
-            this.cycleTerminalButton.setPosition(
-                    this.leftPos - this.cycleTerminalButton.getWidth() -
-                            ThroughputMonitorTerminalLayout.UNIVERSAL_TERMINAL_BUTTON_GAP,
-                    this.topPos + ThroughputMonitorTerminalLayout.UNIVERSAL_TERMINAL_BUTTON_Y);
-            this.addRenderableWidget(this.cycleTerminalButton);
-        }
         clampScrollOffset();
-    }
-
-    @Override
-    public boolean isHandlingRightClick() {
-        return this.cyclingToPreviousTerminal;
     }
 
     @Override
@@ -474,13 +463,6 @@ public class ThroughputMonitorTerminalScreen extends AEBaseScreen<ThroughputMoni
             setUpdateInterval(this.updateInterval.next(true));
             return true;
         }
-        if (button == 1 && this.cycleTerminalButton != null &&
-                this.cycleTerminalButton.isMouseOver(mouseX, mouseY)) {
-            this.cyclingToPreviousTerminal = true;
-            cycleTerminal();
-            this.cyclingToPreviousTerminal = false;
-            return true;
-        }
         if (button == 0 && handleScrollbarClick(mouseX, mouseY)) {
             return true;
         }
@@ -581,10 +563,6 @@ public class ThroughputMonitorTerminalScreen extends AEBaseScreen<ThroughputMoni
         if (this.hoveredSlot != null && !this.hoveredSlot.hasItem() &&
                 this.menu.getSlots(SlotSemantics.VIEW_CELL).contains(this.hoveredSlot)) {
             graphics.renderTooltip(this.font, GuiText.TerminalViewCellsTooltip.text(), mouseX, mouseY);
-            return;
-        }
-        if (renderSettingTooltip(graphics, this.sortByButton, mouseX, mouseY) ||
-                renderSettingTooltip(graphics, this.sortDirectionButton, mouseX, mouseY)) {
             return;
         }
         DisplayRow row = rowAt(mouseX, mouseY);
@@ -797,12 +775,6 @@ public class ThroughputMonitorTerminalScreen extends AEBaseScreen<ThroughputMoni
         return this.sortedEntries;
     }
 
-    private void positionLeftToolbarButton(AbstractWidget button, int y) {
-        button.setPosition(
-                this.leftPos - button.getWidth() - ThroughputMonitorTerminalLayout.LEFT_TOOLBAR_GAP,
-                this.topPos + y);
-    }
-
     private void setSortOrder(SortOrder sortOrder) {
         this.sortOrder = sortOrder;
         rememberedSortOrder = sortOrder;
@@ -836,15 +808,6 @@ public class ThroughputMonitorTerminalScreen extends AEBaseScreen<ThroughputMoni
                 new WirelessAePackets.SetThroughputMonitorUpdateIntervalPacket(
                         this.menu.containerId,
                         this.updateInterval));
-    }
-
-    private boolean renderSettingTooltip(GuiGraphics graphics, SettingToggleButton<?> button,
-                                         int mouseX, int mouseY) {
-        if (!button.isMouseOver(mouseX, mouseY)) {
-            return false;
-        }
-        graphics.renderComponentTooltip(this.font, button.getTooltipMessage(), mouseX, mouseY);
-        return true;
     }
 
     private static double normalizedActivity(ThroughputMonitorTerminalMenu.Entry entry) {

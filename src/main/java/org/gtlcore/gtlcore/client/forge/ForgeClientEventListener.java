@@ -3,7 +3,9 @@ package org.gtlcore.gtlcore.client.forge;
 import org.gtlcore.gtlcore.GTLCore;
 import org.gtlcore.gtlcore.client.ae2.JeiTerminalSearchTarget;
 import org.gtlcore.gtlcore.common.item.StructureWriteBehavior;
+import org.gtlcore.gtlcore.integration.ae2.WirelessTerminalGridResolver;
 import org.gtlcore.gtlcore.integration.ae2.wireless.JeiWirelessTerminalOrderPackets;
+import org.gtlcore.gtlcore.integration.jei.JeiCheatModeCompat;
 import org.gtlcore.gtlcore.integration.jei.JeiMeInventoryTooltip;
 
 import com.lowdragmc.lowdraglib.LDLib;
@@ -11,6 +13,7 @@ import com.lowdragmc.lowdraglib.client.utils.RenderBufferUtils;
 
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.GameRenderer;
@@ -27,18 +30,25 @@ import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
+import appeng.api.stacks.AEKey;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import org.lwjgl.glfw.GLFW;
 
+import java.util.Optional;
+
 @Mod.EventBusSubscriber(modid = GTLCore.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 @OnlyIn(Dist.CLIENT)
 public class ForgeClientEventListener {
 
     private static final int JEI_TERMINAL_SEARCH_KEY = InputConstants.KEY_F;
+    private static final char JEI_TERMINAL_SEARCH_CHARACTER = 'f';
     private static final int JEI_WIRELESS_ORDER_MOUSE_BUTTON = GLFW.GLFW_MOUSE_BUTTON_MIDDLE;
+    private static final int JEI_WIRELESS_EXTRACT_MOUSE_BUTTON = GLFW.GLFW_MOUSE_BUTTON_LEFT;
+
+    private static Screen pendingJeiTerminalSearchCharacterScreen;
 
     @SubscribeEvent
     public static void onClientTick(TickEvent.ClientTickEvent event) {
@@ -59,15 +69,39 @@ public class ForgeClientEventListener {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onJeiTerminalSearchKeyPressed(ScreenEvent.KeyPressed.Pre event) {
-        if (event.getKeyCode() != JEI_TERMINAL_SEARCH_KEY ||
-                !(event.getScreen() instanceof JeiTerminalSearchTarget terminalSearchTarget) ||
+        if (event.getKeyCode() != JEI_TERMINAL_SEARCH_KEY) {
+            pendingJeiTerminalSearchCharacterScreen = null;
+            return;
+        }
+        pendingJeiTerminalSearchCharacterScreen = null;
+        if (!(event.getScreen() instanceof JeiTerminalSearchTarget terminalSearchTarget) ||
                 !LDLib.isJeiLoaded()) {
             return;
         }
         JeiMeInventoryTooltip.getHoveredIngredientName().ifPresent(searchText -> {
             terminalSearchTarget.gtlcore$setJeiSearchText(searchText);
+            pendingJeiTerminalSearchCharacterScreen = event.getScreen();
             event.setCanceled(true);
         });
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onJeiTerminalSearchCharacterTyped(ScreenEvent.CharacterTyped.Pre event) {
+        if (pendingJeiTerminalSearchCharacterScreen != event.getScreen()) {
+            pendingJeiTerminalSearchCharacterScreen = null;
+            return;
+        }
+        pendingJeiTerminalSearchCharacterScreen = null;
+        if (Character.toLowerCase(event.getCodePoint()) == JEI_TERMINAL_SEARCH_CHARACTER) {
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onJeiTerminalSearchKeyReleased(ScreenEvent.KeyReleased.Pre event) {
+        if (event.getKeyCode() == JEI_TERMINAL_SEARCH_KEY) {
+            pendingJeiTerminalSearchCharacterScreen = null;
+        }
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
@@ -79,6 +113,42 @@ public class ForgeClientEventListener {
             JeiWirelessTerminalOrderPackets.sendRequest(key);
             event.setCanceled(true);
         });
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST, receiveCanceled = true)
+    public static void onJeiWirelessExtractMouseReleased(ScreenEvent.MouseButtonReleased.Pre event) {
+        if (!isJeiWirelessExtractionInput(event.getButton())) {
+            return;
+        }
+        LocalPlayer player = Minecraft.getInstance().player;
+        Optional<AEKey> hoveredKey = JeiMeInventoryTooltip.getHoveredIngredientKey();
+        if (JeiCheatModeCompat.isCheatStackInputActive(JEI_WIRELESS_EXTRACT_MOUSE_BUTTON)) {
+            if (!event.isCanceled() && JeiCheatModeCompat.executeCheatStackFallback(hoveredKey.orElse(null))) {
+                event.setCanceled(true);
+            }
+            return;
+        }
+        if (event.isCanceled()) {
+            return;
+        }
+        if (player == null) {
+            return;
+        }
+        if (!player.containerMenu.getCarried().isEmpty()) {
+            return;
+        }
+        if (!WirelessTerminalGridResolver.hasWirelessTerminal(player)) {
+            return;
+        }
+        if (hoveredKey.isEmpty()) {
+            return;
+        }
+        JeiWirelessTerminalOrderPackets.sendExtractionRequest(hoveredKey.get());
+        event.setCanceled(true);
+    }
+
+    private static boolean isJeiWirelessExtractionInput(int button) {
+        return button == JEI_WIRELESS_EXTRACT_MOUSE_BUTTON && Screen.hasShiftDown() && LDLib.isJeiLoaded();
     }
 
     @SubscribeEvent

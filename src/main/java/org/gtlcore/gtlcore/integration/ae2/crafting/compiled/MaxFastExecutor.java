@@ -36,6 +36,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -55,6 +56,7 @@ public final class MaxFastExecutor {
     private static final long TRY_SEGMENT_AGGREGATION = 1L;
     private static final long BOUNDARY_ATTEMPT_FAILED = -1L;
     private static final int ROOT_CUT_PREFILTER_NODE_BUDGET = 128;
+    private static final int PREPARED_BOUNDARY_CACHE_LIMIT = 2048;
 
     private enum RootCutPrefilterResult {
         PASS,
@@ -86,6 +88,7 @@ public final class MaxFastExecutor {
     private int[] aggregatedOutstandingChildren = new int[0];
     private BoundaryFailureDependencies[] aggregatedBoundaryFailures = new BoundaryFailureDependencies[0];
     private ICraftingTreeNode[] aggregatedPreparedBoundaries = new ICraftingTreeNode[0];
+    private final Map<BoundaryRuntimeKey, ICraftingTreeNode> preparedBoundaryCache = new HashMap<>();
     private final Set<Object> aggregatedChangedPrimaryKeys = new HashSet<>();
     private final Set<Object> aggregatedNextChangedPrimaryKeys = new HashSet<>();
     private final Object2LongOpenHashMap<AEKey> aggregatedCompletionDeltas = new Object2LongOpenHashMap<>();
@@ -198,6 +201,40 @@ public final class MaxFastExecutor {
             root.gtlcore$setMaxFastLogicalNodeCount(-1L);
             throw failure;
         }
+    }
+
+    public boolean shouldBypassCycleCandidateFailure(ICraftingTreeNode root, CraftingSimulationState inventory,
+                                                     AEKey key, long amount, IPatternDetails pattern,
+                                                     long requestedAmount, AEKey[] externalAncestors) {
+        CycleFailureKey failureKey = new CycleFailureKey(
+                key,
+                amount,
+                pattern,
+                requestedAmount,
+                externalAncestors);
+        BoundaryFailureDependencies failure = this.compilationCache.cycleFailures.get(failureKey);
+        if (failure == null) {
+            return false;
+        }
+        if (!failure.shouldRetry(root, inventory)) {
+            return true;
+        }
+        this.compilationCache.cycleFailures.remove(failureKey);
+        return false;
+    }
+
+    public boolean cacheCycleCandidateFailure(ICraftingTreeNode root, CraftingSimulationState inventory,
+                                              AEKey key, long amount, IPatternDetails pattern,
+                                              long requestedAmount, AEKey[] externalAncestors,
+                                              BoundaryFailureDependencies failure) {
+        BoundaryFailureDependencies cachedFailure = failure.copyWithCapacityTargets(root, inventory);
+        if (cachedFailure == null) {
+            return false;
+        }
+        this.compilationCache.cycleFailures.put(
+                new CycleFailureKey(key, amount, pattern, requestedAmount, externalAncestors),
+                cachedFailure);
+        return true;
     }
 
     private boolean validateAggregatedTemplates(ICraftingTreeNode root, AggregatedGraph graph,
@@ -403,7 +440,7 @@ public final class MaxFastExecutor {
                     metrics.recordAggregationContextCacheMiss();
                     AnalyzedProgram analyzedProgram = this.compilationCache.analyzedPrograms.get(node.key());
                     if (analyzedProgram == null) {
-                        analyzedProgram = analyzeProgram(node.key(), craftingService, level);
+                        analyzedProgram = analyzeProgram(node.key(), craftingService, level, metrics);
                         this.compilationCache.analyzedPrograms.put(node.key(), analyzedProgram);
                         metrics.recordAggregationAnalysisCacheMiss();
                     } else {
@@ -458,9 +495,9 @@ public final class MaxFastExecutor {
         }
 
         long sccStartedNanos = System.nanoTime();
-        boolean[] cyclicNodes;
+        SccAnalysis sccAnalysis;
         try {
-            cyclicNodes = findCyclicNodes(analyzedNodes);
+            sccAnalysis = analyzeScc(root, analyzedNodes, metrics);
         } finally {
             metrics.recordAggregationSccNanos(System.nanoTime() - sccStartedNanos);
         }
@@ -470,7 +507,7 @@ public final class MaxFastExecutor {
             nodes = buildExecutableGraph(
                     analyzedRoot,
                     analyzedByRequest,
-                    cyclicNodes,
+                    sccAnalysis,
                     metrics,
                     this.forcedRootPattern == null && !this.forcedRootAncestorCut);
             if (this.forcedRootPattern != null && nodes.get(0).barrier()) {
@@ -535,12 +572,19 @@ public final class MaxFastExecutor {
         }
     }
 
-    private static AnalyzedProgram analyzeProgram(AEKey key, ICraftingService craftingService, Level level) {
+    private static AnalyzedProgram analyzeProgram(AEKey key, ICraftingService craftingService, Level level,
+                                                  MaxFastMetrics metrics) {
         if (craftingService.canEmitFor(key)) {
+            if (metrics.isDiagnosticLoggingEnabled()) {
+                metrics.recordAnalyzedProgramStructure(key, true, List.of());
+            }
             return AnalyzedProgram.emitterProgram();
         }
 
         Collection<IPatternDetails> candidates = craftingService.getCraftingFor(key);
+        if (metrics.isDiagnosticLoggingEnabled()) {
+            metrics.recordAnalyzedProgramStructure(key, false, candidates);
+        }
         if (candidates.isEmpty()) {
             return AnalyzedProgram.terminalProgram();
         }
@@ -705,10 +749,12 @@ public final class MaxFastExecutor {
         return false;
     }
 
-    private static boolean[] findCyclicNodes(List<AnalyzedNode> nodes) {
+    private static SccAnalysis analyzeScc(ICraftingTreeNode root, List<AnalyzedNode> nodes,
+                                          MaxFastMetrics metrics) throws InterruptedException {
         Map<AEKey, Integer> keyIndexes = new HashMap<>();
         List<AEKey> keys = new ArrayList<>();
         for (AnalyzedNode node : nodes) {
+            root.gtlcore$checkMaxFastCancellation();
             if (!keyIndexes.containsKey(node.key())) {
                 keyIndexes.put(node.key(), keys.size());
                 keys.add(node.key());
@@ -726,6 +772,7 @@ public final class MaxFastExecutor {
 
         boolean[] expandedKeys = new boolean[keyCount];
         for (AnalyzedNode node : nodes) {
+            root.gtlcore$checkMaxFastCancellation();
             int sourceIndex = keyIndexes.get(node.key());
             if (expandedKeys[sourceIndex]) {
                 continue;
@@ -754,6 +801,7 @@ public final class MaxFastExecutor {
         int[] nodeStack = new int[keyCount];
         int[] edgeStack = new int[keyCount];
         for (int start = 0; start < keyCount; start++) {
+            root.gtlcore$checkMaxFastCancellation();
             if (visited[start]) {
                 continue;
             }
@@ -763,6 +811,7 @@ public final class MaxFastExecutor {
             edgeStack[top] = 0;
             visited[start] = true;
             while (top >= 0) {
+                root.gtlcore$checkMaxFastCancellation();
                 int nodeIndex = nodeStack[top];
                 List<Integer> nodeSuccessors = successors.get(nodeIndex);
                 int edgeIndex = edgeStack[top];
@@ -787,6 +836,7 @@ public final class MaxFastExecutor {
         int[] componentSizes = new int[keyCount];
         int componentCount = 0;
         for (int orderIndex = finishCount - 1; orderIndex >= 0; orderIndex--) {
+            root.gtlcore$checkMaxFastCancellation();
             int start = finishOrder[orderIndex];
             if (componentIds[start] != -1) {
                 continue;
@@ -796,6 +846,7 @@ public final class MaxFastExecutor {
             nodeStack[0] = start;
             componentIds[start] = componentCount;
             while (stackSize > 0) {
+                root.gtlcore$checkMaxFastCancellation();
                 int nodeIndex = nodeStack[--stackSize];
                 componentSizes[componentCount]++;
                 for (int predecessor : predecessors.get(nodeIndex)) {
@@ -817,7 +868,170 @@ public final class MaxFastExecutor {
         for (AnalyzedNode node : nodes) {
             cyclicNodes[node.index()] = cyclicKeys[keyIndexes.get(node.key())];
         }
-        return cyclicNodes;
+        long programCompilationStartedNanos = System.nanoTime();
+        SccProgram[] programsByNode;
+        try {
+            programsByNode = buildSccPrograms(
+                    root,
+                    nodes,
+                    keys,
+                    keyIndexes,
+                    componentIds,
+                    componentSizes,
+                    cyclicKeys,
+                    metrics);
+        } finally {
+            metrics.recordSccProgramCompileNanos(System.nanoTime() - programCompilationStartedNanos);
+        }
+        return new SccAnalysis(cyclicNodes, programsByNode);
+    }
+
+    private static SccProgram[] buildSccPrograms(ICraftingTreeNode root,
+                                                 List<AnalyzedNode> analyzedNodes,
+                                                 List<AEKey> keys,
+                                                 Map<AEKey, Integer> keyIndexes,
+                                                 int[] componentIds,
+                                                 int[] componentSizes,
+                                                 boolean[] cyclicKeys,
+                                                 MaxFastMetrics metrics) throws InterruptedException {
+        SccProgram[] programsByAnalyzedNode = new SccProgram[analyzedNodes.size()];
+        AnalyzedNode[] analyzedByKeyIndex = new AnalyzedNode[keys.size()];
+        for (AnalyzedNode analyzedNode : analyzedNodes) {
+            root.gtlcore$checkMaxFastCancellation();
+            int keyIndex = keyIndexes.get(analyzedNode.key());
+            if (analyzedByKeyIndex[keyIndex] == null) {
+                analyzedByKeyIndex[keyIndex] = analyzedNode;
+            }
+        }
+
+        SccProgram[] programsByComponent = new SccProgram[componentSizes.length];
+        for (int componentId = 0; componentId < componentSizes.length; componentId++) {
+            root.gtlcore$checkMaxFastCancellation();
+            if (componentSizes[componentId] <= 1) {
+                continue;
+            }
+            SccProgram program = buildSccProgram(
+                    root,
+                    componentId,
+                    analyzedByKeyIndex,
+                    keys,
+                    keyIndexes,
+                    componentIds);
+            if (program != null) {
+                programsByComponent[componentId] = program;
+                metrics.recordSccProgramCompiled(
+                        program.nodes().length,
+                        program.internalEdges());
+            }
+        }
+
+        for (AnalyzedNode analyzedNode : analyzedNodes) {
+            root.gtlcore$checkMaxFastCancellation();
+            int keyIndex = keyIndexes.get(analyzedNode.key());
+            if (cyclicKeys[keyIndex]) {
+                programsByAnalyzedNode[analyzedNode.index()] = programsByComponent[componentIds[keyIndex]];
+            }
+        }
+        return programsByAnalyzedNode;
+    }
+
+    private static @Nullable SccProgram buildSccProgram(ICraftingTreeNode root,
+                                                        int componentId,
+                                                        AnalyzedNode[] analyzedByKeyIndex,
+                                                        List<AEKey> keys,
+                                                        Map<AEKey, Integer> keyIndexes,
+                                                        int[] componentIds) throws InterruptedException {
+        Map<AEKey, Integer> localIndexes = new LinkedHashMap<>();
+        for (int keyIndex = 0; keyIndex < componentIds.length; keyIndex++) {
+            if (componentIds[keyIndex] == componentId) {
+                localIndexes.put(keys.get(keyIndex), localIndexes.size());
+            }
+        }
+
+        SccNode[] sccNodes = new SccNode[localIndexes.size()];
+        int internalEdges = 0;
+        for (Map.Entry<AEKey, Integer> entry : localIndexes.entrySet()) {
+            root.gtlcore$checkMaxFastCancellation();
+            AEKey key = entry.getKey();
+            AnalyzedNode analyzedNode = analyzedByKeyIndex[keyIndexes.get(key)];
+            if (analyzedNode == null || analyzedNode.candidates().size() != 1) {
+                return null;
+            }
+            CandidateAnalysis candidate = analyzedNode.candidates().get(0);
+            if (candidate.failureReason() != null || !candidate.aggregateSafe() ||
+                    !hasStructurallyExactInputs(candidate.details()) ||
+                    candidate.outputPerPattern() <= 0 || candidate.edges() == null ||
+                    candidate.outputs() == null) {
+                return null;
+            }
+
+            for (GenericStack output : candidate.outputs()) {
+                if (output.amount() <= 0) {
+                    return null;
+                }
+                if (!key.matches(output) && localIndexes.containsKey(output.what())) {
+                    return null;
+                }
+            }
+
+            List<SccInput> inputs = new ArrayList<>(candidate.edges().size());
+            for (AnalyzedEdge edge : candidate.edges()) {
+                long amountPerPattern = NumberUtils.saturatedMultiply(
+                        edge.childRequestKey().amount(),
+                        edge.requestMultiplier());
+                if (amountPerPattern <= 0 || amountPerPattern == Long.MAX_VALUE) {
+                    return null;
+                }
+                Integer internalIndex = localIndexes.get(edge.childRequestKey().key());
+                if (internalIndex != null) {
+                    internalEdges++;
+                }
+                inputs.add(new SccInput(
+                        edge.childRequestKey(),
+                        edge.childRequestKey().key(),
+                        amountPerPattern,
+                        internalIndex == null ? -1 : internalIndex,
+                        edge.childRequestKey().input()));
+            }
+            sccNodes[entry.getValue()] = new SccNode(
+                    key,
+                    candidate.details(),
+                    candidate.outputs(),
+                    candidate.outputPerPattern(),
+                    inputs.toArray(SccInput[]::new));
+        }
+        return new SccProgram(
+                sccNodes,
+                Map.copyOf(localIndexes),
+                buildSccConsumers(sccNodes),
+                new SccRuntimeGate(),
+                internalEdges);
+    }
+
+    private static int[][] buildSccConsumers(SccNode[] nodes) {
+        int[] consumerCounts = new int[nodes.length];
+        for (SccNode node : nodes) {
+            for (SccInput input : node.inputs()) {
+                if (input.internalNodeIndex() >= 0) {
+                    consumerCounts[input.internalNodeIndex()]++;
+                }
+            }
+        }
+
+        int[][] consumersByNode = new int[nodes.length][];
+        for (int nodeIndex = 0; nodeIndex < nodes.length; nodeIndex++) {
+            consumersByNode[nodeIndex] = new int[consumerCounts[nodeIndex]];
+        }
+        Arrays.fill(consumerCounts, 0);
+        for (int consumerIndex = 0; consumerIndex < nodes.length; consumerIndex++) {
+            for (SccInput input : nodes[consumerIndex].inputs()) {
+                int producerIndex = input.internalNodeIndex();
+                if (producerIndex >= 0) {
+                    consumersByNode[producerIndex][consumerCounts[producerIndex]++] = consumerIndex;
+                }
+            }
+        }
+        return consumersByNode;
     }
 
     private static void addStructuralEdge(List<List<Integer>> successors,
@@ -833,7 +1047,7 @@ public final class MaxFastExecutor {
 
     private static List<AggregatedNode> buildExecutableGraph(AnalyzedNode analyzedRoot,
                                                              Map<RequestKey, AnalyzedNode> analyzedByRequest,
-                                                             boolean[] cyclicNodes,
+                                                             SccAnalysis sccAnalysis,
                                                              MaxFastMetrics metrics,
                                                              boolean prefilterCycleCandidates) {
         List<AggregatedNode> nodes = new ArrayList<>();
@@ -858,7 +1072,7 @@ public final class MaxFastExecutor {
 
             CandidateAnalysis candidate = analyzedNode.candidates().size() == 1 ?
                     analyzedNode.candidates().get(0) : null;
-            boolean cycleBoundary = cyclicNodes[analyzedNode.index()];
+            boolean cycleBoundary = sccAnalysis.cyclicNodes()[analyzedNode.index()];
             if (candidate == null || !candidate.aggregateSafe() || cycleBoundary) {
                 boolean candidateGraphsEligible = candidate == null && !cycleBoundary &&
                         allCandidatesAggregateSafe(analyzedNode.candidates());
@@ -886,6 +1100,19 @@ public final class MaxFastExecutor {
                         analyzedNode.candidates(),
                         candidateGraphsEligible,
                         cycleCandidateGraphEligible);
+                if (prefilterCycleCandidates) {
+                    node.setSccProgram(sccAnalysis.programsByNode()[analyzedNode.index()]);
+                }
+                if (node.sccProgram() != null) {
+                    node.setSccExternalDependenciesEligible(addSccExternalDependencies(
+                            node,
+                            node.sccProgram(),
+                            analyzedByRequest,
+                            sccAnalysis,
+                            executableByRequest,
+                            nodes,
+                            metrics));
+                }
                 if (candidateGraphsEligible) {
                     metrics.recordAggregationCandidateGraphEligibleNode();
                 }
@@ -906,14 +1133,19 @@ public final class MaxFastExecutor {
             metrics.recordSingleProgramCompiled();
             for (AnalyzedEdge analyzedEdge : candidate.edges()) {
                 AnalyzedNode analyzedChild = analyzedByRequest.get(analyzedEdge.childRequestKey());
-                boolean childIsBarrier = isAnalyzedBarrier(analyzedChild, cyclicNodes);
-                AggregatedNode child = childIsBarrier ? null : executableByRequest.get(analyzedChild.requestKey());
+                boolean childIsBarrier = isAnalyzedBarrier(analyzedChild, sccAnalysis.cyclicNodes());
+                boolean mergeableSccBarrier = childIsBarrier &&
+                        sccAnalysis.programsByNode()[analyzedChild.index()] != null;
+                AggregatedNode child = !childIsBarrier || mergeableSccBarrier ?
+                        executableByRequest.get(analyzedChild.requestKey()) : null;
                 if (child == null) {
                     child = new AggregatedNode(nodes.size(), analyzedChild.requestKey());
-                    if (!childIsBarrier) {
+                    if (!childIsBarrier || mergeableSccBarrier) {
                         executableByRequest.put(analyzedChild.requestKey(), child);
                     }
                     nodes.add(child);
+                } else if (mergeableSccBarrier) {
+                    metrics.recordSccBoundaryNodeReuse();
                 }
                 node.addEdge(new AggregatedEdge(
                         child.index(),
@@ -923,6 +1155,47 @@ public final class MaxFastExecutor {
             }
         }
         return nodes;
+    }
+
+    private static boolean addSccExternalDependencies(
+                                                      AggregatedNode node,
+                                                      SccProgram program,
+                                                      Map<RequestKey, AnalyzedNode> analyzedByRequest,
+                                                      SccAnalysis sccAnalysis,
+                                                      Map<RequestKey, AggregatedNode> executableByRequest,
+                                                      List<AggregatedNode> nodes,
+                                                      MaxFastMetrics metrics) {
+        Set<RequestKey> externalRequests = new LinkedHashSet<>();
+        for (SccNode sccNode : program.nodes()) {
+            for (SccInput input : sccNode.inputs()) {
+                if (input.internalNodeIndex() >= 0) {
+                    continue;
+                }
+                externalRequests.add(input.requestKey());
+            }
+        }
+        if (externalRequests.isEmpty()) {
+            return false;
+        }
+        for (RequestKey requestKey : externalRequests) {
+            AnalyzedNode analyzedChild = analyzedByRequest.get(requestKey);
+            if (analyzedChild == null || isAnalyzedBarrier(analyzedChild, sccAnalysis.cyclicNodes())) {
+                return false;
+            }
+        }
+        for (RequestKey requestKey : externalRequests) {
+            AnalyzedNode analyzedChild = analyzedByRequest.get(requestKey);
+            AggregatedNode child = executableByRequest.get(analyzedChild.requestKey());
+            if (child == null) {
+                child = new AggregatedNode(nodes.size(), analyzedChild.requestKey());
+                executableByRequest.put(analyzedChild.requestKey(), child);
+                nodes.add(child);
+            }
+            if (node.addEdgeIfAbsent(child.index())) {
+                child.incrementIndegree();
+            }
+        }
+        return true;
     }
 
     private static boolean allCandidatesAggregateSafe(List<CandidateAnalysis> candidates) {
@@ -1451,10 +1724,13 @@ public final class MaxFastExecutor {
         boolean scheduledBoundaries = boundaryMode != BoundaryResolutionMode.NONE;
         boolean[] completedNodes = this.aggregatedCompletedNodes;
         boolean[] pendingBoundaries = this.aggregatedPendingBoundaries;
+        boolean[] pendingSccBoundaries = new boolean[nodes.length];
         int[] outstandingChildren = this.aggregatedOutstandingChildren;
         BitSet readyCompletionRanks = this.aggregatedReadyCompletionRanks;
         Set<Object> changedPrimaryKeys = this.aggregatedChangedPrimaryKeys;
         Set<Object> nextChangedPrimaryKeys = this.aggregatedNextChangedPrimaryKeys;
+        Map<Object, List<Integer>> boundaryDependencyIndex = scheduledBoundaries ? new HashMap<>() : Map.of();
+        List<Integer> unknownDependencyBoundaries = scheduledBoundaries ? new ArrayList<>() : List.of();
         Arrays.fill(requests, 0, nodes.length, 0L);
         Arrays.fill(remainingRequests, 0, nodes.length, 0L);
         Arrays.fill(totalRequestedItems, 0, nodes.length, 0L);
@@ -1515,8 +1791,38 @@ public final class MaxFastExecutor {
 
                 remainingRequests[nodeIndex] = remainingRequestCount;
                 if (node.barrier()) {
+                    SccAttempt sccAttempt = tryExecuteScc(
+                            root,
+                            inv,
+                            node,
+                            remainingRequestCount,
+                            null,
+                            metrics);
+                    if (sccAttempt.status() == SccAttemptStatus.SUCCESS) {
+                        logicalNodeCount = NumberUtils.saturatedAdd(
+                                logicalNodeCount,
+                                node.sccProgram().nodes().length - 1L);
+                        continue;
+                    }
+                    if (sccAttempt.status() == SccAttemptStatus.DEFER && scheduledBoundaries &&
+                            propagateSccExternalDemands(
+                                    node,
+                                    sccAttempt.externalDemands(),
+                                    nodes,
+                                    requests)) {
+                        pendingSccBoundaries[nodeIndex] = true;
+                        pendingBoundaries[nodeIndex] = true;
+                        unknownDependencyBoundaries.add(nodeIndex);
+                        pendingBoundaryCount++;
+                        continue;
+                    }
+                    if (sccAttempt.status() == SccAttemptStatus.DEFER) {
+                        node.sccProgram().runtimeGate().disable();
+                        metrics.recordSccExecutionFallback();
+                    }
                     long boundaryNodes;
                     if (scheduledBoundaries) {
+                        BoundaryFailureDependencies failureDependencies = getBoundaryFailureDependencies(nodeIndex);
                         boundaryNodes = tryExecuteScheduledBoundary(
                                 root,
                                 inv,
@@ -1526,11 +1832,16 @@ public final class MaxFastExecutor {
                                 externalAncestors,
                                 false,
                                 false,
-                                getBoundaryFailureDependencies(nodeIndex),
+                                failureDependencies,
                                 pendingBoundaryCount > 0 ? changedPrimaryKeys : null,
                                 metrics);
                         if (boundaryNodes == BOUNDARY_ATTEMPT_FAILED) {
                             pendingBoundaries[nodeIndex] = true;
+                            indexBoundaryDependencies(
+                                    nodeIndex,
+                                    failureDependencies,
+                                    boundaryDependencyIndex,
+                                    unknownDependencyBoundaries);
                             pendingBoundaryCount++;
                             metrics.recordAggregationBoundarySchedulerInitialFailure();
                             continue;
@@ -1572,6 +1883,9 @@ public final class MaxFastExecutor {
                     long childRequest = NumberUtils.saturatedMultiply(edge.requestMultiplier(), times);
                     if (requests[edge.childIndex()] != 0) {
                         mergedRequests++;
+                        if (nodes[edge.childIndex()].sccProgram() != null) {
+                            metrics.recordSccBoundaryDemandMerge();
+                        }
                     }
                     requests[edge.childIndex()] = NumberUtils.saturatedAdd(
                             requests[edge.childIndex()],
@@ -1607,23 +1921,69 @@ public final class MaxFastExecutor {
 
                     boolean boundaryResolved = false;
                     if (!changedPrimaryKeys.isEmpty()) {
+                        BitSet retryCandidates = new BitSet(nodes.length);
+                        for (Object changedKey : changedPrimaryKeys) {
+                            List<Integer> indexedBoundaries = boundaryDependencyIndex.get(changedKey);
+                            if (indexedBoundaries != null) {
+                                for (int nodeIndex : indexedBoundaries) {
+                                    retryCandidates.set(nodeIndex);
+                                }
+                            }
+                        }
+                        for (int nodeIndex : unknownDependencyBoundaries) {
+                            retryCandidates.set(nodeIndex);
+                        }
                         for (int nodeIndex : order) {
-                            if (!pendingBoundaries[nodeIndex]) {
+                            if (!pendingBoundaries[nodeIndex] || !retryCandidates.get(nodeIndex)) {
                                 continue;
                             }
-                            metrics.recordAggregationBoundarySchedulerDependencyCheck();
+                            AggregatedNode node = nodes[nodeIndex];
                             BoundaryFailureDependencies failureDependencies = getBoundaryFailureDependencies(nodeIndex);
-                            if (!failureDependencies.shouldRetry(
-                                    root,
-                                    inv,
-                                    changedPrimaryKeys)) {
-                                metrics.recordAggregationBoundarySchedulerDependencySkip();
-                                continue;
+                            if (pendingSccBoundaries[nodeIndex]) {
+                                metrics.recordAggregationBoundarySchedulerDependencyWakeup();
+                                metrics.recordAggregationBoundarySchedulerRetry();
+                                SccAttempt sccAttempt = tryExecuteScc(
+                                        root,
+                                        inv,
+                                        node,
+                                        remainingRequests[nodeIndex],
+                                        nextChangedPrimaryKeys,
+                                        metrics);
+                                if (sccAttempt.status() == SccAttemptStatus.DEFER) {
+                                    continue;
+                                }
+                                if (sccAttempt.status() == SccAttemptStatus.SUCCESS) {
+                                    pendingSccBoundaries[nodeIndex] = false;
+                                    pendingBoundaries[nodeIndex] = false;
+                                    pendingBoundaryCount--;
+                                    boundaryResolved = true;
+                                    resolveAggregatedDependency(
+                                            graph,
+                                            nodeIndex,
+                                            processTimes,
+                                            completedNodes,
+                                            outstandingChildren,
+                                            readyCompletionRanks);
+                                    metrics.recordAggregationBoundarySchedulerRetrySuccess();
+                                    logicalNodeCount = NumberUtils.saturatedAdd(
+                                            logicalNodeCount,
+                                            node.sccProgram().nodes().length - 1L);
+                                    continue;
+                                }
+                                pendingSccBoundaries[nodeIndex] = false;
+                            } else {
+                                metrics.recordAggregationBoundarySchedulerDependencyCheck();
+                                if (!failureDependencies.shouldRetry(
+                                        root,
+                                        inv,
+                                        changedPrimaryKeys)) {
+                                    metrics.recordAggregationBoundarySchedulerDependencySkip();
+                                    continue;
+                                }
+                                metrics.recordAggregationBoundarySchedulerDependencyWakeup();
+                                metrics.recordAggregationBoundarySchedulerRetry();
                             }
 
-                            metrics.recordAggregationBoundarySchedulerDependencyWakeup();
-                            metrics.recordAggregationBoundarySchedulerRetry();
-                            AggregatedNode node = nodes[nodeIndex];
                             long boundaryNodes = tryExecuteScheduledBoundary(
                                     root,
                                     inv,
@@ -1814,6 +2174,354 @@ public final class MaxFastExecutor {
         }
     }
 
+    private SccAttempt tryExecuteScc(ICraftingTreeNode root, CraftingSimulationState inv,
+                                     AggregatedNode boundaryNode, long requestedAmount,
+                                     @Nullable Set<Object> changedPrimaryKeys,
+                                     MaxFastMetrics metrics) throws InterruptedException {
+        SccProgram program = boundaryNode.sccProgram();
+        if (program == null) {
+            return SccAttempt.fallback();
+        }
+        if (program.runtimeGate().disabled()) {
+            metrics.recordSccRuntimeBypass();
+            return SccAttempt.fallback();
+        }
+        if (program.hasExternalInputs() && !boundaryNode.sccExternalDependenciesEligible()) {
+            return rejectSccPreflight(program, metrics);
+        }
+
+        metrics.recordSccRun();
+        long startedNanos = System.nanoTime();
+        try {
+            int rootNodeIndex = program.nodeIndex(boundaryNode.key());
+            long totalRequestedItems = NumberUtils.saturatedMultiply(boundaryNode.amount(), requestedAmount);
+            if (rootNodeIndex < 0 || totalRequestedItems <= 0 || totalRequestedItems == Long.MAX_VALUE ||
+                    !validateSccProgram(root, program)) {
+                return rejectSccContract(program, metrics);
+            }
+            if (!hasSccStarter(inv, program) && !program.hasExternalInputs()) {
+                return rejectSccPreflight(program, metrics);
+            }
+
+            SccPlanResult plan = planSccExecution(
+                    root,
+                    inv,
+                    program,
+                    rootNodeIndex,
+                    totalRequestedItems,
+                    metrics);
+            if (plan == null) {
+                return rejectSccPlanning(program, metrics);
+            }
+            if (!plan.externalDemands().isEmpty()) {
+                if (!boundaryNode.sccExternalDependenciesEligible() ||
+                        !program.runtimeGate().tryAcquireExternalDeferral()) {
+                    return rejectSccPlanning(program, metrics);
+                }
+                metrics.recordSccExternalDependencyDeferral();
+                return SccAttempt.defer(plan.externalDemands());
+            }
+            long[] processTimes = plan.processTimes();
+
+            ChildCraftingSimulationState child = new ChildCraftingSimulationState(inv);
+            long[] remainingTimes = processTimes.clone();
+            boolean[] queued = new boolean[program.nodes().length];
+            ArrayDeque<Integer> worklist = new ArrayDeque<>(program.nodes().length);
+            int unfinishedNodes = 0;
+            for (int nodeIndex = 0; nodeIndex < remainingTimes.length; nodeIndex++) {
+                if (remainingTimes[nodeIndex] > 0) {
+                    unfinishedNodes++;
+                    queued[nodeIndex] = true;
+                    worklist.addLast(nodeIndex);
+                }
+            }
+
+            long batchExecutions = 0L;
+            long worklistWakeups = 0L;
+            while (!worklist.isEmpty()) {
+                int nodeIndex = worklist.removeFirst();
+                queued[nodeIndex] = false;
+                root.gtlcore$checkMaxFastCancellation();
+                worklistWakeups++;
+                long remaining = remainingTimes[nodeIndex];
+                if (remaining <= 0) {
+                    continue;
+                }
+                SccNode node = program.nodes()[nodeIndex];
+                long runnable = getSccRunnableBatches(child, node, remaining);
+                if (runnable <= 0) {
+                    continue;
+                }
+                if (!consumeSccInputs(child, node, runnable)) {
+                    return rejectSccExecution(program, metrics);
+                }
+                for (SccInput input : node.inputs()) {
+                    child.addStackBytes(input.key(), input.amountPerPattern(), runnable);
+                }
+                completeSccPattern(child, node, runnable);
+                remainingTimes[nodeIndex] -= runnable;
+                if (remainingTimes[nodeIndex] == 0) {
+                    unfinishedNodes--;
+                }
+                batchExecutions++;
+                for (int consumerIndex : program.consumersByNode()[nodeIndex]) {
+                    if (remainingTimes[consumerIndex] > 0 && !queued[consumerIndex]) {
+                        queued[consumerIndex] = true;
+                        worklist.addLast(consumerIndex);
+                    }
+                }
+            }
+            if (unfinishedNodes > 0) {
+                metrics.recordSccCertifiedBlocked();
+                return rejectSccExecution(program, metrics);
+            }
+
+            long extracted = child.extract(boundaryNode.key(), totalRequestedItems, Actionable.MODULATE);
+            if (extracted != totalRequestedItems) {
+                return rejectSccExecution(program, metrics);
+            }
+            child.applyDiff(inv);
+            if (changedPrimaryKeys != null) {
+                ((ICraftingSimulationStateFastAccess) child)
+                        .gtlcore$collectMaxFastPositiveDiff(changedPrimaryKeys);
+            }
+            root.gtlcore$getMaxFastCalculation().gtlcore$clearTemplateCache();
+            metrics.recordSccSuccess(
+                    worklistWakeups,
+                    batchExecutions,
+                    unfinishedNodeCount(processTimes));
+            return SccAttempt.success();
+        } finally {
+            metrics.recordSccExecutionNanos(System.nanoTime() - startedNanos);
+        }
+    }
+
+    private record SccPlanResult(long[] processTimes, Map<RequestKey, Long> externalDemands) {}
+
+    private enum SccAttemptStatus {
+        SUCCESS,
+        FALLBACK,
+        DEFER
+    }
+
+    private record SccAttempt(SccAttemptStatus status, Map<RequestKey, Long> externalDemands) {
+
+        private static SccAttempt success() {
+            return new SccAttempt(SccAttemptStatus.SUCCESS, Map.of());
+        }
+
+        private static SccAttempt fallback() {
+            return new SccAttempt(SccAttemptStatus.FALLBACK, Map.of());
+        }
+
+        private static SccAttempt defer(Map<RequestKey, Long> externalDemands) {
+            return new SccAttempt(SccAttemptStatus.DEFER, externalDemands);
+        }
+    }
+
+    private static boolean hasSccStarter(CraftingSimulationState inventory, SccProgram program) {
+        for (SccNode node : program.nodes()) {
+            if (getSccRunnableBatches(inventory, node, 1L) > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean propagateSccExternalDemands(
+                                                       AggregatedNode boundaryNode,
+                                                       Map<RequestKey, Long> externalDemands,
+                                                       AggregatedNode[] nodes,
+                                                       long[] requests) {
+        for (Map.Entry<RequestKey, Long> demand : externalDemands.entrySet()) {
+            long missingItems = demand.getValue();
+            if (missingItems <= 0 || missingItems == Long.MAX_VALUE) {
+                return false;
+            }
+            int childIndex = -1;
+            for (AggregatedEdge edge : boundaryNode.edges()) {
+                if (nodes[edge.childIndex()].requestKey().equals(demand.getKey())) {
+                    childIndex = edge.childIndex();
+                    break;
+                }
+            }
+            if (childIndex < 0 || nodes[childIndex].amount() <= 0) {
+                return false;
+            }
+            long childRequests = ceilDiv(missingItems, nodes[childIndex].amount());
+            if (childRequests <= 0 || childRequests == Long.MAX_VALUE) {
+                return false;
+            }
+            requests[childIndex] = NumberUtils.saturatedAdd(requests[childIndex], childRequests);
+            if (requests[childIndex] == Long.MAX_VALUE) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static int unfinishedNodeCount(long[] processTimes) {
+        int count = 0;
+        for (long times : processTimes) {
+            if (times > 0) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static SccAttempt rejectSccPreflight(SccProgram program, MaxFastMetrics metrics) {
+        program.runtimeGate().disable();
+        metrics.recordSccPreflightRejection();
+        return SccAttempt.fallback();
+    }
+
+    private static SccAttempt rejectSccContract(SccProgram program, MaxFastMetrics metrics) {
+        program.runtimeGate().disable();
+        metrics.recordSccContractFallback();
+        return SccAttempt.fallback();
+    }
+
+    private static SccAttempt rejectSccPlanning(SccProgram program, MaxFastMetrics metrics) {
+        program.runtimeGate().disable();
+        metrics.recordSccPlanningFallback();
+        return SccAttempt.fallback();
+    }
+
+    private static SccAttempt rejectSccExecution(SccProgram program, MaxFastMetrics metrics) {
+        program.runtimeGate().disable();
+        metrics.recordSccExecutionFallback();
+        return SccAttempt.fallback();
+    }
+
+    private static boolean validateSccProgram(ICraftingTreeNode root, SccProgram program) {
+        Level level = root.gtlcore$getMaxFastLevel();
+        for (SccNode node : program.nodes()) {
+            if (getOutputCount(node.details().getOutputs(), node.key()) != node.outputPerPattern()) {
+                return false;
+            }
+            for (SccInput input : node.inputs()) {
+                IPatternDetails.IInput sourceInput = input.sourceInput();
+                if (sourceInput == null || sourceInput.getMultiplier() <= 0) {
+                    return false;
+                }
+                GenericStack[] possibleInputs = sourceInput.getPossibleInputs();
+                if (possibleInputs.length != 1 || !possibleInputs[0].what().equals(input.key()) ||
+                        !sourceInput.isValid(input.key(), level) ||
+                        sourceInput.getRemainingKey(input.key()) != null ||
+                        NumberUtils.saturatedMultiply(
+                                possibleInputs[0].amount(),
+                                sourceInput.getMultiplier()) != input.amountPerPattern()) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private static @Nullable SccPlanResult planSccExecution(ICraftingTreeNode root,
+                                                            CraftingSimulationState parentInventory,
+                                                            SccProgram program,
+                                                            int rootNodeIndex,
+                                                            long totalRequestedItems,
+                                                            MaxFastMetrics metrics) throws InterruptedException {
+        ChildCraftingSimulationState planningInventory = new ChildCraftingSimulationState(parentInventory);
+        long[] demandedItems = new long[program.nodes().length];
+        long[] processTimes = new long[program.nodes().length];
+        Map<RequestKey, Long> externalDemands = new LinkedHashMap<>();
+        boolean[] queued = new boolean[program.nodes().length];
+        ArrayDeque<Integer> worklist = new ArrayDeque<>();
+        demandedItems[rootNodeIndex] = totalRequestedItems;
+        queued[rootNodeIndex] = true;
+        worklist.addLast(rootNodeIndex);
+        long updates = 0L;
+        long maxUpdates = (long) program.nodes().length * Long.SIZE;
+
+        while (!worklist.isEmpty()) {
+            int nodeIndex = worklist.removeFirst();
+            queued[nodeIndex] = false;
+            root.gtlcore$checkMaxFastCancellation();
+            SccNode node = program.nodes()[nodeIndex];
+            long neededTimes = ceilDiv(demandedItems[nodeIndex], node.outputPerPattern());
+            long previousTimes = processTimes[nodeIndex];
+            if (neededTimes <= previousTimes) {
+                continue;
+            }
+            if (++updates > maxUpdates) {
+                return null;
+            }
+            long additionalTimes = neededTimes - previousTimes;
+            processTimes[nodeIndex] = neededTimes;
+            for (SccInput input : node.inputs()) {
+                long requiredItems = NumberUtils.saturatedMultiply(
+                        input.amountPerPattern(),
+                        additionalTimes);
+                if (requiredItems <= 0 || requiredItems == Long.MAX_VALUE) {
+                    return null;
+                }
+                long available = planningInventory.extract(input.key(), requiredItems, Actionable.MODULATE);
+                long missing = requiredItems - available;
+                if (missing <= 0) {
+                    continue;
+                }
+                if (input.internalNodeIndex() < 0) {
+                    externalDemands.merge(
+                            input.requestKey(),
+                            missing,
+                            NumberUtils::saturatedAdd);
+                    continue;
+                }
+                int childIndex = input.internalNodeIndex();
+                long updatedDemand = NumberUtils.saturatedAdd(demandedItems[childIndex], missing);
+                if (updatedDemand == Long.MAX_VALUE) {
+                    return null;
+                }
+                demandedItems[childIndex] = updatedDemand;
+                if (!queued[childIndex]) {
+                    queued[childIndex] = true;
+                    worklist.addLast(childIndex);
+                    metrics.recordSccWorklistWakeup();
+                }
+            }
+        }
+        return new SccPlanResult(processTimes, Map.copyOf(externalDemands));
+    }
+
+    private static long getSccRunnableBatches(CraftingSimulationState inventory,
+                                              SccNode node, long remainingTimes) {
+        long runnable = remainingTimes;
+        for (SccInput input : node.inputs()) {
+            long available = inventory.extract(input.key(), Long.MAX_VALUE, Actionable.SIMULATE);
+            runnable = Math.min(runnable, available / input.amountPerPattern());
+            if (runnable == 0) {
+                break;
+            }
+        }
+        return runnable;
+    }
+
+    private static boolean consumeSccInputs(CraftingSimulationState inventory, SccNode node, long times) {
+        for (SccInput input : node.inputs()) {
+            long required = NumberUtils.saturatedMultiply(input.amountPerPattern(), times);
+            if (required <= 0 || required == Long.MAX_VALUE ||
+                    inventory.extract(input.key(), required, Actionable.MODULATE) != required) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static void completeSccPattern(CraftingSimulationState inventory, SccNode node, long times) {
+        for (GenericStack output : node.outputs()) {
+            inventory.insert(
+                    output.what(),
+                    NumberUtils.saturatedMultiply(output.amount(), times),
+                    Actionable.MODULATE);
+        }
+        inventory.addCrafting(node.details(), times);
+        inventory.addBytes(times);
+    }
+
     private long tryExecuteScheduledBoundary(ICraftingTreeNode root, CraftingSimulationState inv,
                                              int nodeIndex, AggregatedNode node, long requestedAmount,
                                              AEKey[] externalAncestors, boolean recheckAvailable,
@@ -1933,15 +2641,29 @@ public final class MaxFastExecutor {
                                                    MaxFastMetrics metrics) {
         ICraftingTreeNode boundary = this.aggregatedPreparedBoundaries[nodeIndex];
         if (boundary == null) {
-            boundary = root.gtlcore$prepareMaxFastBarrier(
-                    node.key(),
-                    node.amount(),
+            BoundaryRuntimeKey cacheKey = new BoundaryRuntimeKey(
+                    node.requestKey(),
                     node.barrierPatterns(),
                     externalAncestors,
                     node.candidateGraphsEligible(),
                     node.cycleCandidateGraphEligible());
+            boundary = this.preparedBoundaryCache.get(cacheKey);
+            if (boundary == null) {
+                boundary = root.gtlcore$prepareMaxFastBarrier(
+                        node.key(),
+                        node.amount(),
+                        node.barrierPatterns(),
+                        externalAncestors,
+                        node.candidateGraphsEligible(),
+                        node.cycleCandidateGraphEligible());
+                if (this.preparedBoundaryCache.size() < PREPARED_BOUNDARY_CACHE_LIMIT) {
+                    this.preparedBoundaryCache.put(cacheKey, boundary);
+                }
+                metrics.recordAggregationBoundaryRuntimeBuild();
+            } else {
+                metrics.recordAggregationBoundaryRuntimeReuse();
+            }
             this.aggregatedPreparedBoundaries[nodeIndex] = boundary;
-            metrics.recordAggregationBoundaryRuntimeBuild();
         } else {
             metrics.recordAggregationBoundaryRuntimeReuse();
         }
@@ -2186,6 +2908,41 @@ public final class MaxFastExecutor {
         return dependencies;
     }
 
+    private static void indexBoundaryDependencies(
+                                                  int nodeIndex,
+                                                  BoundaryFailureDependencies dependencies,
+                                                  Map<Object, List<Integer>> dependencyIndex,
+                                                  List<Integer> unknownBoundaries) {
+        if (dependencies.unknown || dependencies.capacityTargets.isEmpty() || dependencies.rawRequirements.isEmpty()) {
+            unknownBoundaries.add(nodeIndex);
+            return;
+        }
+
+        Set<Object> indexedKeys = new HashSet<>();
+        for (BoundaryFailureRequirement requirement : dependencies.rawRequirements) {
+            IPatternDetails.IInput input = requirement.input();
+            if (input == null) {
+                indexedKeys.add(requirement.key().getPrimaryKey());
+                continue;
+            }
+            GenericStack[] possibleInputs = input.getPossibleInputs();
+            if (possibleInputs.length == 0) {
+                unknownBoundaries.add(nodeIndex);
+                return;
+            }
+            for (GenericStack possibleInput : possibleInputs) {
+                indexedKeys.add(possibleInput.what().getPrimaryKey());
+            }
+        }
+        if (indexedKeys.isEmpty()) {
+            unknownBoundaries.add(nodeIndex);
+            return;
+        }
+        for (Object primaryKey : indexedKeys) {
+            dependencyIndex.computeIfAbsent(primaryKey, ignored -> new ArrayList<>()).add(nodeIndex);
+        }
+    }
+
     private void executeStack(ICraftingTreeNode root, CraftingSimulationState inv, long requestedAmount,
                               @Nullable KeyCounter containerItems, boolean tryRootSegment, MaxFastMetrics metrics)
                                                                                                                    throws CraftBranchFailure,
@@ -2420,6 +3177,32 @@ public final class MaxFastExecutor {
             return this.unknown || this.rawRequirements.isEmpty() || this.capacityTargets.isEmpty();
         }
 
+        private @Nullable BoundaryFailureDependencies copyWithCapacityTargets(
+                                                                              ICraftingTreeNode root, CraftingSimulationState parentInventory) {
+            BoundaryFailureDependencies copy = new BoundaryFailureDependencies();
+            copy.addRawFrom(this);
+            copy.bindCapacityTargets(root, parentInventory);
+            return copy.isUnknown() ? null : copy;
+        }
+
+        private boolean shouldRetry(ICraftingTreeNode root, CraftingSimulationState inventory) {
+            if (isUnknown()) {
+                return true;
+            }
+
+            for (BoundaryCapacityTarget target : this.capacityTargets) {
+                long available = countAvailableTemplates(root, inventory, target.requirement());
+                if (available < 0) {
+                    this.unknown = true;
+                    return true;
+                }
+                if (available >= target.requiredCapacity()) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         private void bindCapacityTargets(ICraftingTreeNode root, CraftingSimulationState parentInventory) {
             this.capacityTargets.clear();
             if (this.unknown || this.rawRequirements.isEmpty()) {
@@ -2580,13 +3363,100 @@ public final class MaxFastExecutor {
         private final Map<AEKey, AnalyzedProgram> analyzedPrograms = new HashMap<>();
         private final Map<GraphCacheKey, GraphCompilation> graphs = new HashMap<>();
         private final Map<GraphBaseKey, List<GraphCompilation>> graphVariants = new HashMap<>();
+        private final Map<CycleFailureKey, BoundaryFailureDependencies> cycleFailures = new HashMap<>();
         private final Set<AggregatedGraph> validatedStructuralExactGraphs = Collections.newSetFromMap(new IdentityHashMap<>());
 
         public void clear() {
             this.analyzedPrograms.clear();
             this.graphs.clear();
             this.graphVariants.clear();
+            this.cycleFailures.clear();
             this.validatedStructuralExactGraphs.clear();
+        }
+    }
+
+    private static final class CycleFailureKey {
+
+        private final AEKey key;
+        private final long amount;
+        private final IPatternDetails pattern;
+        private final long requestedAmount;
+        private final AEKey[] externalAncestors;
+        private final int hash;
+
+        private CycleFailureKey(AEKey key, long amount, IPatternDetails pattern,
+                                long requestedAmount, AEKey[] externalAncestors) {
+            this.key = key;
+            this.amount = amount;
+            this.pattern = pattern;
+            this.requestedAmount = requestedAmount;
+            this.externalAncestors = externalAncestors.length == 0 ?
+                    EMPTY_EXTERNAL_ANCESTORS : externalAncestors.clone();
+            this.hash = 31 * (31 * (31 * (31 * key.hashCode() + Long.hashCode(amount)) +
+                    System.identityHashCode(pattern)) + Long.hashCode(requestedAmount)) +
+                    Arrays.hashCode(this.externalAncestors);
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (!(obj instanceof CycleFailureKey other)) {
+                return false;
+            }
+            return this.amount == other.amount && this.requestedAmount == other.requestedAmount &&
+                    this.key.equals(other.key) && this.pattern == other.pattern &&
+                    Arrays.equals(this.externalAncestors, other.externalAncestors);
+        }
+
+        @Override
+        public int hashCode() {
+            return this.hash;
+        }
+    }
+
+    private static final class BoundaryRuntimeKey {
+
+        private final RequestKey requestKey;
+        private final IPatternDetails[] barrierPatterns;
+        private final AEKey[] externalAncestors;
+        private final boolean candidateGraphsEligible;
+        private final boolean cycleCandidateGraphEligible;
+        private final int hash;
+
+        private BoundaryRuntimeKey(RequestKey requestKey, IPatternDetails[] barrierPatterns,
+                                   AEKey[] externalAncestors, boolean candidateGraphsEligible,
+                                   boolean cycleCandidateGraphEligible) {
+            this.requestKey = requestKey;
+            this.barrierPatterns = barrierPatterns.clone();
+            this.externalAncestors = externalAncestors.length == 0 ?
+                    EMPTY_EXTERNAL_ANCESTORS : externalAncestors.clone();
+            this.candidateGraphsEligible = candidateGraphsEligible;
+            this.cycleCandidateGraphEligible = cycleCandidateGraphEligible;
+            this.hash = 31 * (31 * (31 * (31 * requestKey.hashCode() + Arrays.hashCode(this.barrierPatterns)) +
+                    Arrays.hashCode(this.externalAncestors)) + Boolean.hashCode(candidateGraphsEligible)) +
+                    Boolean.hashCode(cycleCandidateGraphEligible);
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (!(obj instanceof BoundaryRuntimeKey other)) {
+                return false;
+            }
+            return this.candidateGraphsEligible == other.candidateGraphsEligible &&
+                    this.cycleCandidateGraphEligible == other.cycleCandidateGraphEligible &&
+                    this.requestKey.equals(other.requestKey) &&
+                    Arrays.equals(this.barrierPatterns, other.barrierPatterns) &&
+                    Arrays.equals(this.externalAncestors, other.externalAncestors);
+        }
+
+        @Override
+        public int hashCode() {
+            return this.hash;
         }
     }
 
@@ -2887,6 +3757,65 @@ public final class MaxFastExecutor {
         }
     }
 
+    private record SccAnalysis(boolean[] cyclicNodes, SccProgram[] programsByNode) {}
+
+    private record SccProgram(SccNode[] nodes,
+                              Map<AEKey, Integer> nodeIndexes,
+                              int[][] consumersByNode,
+                              SccRuntimeGate runtimeGate,
+                              int internalEdges) {
+
+        private int nodeIndex(AEKey key) {
+            return this.nodeIndexes.getOrDefault(key, -1);
+        }
+
+        private boolean hasExternalInputs() {
+            for (SccNode node : this.nodes) {
+                for (SccInput input : node.inputs()) {
+                    if (input.internalNodeIndex() < 0) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+    }
+
+    private static final class SccRuntimeGate {
+
+        private static final int MAX_EXTERNAL_DEFERRALS = 1;
+        private boolean disabled;
+        private int externalDeferrals;
+
+        private boolean disabled() {
+            return this.disabled;
+        }
+
+        private void disable() {
+            this.disabled = true;
+        }
+
+        private boolean tryAcquireExternalDeferral() {
+            if (this.disabled || this.externalDeferrals >= MAX_EXTERNAL_DEFERRALS) {
+                return false;
+            }
+            this.externalDeferrals++;
+            return true;
+        }
+    }
+
+    private record SccNode(AEKey key,
+                           IPatternDetails details,
+                           GenericStack[] outputs,
+                           long outputPerPattern,
+                           SccInput[] inputs) {}
+
+    private record SccInput(RequestKey requestKey,
+                            AEKey key,
+                            long amountPerPattern,
+                            int internalNodeIndex,
+                            @Nullable IPatternDetails.IInput sourceInput) {}
+
     private static final class AggregatedNode {
 
         private final int index;
@@ -2906,6 +3835,8 @@ public final class MaxFastExecutor {
         private IPatternDetails[] barrierPatterns;
         private boolean candidateGraphsEligible;
         private boolean cycleCandidateGraphEligible;
+        private @Nullable SccProgram sccProgram;
+        private boolean sccExternalDependenciesEligible;
 
         private AggregatedNode(int index, RequestKey requestKey) {
             this.index = index;
@@ -2954,6 +3885,16 @@ public final class MaxFastExecutor {
                 this.edges = new ArrayList<>();
             }
             this.edges.add(edge);
+        }
+
+        private boolean addEdgeIfAbsent(int childIndex) {
+            for (AggregatedEdge edge : this.edges()) {
+                if (edge.childIndex() == childIndex) {
+                    return false;
+                }
+            }
+            this.addEdge(new AggregatedEdge(childIndex, 1L, 1));
+            return true;
         }
 
         private IPatternDetails details() {
@@ -3014,6 +3955,14 @@ public final class MaxFastExecutor {
             return this.cycleCandidateGraphEligible;
         }
 
+        private @Nullable SccProgram sccProgram() {
+            return this.sccProgram;
+        }
+
+        private boolean sccExternalDependenciesEligible() {
+            return this.sccExternalDependenciesEligible;
+        }
+
         private void setBarrier(List<CandidateAnalysis> candidates, boolean candidateGraphsEligible,
                                 boolean cycleCandidateGraphEligible) {
             this.barrier = true;
@@ -3023,6 +3972,14 @@ public final class MaxFastExecutor {
             for (int i = 0; i < candidates.size(); i++) {
                 this.barrierPatterns[i] = candidates.get(i).details();
             }
+        }
+
+        private void setSccProgram(@Nullable SccProgram sccProgram) {
+            this.sccProgram = sccProgram;
+        }
+
+        private void setSccExternalDependenciesEligible(boolean eligible) {
+            this.sccExternalDependenciesEligible = eligible;
         }
     }
 

@@ -1,12 +1,16 @@
 package org.gtlcore.gtlcore.mixin.extendedae;
 
+import org.gtlcore.gtlcore.client.ae2.JeiTerminalSearchTarget;
+import org.gtlcore.gtlcore.client.ae2.PatternSearchHighlight;
 import org.gtlcore.gtlcore.client.ae2.wireless.UniversalSearch;
 import org.gtlcore.gtlcore.integration.ae2.pattern.PatternEncoderMetadata;
 
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
 
+import appeng.client.gui.me.patternaccess.PatternSlot;
 import appeng.client.gui.style.ScreenStyle;
 import appeng.client.gui.widgets.AETextField;
 import com.glodblock.github.extendedae.client.gui.GuiExPatternTerminal;
@@ -23,7 +27,7 @@ import java.util.List;
 import java.util.Set;
 
 @Mixin(value = GuiExPatternTerminal.class, remap = false)
-public abstract class GuiExPatternTerminalMixin {
+public abstract class GuiExPatternTerminalMixin implements JeiTerminalSearchTarget {
 
     @Shadow
     @Final
@@ -32,6 +36,16 @@ public abstract class GuiExPatternTerminalMixin {
     @Shadow
     @Final
     private AETextField searchOutField;
+
+    @Shadow
+    @Final
+    private AETextField searchInField;
+
+    @Override
+    public void gtlcore$setJeiSearchText(String searchText) {
+        AETextField targetField = this.searchInField.isFocused() ? this.searchInField : this.searchOutField;
+        targetField.setValue(searchText);
+    }
 
     @Inject(method = "<init>", at = @At("RETURN"))
     private void gtlcore$updateOutputSearchTooltip(ContainerExPatternTerminal menu, Inventory inventory,
@@ -54,6 +68,20 @@ public abstract class GuiExPatternTerminalMixin {
         if (searchTokens.stream().allMatch(searchToken -> UniversalSearch.contains(encoderName, searchToken))) {
             this.matchedStack.add(stack);
             cir.setReturnValue(true);
+        }
+    }
+
+    @Inject(method = "drawFG", at = @At("TAIL"))
+    private void gtlcore$drawMatchedPatternBorders(GuiGraphics graphics, int offsetX, int offsetY,
+                                                   int mouseX, int mouseY, CallbackInfo ci) {
+        if (this.searchOutField.getValue().isEmpty() && this.searchInField.getValue().isEmpty()) {
+            return;
+        }
+        var menu = ((GuiExPatternTerminal<?>) (Object) this).getMenu();
+        for (var slot : menu.slots) {
+            if (slot instanceof PatternSlot patternSlot && this.matchedStack.contains(patternSlot.getItem())) {
+                PatternSearchHighlight.drawBorder(graphics, patternSlot.x, patternSlot.y);
+            }
         }
     }
 }

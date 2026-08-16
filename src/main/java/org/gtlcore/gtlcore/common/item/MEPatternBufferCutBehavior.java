@@ -13,10 +13,12 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelReader;
 
 import org.jetbrains.annotations.NotNull;
 
@@ -70,33 +72,52 @@ public class MEPatternBufferCutBehavior extends TooltipBehavior implements IInte
 
     @Override
     public InteractionResult onItemUseFirst(ItemStack itemStack, UseOnContext context) {
-        if (context.getLevel().getBlockEntity(context.getClickedPos()) instanceof MetaMachineBlockEntity machineBlock) {
-            if (machineBlock.getMetaMachine() instanceof MEPatternBufferPartMachine partMachine) {
-                if (context.getPlayer() instanceof ServerPlayer serverPlayer) {
-                    var tags = getBehaviorsTag(itemStack);
-                    if (!serverPlayer.isShiftKeyDown()) {
-                        if (tags.isEmpty() || !tags.contains("cut")) serverPlayer.displayClientMessage(Component.translatable("message.gtlcore.pattern_buffer_not_cut"), true);
-                        else {
-                            if (!partMachine.pasteFromTag(tags.getCompound("cut"))) {
-                                serverPlayer.displayClientMessage(Component.translatable("message.gtlcore.pattern_buffer_paste_failed"), true);
-                                return InteractionResult.CONSUME;
-                            } else tags.remove("cut");
-                        }
-                    } else {
-                        if (hasCutData(itemStack)) {
-                            serverPlayer.displayClientMessage(
-                                    Component.translatable("message.gtlcore.pattern_buffer_cut_already_present"),
-                                    true);
-                            return InteractionResult.CONSUME;
-                        }
-                        tags = partMachine.cutToTag(tags);
-                        if (tags.isEmpty() || !tags.contains("cut") || tags.getCompound("cut").isEmpty()) serverPlayer.displayClientMessage(Component.translatable("message.gtlcore.pattern_buffer_cut_failed"), true);
-                        else serverPlayer.displayClientMessage(Component.translatable("message.gtlcore.pattern_buffer_cut"), true);
-                    }
-                }
-            }
+        if (!(context.getLevel().getBlockEntity(context.getClickedPos()) instanceof MetaMachineBlockEntity machineBlock) ||
+                !(machineBlock.getMetaMachine() instanceof MEPatternBufferPartMachine partMachine)) {
+            return InteractionResult.PASS;
         }
-        return InteractionResult.PASS;
+
+        if (!(context.getPlayer() instanceof ServerPlayer serverPlayer)) {
+            return InteractionResult.SUCCESS;
+        }
+
+        var tags = getBehaviorsTag(itemStack);
+        if (!serverPlayer.isShiftKeyDown()) {
+            if (!tags.contains(CUT_TAG) || tags.getCompound(CUT_TAG).isEmpty()) {
+                serverPlayer.displayClientMessage(
+                        Component.translatable("message.gtlcore.pattern_buffer_not_cut"), true);
+            } else if (!partMachine.pasteFromTag(tags.getCompound(CUT_TAG))) {
+                serverPlayer.displayClientMessage(
+                        Component.translatable("message.gtlcore.pattern_buffer_paste_failed"), true);
+            } else {
+                tags.remove(CUT_TAG);
+                serverPlayer.getInventory().setChanged();
+            }
+            return InteractionResult.CONSUME;
+        }
+
+        if (hasCutData(itemStack)) {
+            serverPlayer.displayClientMessage(
+                    Component.translatable("message.gtlcore.pattern_buffer_cut_already_present"),
+                    true);
+            return InteractionResult.CONSUME;
+        }
+
+        partMachine.cutToTag(tags);
+        if (!tags.contains(CUT_TAG) || tags.getCompound(CUT_TAG).isEmpty()) {
+            serverPlayer.displayClientMessage(
+                    Component.translatable("message.gtlcore.pattern_buffer_cut_failed"), true);
+        } else {
+            serverPlayer.getInventory().setChanged();
+            serverPlayer.displayClientMessage(
+                    Component.translatable("message.gtlcore.pattern_buffer_cut"), true);
+        }
+        return InteractionResult.CONSUME;
+    }
+
+    @Override
+    public boolean sneakBypassUse(ItemStack stack, LevelReader level, BlockPos pos, Player player) {
+        return true;
     }
 
     public static boolean hasCutData(ItemStack stack) {

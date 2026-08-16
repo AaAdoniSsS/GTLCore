@@ -780,16 +780,29 @@ public abstract class CraftingTreeNodeMixin implements ICraftingTreeNode {
             return false;
         }
 
+        IPatternDetails details = process.getDetails();
+        if (this.amount <= 0 || requestedAmount <= 0 || !process.getPossible() ||
+                process.limitsQuantityTest() || process.gtlcore$hasContainerItems() ||
+                !gTLCore$isAllowedByMaxFastExternalAncestors(details)) {
+            metrics.recordAggregationCycleCandidateGraphStructuralFallback();
+            return false;
+        }
+
+        gTLCore$prepareMaxFastCycleCandidateGraph(details, calculation);
+        if (this.gTLCore$maxFastCycleCandidateGraphExecutor.shouldBypassCycleCandidateFailure(
+                this,
+                inv,
+                this.what,
+                this.amount,
+                details,
+                requestedAmount,
+                this.gTLCore$maxFastExternalAncestors)) {
+            metrics.recordAggregationCycleCandidateGraphSharedFailureCacheHit();
+            return false;
+        }
+
         metrics.recordAggregationCycleCandidateGraphAttempt();
         try {
-            if (this.amount <= 0 || requestedAmount <= 0 || !process.getPossible() ||
-                    process.limitsQuantityTest() || process.gtlcore$hasContainerItems() ||
-                    !gTLCore$isAllowedByMaxFastExternalAncestors(process.getDetails())) {
-                metrics.recordAggregationCycleCandidateGraphStructuralFallback();
-                return false;
-            }
-
-            gTLCore$prepareMaxFastCycleCandidateGraph(process.getDetails(), calculation);
             if (this.gTLCore$maxFastCycleCandidateGraphFailures == null) {
                 this.gTLCore$maxFastCycleCandidateGraphFailures = new BoundaryFailureDependencies();
             }
@@ -806,6 +819,17 @@ public abstract class CraftingTreeNodeMixin implements ICraftingTreeNode {
                     metrics.recordAggregationCycleCandidateGraphStructuralFallback();
                 } else {
                     metrics.recordAggregationCycleCandidateGraphExecutionFallback();
+                    if (this.gTLCore$maxFastCycleCandidateGraphExecutor.cacheCycleCandidateFailure(
+                            this,
+                            inv,
+                            this.what,
+                            this.amount,
+                            details,
+                            requestedAmount,
+                            this.gTLCore$maxFastExternalAncestors,
+                            this.gTLCore$maxFastCycleCandidateGraphFailures)) {
+                        metrics.recordAggregationCycleCandidateGraphSharedFailureCacheStore();
+                    }
                 }
                 return false;
             }

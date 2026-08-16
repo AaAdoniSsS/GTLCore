@@ -3,6 +3,7 @@ package org.gtlcore.gtlcore.mixin.ae2.service;
 import org.gtlcore.gtlcore.common.machine.multiblock.electric.TransfiniteComputationArrayMachine;
 import org.gtlcore.gtlcore.common.machine.multiblock.part.ae.MECraftingCPUInterfacePartMachine;
 import org.gtlcore.gtlcore.config.ConfigHolder;
+import org.gtlcore.gtlcore.integration.ae2.crafting.IMaxFastCraftingProviderVersion;
 import org.gtlcore.gtlcore.integration.ae2.crafting.transfinite.TransfiniteCraftingCPU;
 import org.gtlcore.gtlcore.utils.NumberUtils;
 
@@ -18,12 +19,14 @@ import appeng.api.networking.crafting.ICraftingSubmitResult;
 import appeng.api.networking.crafting.UnsuitableCpus;
 import appeng.api.networking.energy.IEnergyService;
 import appeng.api.networking.security.IActionSource;
+import appeng.api.networking.storage.IStorageService;
 import appeng.api.stacks.AEKey;
 import appeng.crafting.CraftingLink;
 import appeng.crafting.execution.CraftingSubmitResult;
 import appeng.hooks.ticking.TickHandler;
 import appeng.me.cluster.implementations.CraftingCPUCluster;
 import appeng.me.service.CraftingService;
+import appeng.me.service.helpers.NetworkCraftingProviders;
 import com.google.common.collect.ImmutableSet;
 import org.apache.commons.lang3.mutable.MutableObject;
 import org.objectweb.asm.Opcodes;
@@ -43,7 +46,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 @Mixin(CraftingService.class)
-public abstract class CraftingServiceMixin {
+public abstract class CraftingServiceMixin implements IMaxFastCraftingProviderVersion {
 
     @Unique
     private static final int CRAFT_MASK = NumberUtils.nearestPow2Lookup(
@@ -55,7 +58,10 @@ public abstract class CraftingServiceMixin {
             .thenComparingLong(TransfiniteComputationArrayMachine::getAvailableStorage);
 
     @Unique
-    private final Set<TransfiniteComputationArrayMachine> gtlcore$transfiniteControllers = new HashSet<>();
+    private Set<TransfiniteComputationArrayMachine> gtlcore$transfiniteControllers;
+
+    @Unique
+    private Set<AEKey> gtlcore$lastTransfiniteRequests;
 
     @Shadow(remap = false)
     @Final
@@ -64,6 +70,10 @@ public abstract class CraftingServiceMixin {
     @Shadow(remap = false)
     @Final
     private IEnergyService energyGrid;
+
+    @Shadow(remap = false)
+    @Final
+    private NetworkCraftingProviders craftingProviders;
 
     @Shadow(remap = false)
     @Final
@@ -77,6 +87,19 @@ public abstract class CraftingServiceMixin {
 
     @Shadow(remap = false)
     public abstract void addLink(CraftingLink link);
+
+    @Inject(method = "<init>", at = @At("RETURN"), remap = false)
+    private void gtlcore$initializeTransfiniteState(IGrid grid, IStorageService storageService,
+                                                    IEnergyService energyService, CallbackInfo ci) {
+        this.gtlcore$transfiniteControllers = new HashSet<>();
+        this.gtlcore$lastTransfiniteRequests = Set.of();
+    }
+
+    @Override
+    @Unique
+    public long gtlcore$getMaxFastCraftingProviderVersionTick() {
+        return this.craftingProviders.getLastModifiedOnTick();
+    }
 
     @Inject(method = "onServerEndTick", at = @At("HEAD"), cancellable = true, remap = false)
     private void gtlcore$limitCraftingServiceUpdates(CallbackInfo ci) {
@@ -94,12 +117,18 @@ public abstract class CraftingServiceMixin {
             remap = false)
     private void gtlcore$tickTransfiniteCpus(CallbackInfo ci, long latestChange) {
         long latestTransfiniteChange = 0;
+        Set<AEKey> currentTransfiniteRequests = new HashSet<>();
         CraftingService craftingService = (CraftingService) (Object) this;
         for (TransfiniteComputationArrayMachine controller : this.gtlcore$transfiniteControllers) {
             latestTransfiniteChange = Math.max(latestTransfiniteChange,
                     controller.tickCraftingCpus(this.energyGrid, craftingService));
+            controller.collectRequestingKeys(currentTransfiniteRequests);
         }
-        if (latestTransfiniteChange > latestChange) {
+        boolean requestsChanged = !currentTransfiniteRequests.equals(this.gtlcore$lastTransfiniteRequests);
+        if (requestsChanged) {
+            this.gtlcore$lastTransfiniteRequests = Set.copyOf(currentTransfiniteRequests);
+        }
+        if (latestTransfiniteChange > latestChange || requestsChanged) {
             this.lastProcessedCraftingLogicChangeTick = -1;
         }
     }
@@ -112,7 +141,7 @@ public abstract class CraftingServiceMixin {
             remap = false)
     private void gtlcore$collectTransfiniteWaitingItems(CallbackInfo ci) {
         for (TransfiniteComputationArrayMachine controller : this.gtlcore$transfiniteControllers) {
-            controller.collectWaitingFor(this.currentlyCrafting);
+            controller.collectRequestingKeys(this.currentlyCrafting);
         }
     }
 
@@ -250,6 +279,32 @@ public abstract class CraftingServiceMixin {
             requested = NumberUtils.saturatedAdd(requested, controller.getRequestedAmount(what));
         }
         cir.setReturnValue(requested);
+    }
+
+    @Inject(method = "isRequesting", at = @At("RETURN"), cancellable = true, remap = false)
+    private void gtlcore$isTransfiniteRequesting(AEKey what, CallbackInfoReturnable<Boolean> cir) {
+        if (cir.getReturnValue()) {
+            return;
+        }
+        for (TransfiniteComputationArrayMachine controller : this.gtlcore$transfiniteControllers) {
+            if (controller.isRequesting(what)) {
+                cir.setReturnValue(true);
+                return;
+            }
+        }
+    }
+
+    @Inject(method = "isRequestingAny", at = @At("RETURN"), cancellable = true, remap = false)
+    private void gtlcore$isTransfiniteRequestingAny(CallbackInfoReturnable<Boolean> cir) {
+        if (cir.getReturnValue()) {
+            return;
+        }
+        for (TransfiniteComputationArrayMachine controller : this.gtlcore$transfiniteControllers) {
+            if (controller.isRequestingAny()) {
+                cir.setReturnValue(true);
+                return;
+            }
+        }
     }
 
     @Inject(method = "hasCpu", at = @At("HEAD"), cancellable = true, remap = false)

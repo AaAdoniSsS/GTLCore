@@ -503,15 +503,15 @@ public class MEPatternBufferPartMachine extends MEPatternBufferPartMachineBase {
     }
 
     public boolean pasteFromTag(CompoundTag tag) {
-        this.setCustomName(tag.getString("name"));
-        this.keepByProduct = tag.getBoolean("keepByProduct");
-
         var patternList = tag.getList("patterns", Tag.TAG_COMPOUND);
         int usedCount = 0;
         for (ItemStack ignored : internalPatternInventory) {
             usedCount++;
         }
         if (internalPatternInventory.size() - usedCount < patternList.size()) return false;
+
+        this.setCustomName(tag.getString("name"));
+        this.keepByProduct = tag.getBoolean("keepByProduct");
 
         int listIndex = 0;
         for (int slotIndex = 0; slotIndex < internalPatternInventory.size() && listIndex < patternList.size(); slotIndex++) {
@@ -547,6 +547,7 @@ public class MEPatternBufferPartMachine extends MEPatternBufferPartMachineBase {
 
         this.sharedCatalystTank.onContentsChanged();
         this.sharedCatalystInventory.onContentsChanged();
+        this.sharedCircuitInventory.onContentsChanged();
 
         releaseProxies();
 
@@ -558,6 +559,7 @@ public class MEPatternBufferPartMachine extends MEPatternBufferPartMachineBase {
         }
 
         refreshAllByProduct();
+        markDirty();
 
         return true;
     }
@@ -569,7 +571,7 @@ public class MEPatternBufferPartMachine extends MEPatternBufferPartMachineBase {
         tag.putLong("bufferPos", getPos().asLong());
 
         var listPattern = new ListTag();
-        for (int slotIndex : patternSlotMap.values().stream().toList()) {
+        for (int slotIndex = 0; slotIndex < internalPatternInventory.size(); slotIndex++) {
             ItemStack stack = internalPatternInventory.getStackInSlot(slotIndex);
             if (stack.isEmpty()) continue;
 
@@ -590,6 +592,7 @@ public class MEPatternBufferPartMachine extends MEPatternBufferPartMachineBase {
 
             catalystItems[slotIndex].onContentsChanged();
             catalystFluids[slotIndex].onContentsChanged();
+            cacheRecipeCount[slotIndex] = 1;
         }
         tag.put("patterns", listPattern);
         tag.put("sharedCatalystInventory", sharedCatalystInventory.storage.serializeNBT());
@@ -609,12 +612,15 @@ public class MEPatternBufferPartMachine extends MEPatternBufferPartMachineBase {
         for (int i = 0; i < sharedCatalystTank.getTanks(); i++) {
             sharedCatalystTank.setFluidInTank(i, FluidStack.empty());
         }
+        sharedCircuitInventory.setStackInSlot(0, ItemStack.EMPTY);
         sharedCatalystInventory.onContentsChanged();
         sharedCatalystTank.onContentsChanged();
+        sharedCircuitInventory.onContentsChanged();
 
         releaseProxies();
 
         tags.put("cut", tag);
+        markDirty();
         return tags;
     }
 

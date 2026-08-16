@@ -7,6 +7,7 @@ import appeng.api.stacks.KeyCounter;
 import appeng.api.storage.MEStorage;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -17,6 +18,8 @@ public final class ManualCraftingInventoryLock {
 
     private static final Map<MEStorage, KeyCounter> RESERVED = new WeakHashMap<>();
     private static final ThreadLocal<Reservation> ACTIVE_SUBMISSION = new ThreadLocal<>();
+    // Availability simulation can re-enter the same network through a mounted inventory.
+    private static final ThreadLocal<IdentityHashMap<MEStorage, Boolean>> AVAILABILITY_QUERIES = new ThreadLocal<>();
     private static final AtomicLong NEXT_RESERVATION_ID = new AtomicLong();
 
     private ManualCraftingInventoryLock() {}
@@ -78,6 +81,10 @@ public final class ManualCraftingInventoryLock {
         if (requested <= 0) {
             return requested;
         }
+        var availabilityQueries = AVAILABILITY_QUERIES.get();
+        if (availabilityQueries != null && availabilityQueries.containsKey(storage)) {
+            return requested;
+        }
 
         long reservedForOthers;
         synchronized (RESERVED) {
@@ -96,8 +103,7 @@ public final class ManualCraftingInventoryLock {
             return requested;
         }
 
-        long available = storage instanceof AvailabilityView view ?
-                view.gtlcore$getAvailableAmount(what, source) : getAvailableAmount(storage, what);
+        long available = getPhysicalAvailableAmount(storage, what, source);
         long extractable = subtractClamped(available, reservedForOthers);
         long allowed = Math.min(requested, extractable);
         if (allowed < requested) {
@@ -107,10 +113,26 @@ public final class ManualCraftingInventoryLock {
         return allowed;
     }
 
-    private static long getAvailableAmount(MEStorage storage, AEKey what) {
-        var available = new KeyCounter();
-        storage.getAvailableStacks(available);
-        return available.get(what);
+    private static long getPhysicalAvailableAmount(MEStorage storage, AEKey what, IActionSource source) {
+        var availabilityQueries = AVAILABILITY_QUERIES.get();
+        if (availabilityQueries == null) {
+            availabilityQueries = new IdentityHashMap<>();
+            AVAILABILITY_QUERIES.set(availabilityQueries);
+        }
+        availabilityQueries.put(storage, Boolean.TRUE);
+        try {
+            if (storage instanceof AvailabilityView view) {
+                return view.gtlcore$getAvailableAmount(what, source);
+            }
+            var available = new KeyCounter();
+            storage.getAvailableStacks(available);
+            return available.get(what);
+        } finally {
+            availabilityQueries.remove(storage);
+            if (availabilityQueries.isEmpty()) {
+                AVAILABILITY_QUERIES.remove();
+            }
+        }
     }
 
     private static long subtractClamped(long value, long deduction) {

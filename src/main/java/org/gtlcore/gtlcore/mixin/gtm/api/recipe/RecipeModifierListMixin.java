@@ -2,6 +2,7 @@ package org.gtlcore.gtlcore.mixin.gtm.api.recipe;
 
 import org.gtlcore.gtlcore.api.recipe.BatchProcessing;
 import org.gtlcore.gtlcore.api.recipe.IAdvancedOCResult;
+import org.gtlcore.gtlcore.api.recipe.RecipeMultiplierTracker;
 import org.gtlcore.gtlcore.utils.NumberUtils;
 
 import com.gregtechceu.gtceu.api.capability.recipe.EURecipeCapability;
@@ -42,12 +43,20 @@ public abstract class RecipeModifierListMixin {
     public GTRecipe apply(MetaMachine machine, @NotNull GTRecipe recipe, @NotNull OCParams params, @NotNull OCResult result) {
         GTRecipe modifiedRecipe = recipe;
         boolean isSubTickParallelized = false;
+        RecipeMultiplierTracker.begin(machine, recipe);
 
         for (RecipeModifier modifier : this.modifiers) {
             if (modifiedRecipe != null) {
+                GTRecipe beforeModifier = modifiedRecipe;
+                int resultDurationBefore = result.getDuration();
                 modifiedRecipe = modifier.apply(machine, modifiedRecipe, params, result);
+                if (resultDurationBefore == 0 && result.getDuration() != 0) {
+                    RecipeMultiplierTracker.captureBeforeOverclock(machine, beforeModifier);
+                }
             }
         }
+
+        RecipeMultiplierTracker.finish(machine, modifiedRecipe != null);
 
         if (modifiedRecipe != null && result.getDuration() != 0) {
             modifiedRecipe.duration = result.getDuration();

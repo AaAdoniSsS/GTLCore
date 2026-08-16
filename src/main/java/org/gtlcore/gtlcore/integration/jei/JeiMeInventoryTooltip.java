@@ -1,7 +1,9 @@
 package org.gtlcore.gtlcore.integration.jei;
 
 import org.gtlcore.gtlcore.client.ae2.MeInventoryAmountClient;
+import org.gtlcore.gtlcore.utils.TextUtil;
 
+import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.FormattedText;
 import net.minecraft.world.inventory.tooltip.TooltipComponent;
 import net.minecraft.world.item.ItemStack;
@@ -20,6 +22,7 @@ import mezz.jei.api.ingredients.ITypedIngredient;
 import mezz.jei.api.runtime.IJeiRuntime;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.Optional;
 
 public final class JeiMeInventoryTooltip {
@@ -147,8 +150,22 @@ public final class JeiMeInventoryTooltip {
             if (key == null) {
                 return;
             }
+            Optional<ITypedIngredient<?>> overlayIngredient = getHoveredIngredient(runtime);
+            if (overlayIngredient.isPresent() && toKey(overlayIngredient.get()) instanceof AEFluidKey fluidKey) {
+                appendChemicalFormula(event, fluidKey);
+            }
             MeInventoryAmountClient.getTooltip(key).ifPresent(component -> event.getTooltipElements()
                     .add(Either.<FormattedText, TooltipComponent>left(component)));
+        }
+
+        private static void appendChemicalFormula(RenderTooltipEvent.GatherComponents event, AEFluidKey fluidKey) {
+            var formula = new ArrayList<Component>(1);
+            TextUtil.appendChemicalFormulaTooltip(fluidKey.getFluid(), formula);
+            if (!formula.isEmpty()) {
+                event.getTooltipElements().add(
+                        Math.min(1, event.getTooltipElements().size()),
+                        Either.<FormattedText, TooltipComponent>left(formula.get(0)));
+            }
         }
     }
 }
