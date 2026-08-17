@@ -108,6 +108,7 @@
   "config.gtlcore.option.enablePrimitiveVoidOre": "Enable Primitive Void Ore Miner",
   "config.gtlcore.option.enableMaxFastCalculationLogging": "Enable MAX_FAST Calculation Performance Logging",
   "config.gtlcore.option.enableAe2CraftingDispatchPerformanceLogging": "Enable AE2 Crafting Dispatch Performance Logging",
+  "config.gtlcore.option.enableWorldLoadPerformanceLogging": "Enable Dedicated World Load Performance Logging",
   "config.gtlcore.option.ae2CraftingDispatchPerformanceWarningMicros": "AE2 Crafting Dispatch Performance Warning Threshold (Microseconds)",
   "config.gtlcore.option.ae2CraftingDispatchPerformanceLogIntervalTicks": "AE2 Crafting Dispatch Performance Log Interval (Ticks)",
   "config.gtlcore.option.enableSkyBlokeMode": "Enable Skyblock Mode",

@@ -1,16 +1,14 @@
 package org.gtlcore.gtlcore.integration.ae2.wireless;
 
 import org.gtlcore.gtlcore.integration.ae2.WirelessTerminalGridResolver;
+import org.gtlcore.gtlcore.utils.FluidBucketUtil;
 
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraftforge.fluids.FluidStack;
-import net.minecraftforge.fluids.FluidType;
-import net.minecraftforge.fluids.FluidUtil;
 
 import appeng.api.config.Actionable;
+import appeng.api.config.PowerMultiplier;
 import appeng.api.networking.security.IActionSource;
 import appeng.api.stacks.AEFluidKey;
 import appeng.api.stacks.AEItemKey;
@@ -19,6 +17,8 @@ import appeng.api.storage.MEStorage;
 import appeng.api.storage.StorageHelper;
 
 public final class WirelessTerminalExtractionService {
+
+    private static final int MAX_FLUID_EXTRACTION_ATTEMPTS = 16;
 
     private WirelessTerminalExtractionService() {}
 
@@ -65,46 +65,48 @@ public final class WirelessTerminalExtractionService {
 
     private static boolean extractFluid(ServerPlayer player, WirelessTerminalGridResolver.Connection connection,
                                         MEStorage storage, IActionSource source, AEFluidKey key) {
-        ItemStack filledBucket = FluidUtil.getFilledBucket(new FluidStack(
-                key.getFluid(), FluidType.BUCKET_VOLUME, key.copyTag()));
+        ItemStack filledBucket = FluidBucketUtil.getFilledBucket(new FluidStack(
+                key.getFluid(), AEFluidKey.AMOUNT_BUCKET, key.copyTag()));
         if (filledBucket.isEmpty()) {
             return false;
         }
 
-        Inventory inventory = player.getInventory();
-        int bucketSlot = findEmptyBucket(inventory);
-        if (bucketSlot < 0) {
+        AEItemKey bucketKey = AEItemKey.of(filledBucket);
+        if (bucketKey != null && extractItem(player, connection, storage, source, bucketKey)) {
+            return true;
+        }
+
+        double requiredPower = (double) AEFluidKey.AMOUNT_BUCKET / Math.max(1, key.getAmountPerOperation());
+        double availablePower = connection.host()
+                .extractAEPower(requiredPower, Actionable.SIMULATE, PowerMultiplier.CONFIG);
+        if (availablePower < requiredPower) {
             return false;
         }
 
-        long available = StorageHelper.poweredExtraction(
-                connection.host(), storage, key, FluidType.BUCKET_VOLUME, source, Actionable.SIMULATE);
-        if (available < FluidType.BUCKET_VOLUME) {
-            return false;
-        }
-
-        long extracted = StorageHelper.poweredExtraction(
-                connection.host(), storage, key, FluidType.BUCKET_VOLUME, source);
-        if (extracted != FluidType.BUCKET_VOLUME) {
+        long extracted = extractFluidAmount(storage, source, key, AEFluidKey.AMOUNT_BUCKET);
+        if (extracted != AEFluidKey.AMOUNT_BUCKET) {
             if (extracted > 0) {
                 storage.insert(key, extracted, Actionable.MODULATE, source);
             }
             connection.syncTerminalStack(player);
             return false;
         }
+        connection.host().extractAEPower(requiredPower, Actionable.MODULATE, PowerMultiplier.CONFIG);
 
-        inventory.getItem(bucketSlot).shrink(1);
         player.containerMenu.setCarried(filledBucket);
         connection.syncTerminalStack(player);
         return true;
     }
 
-    private static int findEmptyBucket(Inventory inventory) {
-        for (int slot = 0; slot < inventory.items.size(); slot++) {
-            if (inventory.getItem(slot).is(Items.BUCKET)) {
-                return slot;
+    private static long extractFluidAmount(MEStorage storage, IActionSource source, AEFluidKey key, long requested) {
+        long extracted = 0;
+        for (int attempt = 0; attempt < MAX_FLUID_EXTRACTION_ATTEMPTS && extracted < requested; attempt++) {
+            long current = storage.extract(key, requested - extracted, Actionable.MODULATE, source);
+            if (current <= 0) {
+                break;
             }
+            extracted += current;
         }
-        return -1;
+        return extracted;
     }
 }

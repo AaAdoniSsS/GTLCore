@@ -108,6 +108,7 @@
   "config.gtlcore.option.enablePrimitiveVoidOre": "启用原始虚空矿机",
   "config.gtlcore.option.enableMaxFastCalculationLogging": "启用MAX_FAST计算性能日志",
   "config.gtlcore.option.enableAe2CraftingDispatchPerformanceLogging": "启用AE2合成发配性能日志",
+  "config.gtlcore.option.enableWorldLoadPerformanceLogging": "启用世界加载性能独立日志",
   "config.gtlcore.option.ae2CraftingDispatchPerformanceWarningMicros": "AE2合成发配性能警告阈值（微秒）",
   "config.gtlcore.option.ae2CraftingDispatchPerformanceLogIntervalTicks": "AE2合成发配性能日志间隔（Tick）",
   "config.gtlcore.option.enableSkyBlokeMode": "启用空岛模式",

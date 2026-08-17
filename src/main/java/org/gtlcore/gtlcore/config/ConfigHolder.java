@@ -117,6 +117,14 @@ public class ConfigHolder {
     })
     public boolean enableMachineStartupTickBudget = true;
     @Configurable
+    @Configurable.Comment({
+            "记录服务器世界加载、维度加载事件和玩家进入世界的耗时，并输出优化候选。",
+            "日志文件：logs/gtlcore/world-load-performance-*.log",
+            "Record server world loading, dimension load events, and player world-entry timings with optimization candidates.",
+            "Log file: logs/gtlcore/world-load-performance-*.log"
+    })
+    public boolean enableWorldLoadPerformanceLogging = false;
+    @Configurable
     @Configurable.Comment("每个维度每 tick 最多首次激活的普通 GT 机器数量")
     @Configurable.Range(min = 1, max = 4096)
     public int machineStartupTickBudgetPerLevel = DEFAULT_MACHINE_STARTUP_TICK_BUDGET_PER_LEVEL;

@@ -56,7 +56,7 @@ public abstract class RecipeModifierListMixin {
             }
         }
 
-        RecipeMultiplierTracker.finish(machine, modifiedRecipe != null);
+        RecipeMultiplierTracker.finish(machine, modifiedRecipe);
 
         if (modifiedRecipe != null && result.getDuration() != 0) {
             modifiedRecipe.duration = result.getDuration();

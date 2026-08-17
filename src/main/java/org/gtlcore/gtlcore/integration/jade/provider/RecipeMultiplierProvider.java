@@ -6,9 +6,7 @@ import org.gtlcore.gtlcore.api.recipe.RecipeMultiplierTracker;
 import org.gtlcore.gtlcore.common.machine.trait.MultipleRecipesLogic;
 
 import com.gregtechceu.gtceu.api.machine.MetaMachine;
-import com.gregtechceu.gtceu.api.machine.MultiblockMachineDefinition;
 import com.gregtechceu.gtceu.api.machine.feature.IRecipeLogicMachine;
-import com.gregtechceu.gtceu.api.machine.feature.multiblock.IMultiController;
 import com.gregtechceu.gtceu.api.recipe.GTRecipe;
 import com.gregtechceu.gtceu.api.recipe.RecipeHelper;
 import com.gregtechceu.gtceu.integration.jade.provider.CapabilityBlockProvider;
@@ -19,7 +17,6 @@ import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.contents.TranslatableContents;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -31,15 +28,12 @@ import snownee.jade.api.config.IPluginConfig;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.ArrayList;
 import java.util.Optional;
 
 public final class RecipeMultiplierProvider extends CapabilityBlockProvider<IRecipeLogicMachine> {
 
     private static final String ENERGY_MULTIPLIER_TAG = "energy_multiplier";
     private static final String DURATION_MULTIPLIER_TAG = "duration_multiplier";
-    private static final String ENERGY_MULTIPLIER_DISPLAY = "gtceu.machine.eut_multiplier.tooltip";
-    private static final String DURATION_MULTIPLIER_DISPLAY = "gtceu.machine.duration_multiplier.tooltip";
     private static final int PERCENT_SCALE = 2;
 
     public RecipeMultiplierProvider() {
@@ -55,22 +49,19 @@ public final class RecipeMultiplierProvider extends CapabilityBlockProvider<IRec
     @Override
     protected void write(CompoundTag data, IRecipeLogicMachine capability) {
         var recipeLogic = capability.getRecipeLogic();
-        GTRecipe originalRecipe = recipeLogic.getLastOriginRecipe();
-        GTRecipe modifiedRecipe = recipeLogic.getLastRecipe();
+        GTRecipe currentOriginRecipe = recipeLogic.getLastOriginRecipe();
+        GTRecipe currentRecipe = recipeLogic.getLastRecipe();
 
         Optional<RecipeMultiplierTracker.Multipliers> multipliers;
         if (recipeLogic instanceof MultipleRecipesLogic multipleRecipesLogic) {
-            multipliers = Optional.of(new RecipeMultiplierTracker.Multipliers(
+            var tracked = new RecipeMultiplierTracker.Multipliers(
                     multipleRecipesLogic.getReductionEUt(),
-                    multipleRecipesLogic.getReductionDuration()));
+                    multipleRecipesLogic.getReductionDuration());
+            multipliers = Optional.of(tracked);
         } else {
             Optional<RecipeMultiplierTracker.Multipliers> tracked = RecipeMultiplierTracker.get(capability.self());
-            Optional<RecipeMultiplierTracker.Multipliers> displayed = modifiedRecipe == null || tracked.isEmpty() ?
-                    readDisplayedMultipliers(capability.self()) : Optional.empty();
-            multipliers = modifiedRecipe == null ? displayed.or(() -> tracked) : tracked.or(() -> displayed);
-            if (multipliers.isEmpty() && modifiedRecipe != null) {
-                multipliers = Optional.of(RecipeMultiplierTracker.DEFAULT);
-            }
+            multipliers = tracked
+                    .or(() -> currentRecipe == null ? Optional.empty() : Optional.of(RecipeMultiplierTracker.DEFAULT));
         }
         if (multipliers.isEmpty()) return;
         RecipeMultiplierTracker.Multipliers resolvedMultipliers = multipliers.get();
@@ -84,53 +75,11 @@ public final class RecipeMultiplierProvider extends CapabilityBlockProvider<IRec
         }
 
         if (Double.isFinite(resolvedMultipliers.energy()) &&
-                (originalRecipe == null || RecipeHelper.getInputEUt(originalRecipe) > 0)) {
+                (currentOriginRecipe == null || RecipeHelper.getInputEUt(currentOriginRecipe) > 0)) {
             data.putDouble(ENERGY_MULTIPLIER_TAG, resolvedMultipliers.energy());
         }
         if (Double.isFinite(durationMultiplier)) {
             data.putDouble(DURATION_MULTIPLIER_TAG, durationMultiplier);
-        }
-    }
-
-    private static Optional<RecipeMultiplierTracker.Multipliers> readDisplayedMultipliers(MetaMachine machine) {
-        if (!(machine instanceof IMultiController controller) || !controller.isFormed() ||
-                !(machine.getDefinition() instanceof MultiblockMachineDefinition definition)) {
-            return Optional.empty();
-        }
-
-        var displayText = new ArrayList<Component>();
-        definition.getAdditionalDisplay().accept(controller, displayText);
-        Optional<Double> energy = findDisplayedMultiplier(displayText, ENERGY_MULTIPLIER_DISPLAY);
-        Optional<Double> duration = findDisplayedMultiplier(displayText, DURATION_MULTIPLIER_DISPLAY);
-        if (energy.isEmpty() && duration.isEmpty()) return Optional.empty();
-        return Optional.of(new RecipeMultiplierTracker.Multipliers(energy.orElse(1D), duration.orElse(1D)));
-    }
-
-    private static Optional<Double> findDisplayedMultiplier(Iterable<Component> components, String translationKey) {
-        for (Component component : components) {
-            Optional<Double> value = findDisplayedMultiplier(component, translationKey);
-            if (value.isPresent()) return value;
-        }
-        return Optional.empty();
-    }
-
-    private static Optional<Double> findDisplayedMultiplier(Component component, String translationKey) {
-        if (component.getContents() instanceof TranslatableContents contents &&
-                translationKey.equals(contents.getKey()) && contents.getArgs().length > 0) {
-            return parseMultiplier(contents.getArgs()[0]);
-        }
-        return findDisplayedMultiplier(component.getSiblings(), translationKey);
-    }
-
-    private static Optional<Double> parseMultiplier(Object argument) {
-        if (argument instanceof Number number) {
-            return Optional.of(number.doubleValue());
-        }
-        String value = argument instanceof Component component ? component.getString() : argument.toString();
-        try {
-            return Optional.of(Double.parseDouble(value.replace(",", "")));
-        } catch (NumberFormatException ignored) {
-            return Optional.empty();
         }
     }
 
