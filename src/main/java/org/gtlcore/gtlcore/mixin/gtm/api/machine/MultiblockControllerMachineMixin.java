@@ -1,12 +1,9 @@
 package org.gtlcore.gtlcore.mixin.gtm.api.machine;
 
-import org.gtlcore.gtlcore.api.machine.trait.ICheckPatternMachine;
-
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
 import com.gregtechceu.gtceu.api.machine.MetaMachine;
 import com.gregtechceu.gtceu.api.machine.feature.multiblock.IMultiController;
 import com.gregtechceu.gtceu.api.machine.multiblock.MultiblockControllerMachine;
-import com.gregtechceu.gtceu.api.pattern.BlockPattern;
 import com.gregtechceu.gtceu.api.pattern.MultiblockWorldSavedData;
 
 import net.minecraft.server.level.ServerLevel;
@@ -14,7 +11,6 @@ import net.minecraft.server.level.ServerLevel;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;
 import org.spongepowered.asm.mixin.Shadow;
-import org.spongepowered.asm.mixin.Unique;
 
 import java.util.concurrent.locks.Lock;
 
@@ -24,10 +20,7 @@ import java.util.concurrent.locks.Lock;
  */
 
 @Mixin(MultiblockControllerMachine.class)
-public abstract class MultiblockControllerMachineMixin extends MetaMachine implements IMultiController, ICheckPatternMachine {
-
-    @Unique
-    private int gtlcore$time = 1;
+public abstract class MultiblockControllerMachineMixin extends MetaMachine implements IMultiController {
 
     @Shadow(remap = false)
     protected boolean isFormed;
@@ -40,22 +33,6 @@ public abstract class MultiblockControllerMachineMixin extends MetaMachine imple
 
     public MultiblockControllerMachineMixin(IMachineBlockEntity holder) {
         super(holder);
-    }
-
-    @Override
-    public boolean checkPattern() {
-        if (gtlcore$time < 1) {
-            BlockPattern pattern = getPattern();
-            if (pattern != null && pattern.checkPatternAt(getMultiblockState(), false)) {
-                gtlcore$time = 0;
-                return true;
-            } else if (hasButton()) {
-                gtlcore$time = 10;
-            }
-        } else {
-            --gtlcore$time;
-        }
-        return false;
     }
 
     /**
@@ -80,15 +57,5 @@ public abstract class MultiblockControllerMachineMixin extends MetaMachine imple
                 });
             }
         }
-    }
-
-    @Override
-    public void setTime(int time) {
-        this.gtlcore$time = time;
-    }
-
-    @Override
-    public int getTime() {
-        return this.gtlcore$time;
     }
 }

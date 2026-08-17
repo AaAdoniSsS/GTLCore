@@ -1,10 +1,8 @@
 package org.gtlcore.gtlcore.api.machine.multiblock;
 
 import org.gtlcore.gtlcore.api.machine.trait.AECraft.IMECraftSpeedCore;
-import org.gtlcore.gtlcore.api.machine.trait.ICheckPatternMachine;
 
 import com.gregtechceu.gtceu.api.gui.GuiTextures;
-import com.gregtechceu.gtceu.api.gui.fancy.ConfiguratorPanel;
 import com.gregtechceu.gtceu.api.gui.fancy.FancyMachineUIWidget;
 import com.gregtechceu.gtceu.api.gui.fancy.IFancyUIProvider;
 import com.gregtechceu.gtceu.api.gui.fancy.TooltipsPanel;
@@ -26,7 +24,7 @@ import net.minecraft.world.entity.player.Player;
 
 import java.util.*;
 
-public class MolecularAssemblerMultiblockMachine extends MolecularAssemblerMultiblockMachineBase implements IFancyUIMachine, IDisplayUIMachine, ICheckPatternMachine, IInteractedMachine {
+public class MolecularAssemblerMultiblockMachine extends MolecularAssemblerMultiblockMachineBase implements IFancyUIMachine, IDisplayUIMachine, IInteractedMachine {
 
     public MolecularAssemblerMultiblockMachine(IMachineBlockEntity holder, Object... args) {
         super(holder, args);
@@ -88,12 +86,6 @@ public class MolecularAssemblerMultiblockMachine extends MolecularAssemblerMulti
     }
 
     @Override
-    public void attachConfigurators(ConfiguratorPanel configuratorPanel) {
-        IFancyUIMachine.super.attachConfigurators(configuratorPanel);
-        ICheckPatternMachine.attachConfigurators(configuratorPanel, this);
-    }
-
-    @Override
     public Widget createUIWidget() {
         var group = new WidgetGroup(0, 0, 182 + 8, 117 + 8);
         group.addWidget(new DraggableScrollableWidgetGroup(4, 4, 182, 117)
@@ -125,10 +117,5 @@ public class MolecularAssemblerMultiblockMachine extends MolecularAssemblerMulti
         for (IMultiPart part : getParts()) {
             part.attachFancyTooltipsToController(this, tooltipsPanel);
         }
-    }
-
-    @Override
-    public boolean hasButton() {
-        return true;
     }
 }

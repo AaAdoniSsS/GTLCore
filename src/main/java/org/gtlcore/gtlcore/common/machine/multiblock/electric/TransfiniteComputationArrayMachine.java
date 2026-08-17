@@ -1,13 +1,11 @@
 package org.gtlcore.gtlcore.common.machine.multiblock.electric;
 
-import org.gtlcore.gtlcore.api.machine.trait.ICheckPatternMachine;
 import org.gtlcore.gtlcore.common.machine.multiblock.part.ae.MECraftingCPUInterfacePartMachine;
 import org.gtlcore.gtlcore.integration.ae2.crafting.transfinite.TransfiniteComputationArrayLifecycleLogger;
 import org.gtlcore.gtlcore.integration.ae2.crafting.transfinite.TransfiniteCraftingCPU;
 import org.gtlcore.gtlcore.utils.NumberUtils;
 
 import com.gregtechceu.gtceu.api.gui.GuiTextures;
-import com.gregtechceu.gtceu.api.gui.fancy.ConfiguratorPanel;
 import com.gregtechceu.gtceu.api.gui.fancy.FancyMachineUIWidget;
 import com.gregtechceu.gtceu.api.gui.fancy.IFancyUIProvider;
 import com.gregtechceu.gtceu.api.gui.fancy.TooltipsPanel;
@@ -65,7 +63,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 public class TransfiniteComputationArrayMachine extends MultiblockControllerMachine
-                                                implements IFancyUIMachine, IDisplayUIMachine, ICheckPatternMachine {
+                                                implements IFancyUIMachine, IDisplayUIMachine {
 
     public static final long MIN_PARALLELISM = 1L;
     public static final long MAX_PARALLELISM = Long.MAX_VALUE;
@@ -579,12 +577,6 @@ public class TransfiniteComputationArrayMachine extends MultiblockControllerMach
     }
 
     @Override
-    public void attachConfigurators(ConfiguratorPanel configuratorPanel) {
-        IFancyUIMachine.super.attachConfigurators(configuratorPanel);
-        ICheckPatternMachine.attachConfigurators(configuratorPanel, this);
-    }
-
-    @Override
     public @NotNull Widget createUIWidget() {
         var selectionModeButton = new ButtonWidget(
                 SCREEN_CONTENT_X, SELECTION_MODE_BUTTON_Y,
@@ -626,11 +618,6 @@ public class TransfiniteComputationArrayMachine extends MultiblockControllerMach
         for (IMultiPart part : getParts()) {
             part.attachFancyTooltipsToController(this, tooltipsPanel);
         }
-    }
-
-    @Override
-    public boolean hasButton() {
-        return true;
     }
 
     @Override

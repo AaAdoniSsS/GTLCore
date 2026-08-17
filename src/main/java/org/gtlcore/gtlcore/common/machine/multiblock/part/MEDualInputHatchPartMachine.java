@@ -42,7 +42,7 @@ public class MEDualInputHatchPartMachine extends MEInputBusPartMachine implement
     private static final String GHOST_CIRCUIT_TAG = "GhostCircuit";
     private static final String SYNC_OFFSET_TAG = "SyncOffset";
 
-    protected ExportOnlyAEFluidList aeFluidHandler;
+    public ExportOnlyAEFluidList aeFluidHandler;
 
     @Persisted
     protected NotifiableFluidTank fluidTank;

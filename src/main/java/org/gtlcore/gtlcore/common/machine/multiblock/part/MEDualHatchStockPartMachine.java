@@ -85,9 +85,9 @@ public class MEDualHatchStockPartMachine extends MEBusPartMachine implements IDa
 
     private static final boolean ENABLE_ULTIMATE_ME_STOCKING = ConfigHolder.INSTANCE.enableUltimateMEStocking;
 
-    protected ExportOnlyAEItemList aeItemHandler;
+    public ExportOnlyAEItemList aeItemHandler;
 
-    protected ExportOnlyAEFluidList aeFluidHandler;
+    public ExportOnlyAEFluidList aeFluidHandler;
 
     @Persisted
     protected NotifiableFluidTank fluidTank;

@@ -1,7 +1,7 @@
 package org.gtlcore.gtlcore.mixin.gtm.api.pattern;
 
 import org.gtlcore.gtlcore.api.pattern.AdvancedBlockPattern;
-import org.gtlcore.gtlcore.api.pattern.util.IMultiblockStateGet;
+import org.gtlcore.gtlcore.mixin.gtm.api.machine.IMultiblockStateInvoker;
 
 import com.gregtechceu.gtceu.api.block.ActiveBlock;
 import com.gregtechceu.gtceu.api.block.MetaMachineBlock;
@@ -94,7 +94,7 @@ public abstract class BlockPatternMixin {
     private boolean gtlcore$matchAisles(MultiblockState worldState, BlockPos centerPos, Direction frontFacing,
                                         Direction upwardsFacing, boolean isFlipped, boolean savePredicate, int startZ,
                                         int aisle, int z, int[] repetitions) {
-        if (aisle == 0 && worldState instanceof IMultiblockStateGet stateGet) stateGet.cleanState();
+        if (aisle == 0 && worldState instanceof IMultiblockStateInvoker stateGet) stateGet.cleanState();
 
         int minRepetitions = this.aisleRepetitions[aisle][0];
         int maxRepetitions = this.aisleRepetitions[aisle][1];
@@ -132,8 +132,7 @@ public abstract class BlockPatternMixin {
     private boolean gtlcore$replayLayout(MultiblockState worldState, BlockPos centerPos, Direction frontFacing,
                                          Direction upwardsFacing, boolean isFlipped, boolean savePredicate, int startZ,
                                          int lastAisle, int[] repetitions) {
-        if (!(worldState instanceof IMultiblockStateGet stateGet)) return false;
-        stateGet.cleanState();
+        ((IMultiblockStateInvoker) worldState).cleanState();
         int z = startZ;
         for (int aisle = 0; aisle <= lastAisle; aisle++) {
             for (int repeat = 0; repeat < repetitions[aisle]; repeat++, z++) {
@@ -160,7 +159,7 @@ public abstract class BlockPatternMixin {
                 if (predicate.isAny()) continue;
                 BlockPos pos = setActualRelativeOffset(x, y, z, frontFacing, upwardsFacing, isFlipped)
                         .offset(centerPos.getX(), centerPos.getY(), centerPos.getZ());
-                if (!(worldState instanceof IMultiblockStateGet stateGet) || !stateGet.updateState(pos, predicate)) {
+                if (!(worldState instanceof IMultiblockStateInvoker stateGet) || !stateGet.updateState(pos, predicate)) {
                     return false;
                 }
                 if (predicate.addCache()) {

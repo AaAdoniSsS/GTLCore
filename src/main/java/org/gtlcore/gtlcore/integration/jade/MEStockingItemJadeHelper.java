@@ -2,7 +2,6 @@ package org.gtlcore.gtlcore.integration.jade;
 
 import org.gtlcore.gtlcore.api.machine.trait.MEStock.IOptimizedMEList;
 import org.gtlcore.gtlcore.common.machine.multiblock.part.MEDualHatchStockPartMachine;
-import org.gtlcore.gtlcore.mixin.gtlcore.machine.MEDualHatchStockPartMachineAccessor;
 import org.gtlcore.gtlcore.mixin.gtm.ae.machine.MEInputBusPartMachineAccessor;
 import org.gtlcore.gtlcore.utils.NumberUtils;
 
@@ -58,8 +57,8 @@ public final class MEStockingItemJadeHelper {
         }
 
         ExportOnlyAEItemList itemHandler = null;
-        if (machine instanceof MEDualHatchStockPartMachine) {
-            itemHandler = ((MEDualHatchStockPartMachineAccessor) machine).gtlcore$getAeItemHandler();
+        if (machine instanceof MEDualHatchStockPartMachine dualHatch) {
+            itemHandler = dualHatch.aeItemHandler;
         }
         if (itemHandler instanceof IOptimizedMEList optimized && optimized.isStocking()) {
             return itemHandler;

@@ -1,7 +1,6 @@
 package org.gtlcore.gtlcore.mixin.gtm.fix;
 
 import org.gtlcore.gtlcore.api.machine.trait.IBatchMachine;
-import org.gtlcore.gtlcore.api.machine.trait.ICheckPatternMachine;
 import org.gtlcore.gtlcore.api.machine.trait.ILockRecipe;
 import org.gtlcore.gtlcore.api.machine.trait.IRecipeCapabilityMachine;
 import org.gtlcore.gtlcore.api.machine.trait.IRecipeStatus;
@@ -41,7 +40,7 @@ import java.util.Arrays;
 import java.util.List;
 
 @Mixin(WorkableElectricMultiblockMachine.class)
-public abstract class WorkableElectricMultiblockMachineMixin extends WorkableMultiblockMachine implements IFancyUIMachine, ICheckPatternMachine, IBatchMachine {
+public abstract class WorkableElectricMultiblockMachineMixin extends WorkableMultiblockMachine implements IFancyUIMachine, IBatchMachine {
 
     @Unique
     private static final String GTLCORE_BATCH_ENABLED_NBT = "GTLCoreBatchEnabled";
@@ -143,10 +142,11 @@ public abstract class WorkableElectricMultiblockMachineMixin extends WorkableMul
                 this::isWorkingEnabled, (clickData, pressed) -> this.setWorkingEnabled(pressed))
                 .setTooltipsSupplier(pressed -> List.of(
                         Component.translatable(pressed ? "behaviour.soft_hammer.enabled" : "behaviour.soft_hammer.disabled"))));
-        ICheckPatternMachine.attachConfigurators(configuratorPanel, self());
         if (this.self() instanceof IOpticalComputationReceiver || this.self() instanceof IOpticalComputationProvider || this.self() instanceof DataBankMachine) return;
-        IRecipeCapabilityMachine.attachConfigurators(configuratorPanel, (WorkableElectricMultiblockMachine) self());
-        ILockRecipe.attachRecipeLockable(configuratorPanel, this.getRecipeLogic());
+        if (!this.isGenerator()) {
+            IRecipeCapabilityMachine.attachConfigurators(configuratorPanel, (WorkableElectricMultiblockMachine) self());
+            ILockRecipe.attachRecipeLockable(configuratorPanel, this.getRecipeLogic());
+        }
     }
 
     @Inject(method = "addDisplayText", at = @At(value = "INVOKE", target = "Lcom/gregtechceu/gtceu/api/machine/multiblock/WorkableElectricMultiblockMachine;getDefinition()Lcom/gregtechceu/gtceu/api/machine/MultiblockMachineDefinition;"), remap = false)
@@ -175,10 +175,5 @@ public abstract class WorkableElectricMultiblockMachineMixin extends WorkableMul
             textList.add(Component.translatable("gui.gtlcore.batch_processing.active",
                     IGTRecipe.of(activeRecipe).getBatchSize()));
         }
-    }
-
-    @Override
-    public boolean hasButton() {
-        return true;
     }
 }

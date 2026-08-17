@@ -2,7 +2,6 @@ package org.gtlcore.gtlcore.integration.jade;
 
 import org.gtlcore.gtlcore.api.machine.trait.MEStock.IOptimizedMEList;
 import org.gtlcore.gtlcore.common.machine.multiblock.part.MEDualHatchStockPartMachine;
-import org.gtlcore.gtlcore.mixin.gtlcore.machine.MEDualHatchStockPartMachineAccessor;
 import org.gtlcore.gtlcore.mixin.gtm.ae.machine.MEInputHatchPartMachineAccessor;
 import org.gtlcore.gtlcore.utils.NumberUtils;
 
@@ -79,7 +78,7 @@ public final class MEStockingFluidJadeHelper {
             return ((MEInputHatchPartMachineAccessor) inputHatch).gtlcore$getAeFluidHandler();
         }
         if (machine instanceof MEDualHatchStockPartMachine dualHatch) {
-            return ((MEDualHatchStockPartMachineAccessor) dualHatch).gtlcore$getAeFluidHandler();
+            return dualHatch.aeFluidHandler;
         }
         return null;
     }

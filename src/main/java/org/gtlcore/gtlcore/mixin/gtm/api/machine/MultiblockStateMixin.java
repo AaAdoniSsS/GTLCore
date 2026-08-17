@@ -1,9 +1,6 @@
 package org.gtlcore.gtlcore.mixin.gtm.api.machine;
 
-import org.gtlcore.gtlcore.api.pattern.util.IMultiblockStateGet;
-
 import com.gregtechceu.gtceu.api.block.ActiveBlock;
-import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
 import com.gregtechceu.gtceu.api.machine.feature.multiblock.IMultiController;
 import com.gregtechceu.gtceu.api.pattern.*;
 import com.gregtechceu.gtceu.common.machine.multiblock.part.*;
@@ -13,12 +10,11 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 
-import com.hepdd.gtmthings.common.block.machine.multiblock.part.HugeBusPartMachine;
 import it.unimi.dsi.fastutil.longs.*;
 import org.spongepowered.asm.mixin.*;
 
 @Mixin(MultiblockState.class)
-public abstract class MultiblockStateMixin implements IMultiblockStateGet {
+public abstract class MultiblockStateMixin {
 
     @Final
     @Shadow(remap = false)
@@ -55,12 +51,6 @@ public abstract class MultiblockStateMixin implements IMultiblockStateGet {
                             if (activeBlocks.contains(pos.asLong())) {
                                 return;
                             }
-                        } else if (serverLevel.getBlockEntity(pos) instanceof IMachineBlockEntity IMBE) {
-                            var metaMachine = IMBE.getMetaMachine();
-                            if (metaMachine instanceof ItemBusPartMachine ||
-                                    metaMachine instanceof FluidHatchPartMachine ||
-                                    metaMachine instanceof HugeBusPartMachine)
-                                return;
                         }
                     }
 
@@ -78,20 +68,4 @@ public abstract class MultiblockStateMixin implements IMultiblockStateGet {
             }
         }
     }
-
-    @Override
-    public void cleanState() {
-        this.clean();
-    }
-
-    @Override
-    public boolean updateState(BlockPos posIn, TraceabilityPredicate predicate) {
-        return this.update(posIn, predicate);
-    }
-
-    @Shadow(remap = false)
-    protected abstract void clean();
-
-    @Shadow(remap = false)
-    protected abstract boolean update(BlockPos posIn, TraceabilityPredicate predicate);
 }

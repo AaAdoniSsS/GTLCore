@@ -10,8 +10,6 @@ import org.gtlcore.gtlcore.common.machine.multiblock.part.ae.MEExtendedOutputPar
 import org.gtlcore.gtlcore.common.machine.multiblock.part.ae.MEOutputFilterHandler;
 import org.gtlcore.gtlcore.integration.ae2.wireless.GTLWirelessAeContent;
 import org.gtlcore.gtlcore.integration.ae2.wireless.WirelessAePackets;
-import org.gtlcore.gtlcore.mixin.gtlcore.machine.MEDualHatchStockPartMachineAccessor;
-import org.gtlcore.gtlcore.mixin.gtlcore.machine.MEDualInputHatchPartMachineAccessor;
 import org.gtlcore.gtlcore.mixin.gtm.ae.machine.MEOutputBusPartMachineAccessor;
 import org.gtlcore.gtlcore.mixin.gtm.ae.machine.MEOutputHatchPartMachineAccessor;
 import org.gtlcore.gtlcore.mixin.gtmt.MEOutputPartMachineAccessor;
@@ -769,10 +767,10 @@ public final class MEChamberManagerTerminalMenu extends AEBaseMenu {
             return list;
         }
         if (machine instanceof MEDualInputHatchPartMachine dualInput) {
-            return ((MEDualInputHatchPartMachineAccessor) dualInput).gtlcore$getAeFluidHandler();
+            return dualInput.aeFluidHandler;
         }
         if (machine instanceof MEDualHatchStockPartMachine dualStock) {
-            return ((MEDualHatchStockPartMachineAccessor) dualStock).gtlcore$getAeFluidHandler();
+            return dualStock.aeFluidHandler;
         }
         return null;
     }

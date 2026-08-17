@@ -1,9 +1,6 @@
 package org.gtlcore.gtlcore.api.machine.multiblock;
 
-import org.gtlcore.gtlcore.api.machine.trait.ICheckPatternMachine;
-
 import com.gregtechceu.gtceu.api.gui.GuiTextures;
-import com.gregtechceu.gtceu.api.gui.fancy.ConfiguratorPanel;
 import com.gregtechceu.gtceu.api.gui.fancy.FancyMachineUIWidget;
 import com.gregtechceu.gtceu.api.gui.fancy.IFancyUIProvider;
 import com.gregtechceu.gtceu.api.gui.fancy.TooltipsPanel;
@@ -30,7 +27,7 @@ import javax.annotation.ParametersAreNonnullByDefault;
 
 @ParametersAreNonnullByDefault
 @MethodsReturnNonnullByDefault
-public class NoEnergyMultiblockMachine extends WorkableMultiblockMachine implements IFancyUIMachine, IDisplayUIMachine, ICheckPatternMachine {
+public class NoEnergyMultiblockMachine extends WorkableMultiblockMachine implements IFancyUIMachine, IDisplayUIMachine {
 
     protected static final ManagedFieldHolder MANAGED_FIELD_HOLDER = new ManagedFieldHolder(
             NoEnergyMultiblockMachine.class, WorkableMultiblockMachine.MANAGED_FIELD_HOLDER);
@@ -71,12 +68,6 @@ public class NoEnergyMultiblockMachine extends WorkableMultiblockMachine impleme
     }
 
     @Override
-    public void attachConfigurators(ConfiguratorPanel configuratorPanel) {
-        IFancyUIMachine.super.attachConfigurators(configuratorPanel);
-        ICheckPatternMachine.attachConfigurators(configuratorPanel, this);
-    }
-
-    @Override
     public Widget createUIWidget() {
         var group = new WidgetGroup(0, 0, 182 + 8, 117 + 8);
         group.addWidget(new DraggableScrollableWidgetGroup(4, 4, 182, 117)
@@ -113,10 +104,5 @@ public class NoEnergyMultiblockMachine extends WorkableMultiblockMachine impleme
     @Override
     public ManagedFieldHolder getFieldHolder() {
         return MANAGED_FIELD_HOLDER;
-    }
-
-    @Override
-    public boolean hasButton() {
-        return true;
     }
 }
