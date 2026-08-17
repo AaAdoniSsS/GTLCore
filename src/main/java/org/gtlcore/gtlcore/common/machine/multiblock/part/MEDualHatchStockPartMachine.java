@@ -226,10 +226,11 @@ public class MEDualHatchStockPartMachine extends MEBusPartMachine implements IDa
         if (grid == null) {
             return;
         }
-        MEStorage networkInv = grid.getStorageService().getInventory();
+        var cachedInventory = grid.getStorageService().getCachedInventory();
         ExportOnlyAEItemSlot[] aeItem = aeItemHandler.getInventory();
         ExportOnlyAEFluidSlot[] aeFluid = aeFluidHandler.getInventory();
         ExportOnlyAESlot slot;
+        boolean changed = false;
         for (int i = 0; i < aeItem.length; i++) {
             slot = aeItem[i];
             var config = slot.getConfig();
@@ -239,15 +240,22 @@ public class MEDualHatchStockPartMachine extends MEBusPartMachine implements IDa
             }
             if (config != null) {
                 var key = config.what();
-                long extracted = networkInv.extract(key, Long.MAX_VALUE, Actionable.SIMULATE, actionSource);
-                if (extracted > 0) {
-                    slot.setStock(new GenericStack(key, extracted));
-                    continue;
+                long extracted = cachedInventory.get(key);
+                GenericStack nextStock = extracted > 0 ? new GenericStack(key, extracted) : null;
+                if (!Objects.equals(slot.getStock(), nextStock)) {
+                    slot.setStock(nextStock);
+                    changed = true;
                 }
+                continue;
             }
-            slot.setStock(null);
+            if (slot.getStock() != null) {
+                slot.setStock(null);
+                changed = true;
+            }
         }
-        markMEStockChanged();
+        if (changed) {
+            markMEStockChanged();
+        }
     }
 
     private void markMEStockChanged() {

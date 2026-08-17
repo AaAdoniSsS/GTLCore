@@ -3,6 +3,7 @@ package org.gtlcore.gtlcore.integration.jei;
 import org.gtlcore.gtlcore.client.ae2.MeInventoryAmountClient;
 import org.gtlcore.gtlcore.utils.TextUtil;
 
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.FormattedText;
 import net.minecraft.world.inventory.tooltip.TooltipComponent;
@@ -19,6 +20,7 @@ import com.mojang.datafixers.util.Either;
 import mezz.jei.api.constants.VanillaTypes;
 import mezz.jei.api.forge.ForgeTypes;
 import mezz.jei.api.ingredients.ITypedIngredient;
+import mezz.jei.api.runtime.IClickableIngredient;
 import mezz.jei.api.runtime.IJeiRuntime;
 import org.jetbrains.annotations.Nullable;
 
@@ -59,6 +61,9 @@ public final class JeiMeInventoryTooltip {
             return toSearchText(hovered.get());
         }
 
+        if (runtime.getRecipesGui().getParentScreen().isEmpty()) {
+            return Optional.empty();
+        }
         Optional<ItemStack> item = runtime.getRecipesGui().getIngredientUnderMouse(VanillaTypes.ITEM_STACK);
         if (item.isPresent()) {
             return toSearchText(item.get());
@@ -72,15 +77,24 @@ public final class JeiMeInventoryTooltip {
 
     public static Optional<AEKey> getHoveredIngredientKey() {
         IJeiRuntime runtime = JeiMeInventoryTooltip.runtime;
-        return runtime == null ? Optional.empty() : Optional.ofNullable(getHoveredKey(runtime));
+        return runtime == null ? Optional.empty() : Optional.ofNullable(getHoveredKey(runtime, null, 0, 0));
     }
 
-    private static @Nullable AEKey getHoveredKey(IJeiRuntime runtime) {
-        Optional<ITypedIngredient<?>> hovered = getHoveredIngredient(runtime);
+    public static Optional<AEKey> getHoveredIngredientKey(Screen screen, double mouseX, double mouseY) {
+        IJeiRuntime runtime = JeiMeInventoryTooltip.runtime;
+        return runtime == null ? Optional.empty() : Optional.ofNullable(getHoveredKey(runtime, screen, mouseX, mouseY));
+    }
+
+    private static @Nullable AEKey getHoveredKey(IJeiRuntime runtime, @Nullable Screen screen, double mouseX,
+                                                 double mouseY) {
+        Optional<ITypedIngredient<?>> hovered = getHoveredIngredient(runtime, screen, mouseX, mouseY);
         if (hovered.isPresent()) {
             return toKey(hovered.get());
         }
 
+        if (runtime.getRecipesGui().getParentScreen().isEmpty()) {
+            return null;
+        }
         Optional<ItemStack> item = runtime.getRecipesGui().getIngredientUnderMouse(VanillaTypes.ITEM_STACK);
         if (item.isPresent() && !item.get().isEmpty()) {
             return AEItemKey.of(item.get());
@@ -93,11 +107,33 @@ public final class JeiMeInventoryTooltip {
     }
 
     private static Optional<ITypedIngredient<?>> getHoveredIngredient(IJeiRuntime runtime) {
+        return getHoveredIngredient(runtime, null, 0, 0);
+    }
+
+    private static Optional<ITypedIngredient<?>> getHoveredIngredient(IJeiRuntime runtime, @Nullable Screen screen,
+                                                                      double mouseX, double mouseY) {
         Optional<ITypedIngredient<?>> hovered = runtime.getIngredientListOverlay().getIngredientUnderMouse();
         if (hovered.isEmpty()) {
             hovered = runtime.getBookmarkOverlay().getIngredientUnderMouse();
         }
+        if (hovered.isEmpty() && screen != null && isFtbScreen(screen)) {
+            Optional<IClickableIngredient<?>> clickable = runtime.getScreenHelper()
+                    .getClickableIngredientUnderMouse(screen, mouseX, mouseY)
+                    .findFirst();
+            if (clickable.isPresent()) {
+                hovered = Optional.of(clickable.get().getTypedIngredient());
+            }
+        }
         return hovered;
+    }
+
+    private static boolean isFtbScreen(Screen screen) {
+        try {
+            Class<?> screenWrapper = Class.forName("dev.ftb.mods.ftblibrary.ui.IScreenWrapper");
+            return screenWrapper.isInstance(screen);
+        } catch (ClassNotFoundException exception) {
+            return false;
+        }
     }
 
     private static Optional<String> toSearchText(ITypedIngredient<?> ingredient) {
@@ -146,7 +182,7 @@ public final class JeiMeInventoryTooltip {
             if (runtime == null) {
                 return;
             }
-            AEKey key = getHoveredKey(runtime);
+            AEKey key = getHoveredKey(runtime, null, 0, 0);
             if (key == null) {
                 return;
             }

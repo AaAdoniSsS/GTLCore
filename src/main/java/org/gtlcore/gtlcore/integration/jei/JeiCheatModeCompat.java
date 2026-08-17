@@ -1,9 +1,9 @@
 package org.gtlcore.gtlcore.integration.jei;
 
+import org.gtlcore.gtlcore.utils.FluidBucketUtil;
+
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.fluids.FluidStack;
-import net.minecraftforge.fluids.FluidType;
-import net.minecraftforge.fluids.FluidUtil;
 
 import appeng.api.stacks.AEFluidKey;
 import appeng.api.stacks.AEItemKey;
@@ -96,8 +96,8 @@ public final class JeiCheatModeCompat {
             return itemKey.toStack(itemKey.getMaxStackSize());
         }
         if (key instanceof AEFluidKey fluidKey) {
-            return FluidUtil.getFilledBucket(new FluidStack(
-                    fluidKey.getFluid(), FluidType.BUCKET_VOLUME, fluidKey.copyTag()));
+            return FluidBucketUtil.getFilledBucket(new FluidStack(
+                    fluidKey.getFluid(), AEFluidKey.AMOUNT_BUCKET, fluidKey.copyTag()));
         }
         return ItemStack.EMPTY;
     }

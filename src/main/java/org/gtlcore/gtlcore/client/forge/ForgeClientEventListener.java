@@ -49,6 +49,7 @@ public class ForgeClientEventListener {
     private static final int JEI_WIRELESS_EXTRACT_MOUSE_BUTTON = GLFW.GLFW_MOUSE_BUTTON_LEFT;
 
     private static Screen pendingJeiTerminalSearchCharacterScreen;
+    private static PendingJeiExtraction pendingJeiExtraction;
 
     @SubscribeEvent
     public static void onClientTick(TickEvent.ClientTickEvent event) {
@@ -109,26 +110,30 @@ public class ForgeClientEventListener {
         if (event.isCanceled() || event.getButton() != JEI_WIRELESS_ORDER_MOUSE_BUTTON || !LDLib.isJeiLoaded()) {
             return;
         }
-        JeiMeInventoryTooltip.getHoveredIngredientKey().ifPresent(key -> {
+        JeiMeInventoryTooltip.getHoveredIngredientKey(event.getScreen(), event.getMouseX(), event.getMouseY()).ifPresent(key -> {
             JeiWirelessTerminalOrderPackets.sendRequest(key);
             event.setCanceled(true);
         });
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST, receiveCanceled = true)
-    public static void onJeiWirelessExtractMouseReleased(ScreenEvent.MouseButtonReleased.Pre event) {
+    public static void onJeiWirelessExtractMousePressed(ScreenEvent.MouseButtonPressed.Pre event) {
+        if (event.getButton() == JEI_WIRELESS_EXTRACT_MOUSE_BUTTON) {
+            pendingJeiExtraction = null;
+        }
         if (!isJeiWirelessExtractionInput(event.getButton())) {
             return;
         }
         LocalPlayer player = Minecraft.getInstance().player;
-        Optional<AEKey> hoveredKey = JeiMeInventoryTooltip.getHoveredIngredientKey();
-        if (JeiCheatModeCompat.isCheatStackInputActive(JEI_WIRELESS_EXTRACT_MOUSE_BUTTON)) {
-            if (!event.isCanceled() && JeiCheatModeCompat.executeCheatStackFallback(hoveredKey.orElse(null))) {
-                event.setCanceled(true);
-            }
+        Optional<AEKey> hoveredKey = JeiMeInventoryTooltip.getHoveredIngredientKey(
+                event.getScreen(), event.getMouseX(), event.getMouseY());
+        if (hoveredKey.isEmpty()) {
             return;
         }
-        if (event.isCanceled()) {
+        boolean cheatMode = JeiCheatModeCompat.isCheatStackInputActive(JEI_WIRELESS_EXTRACT_MOUSE_BUTTON);
+        if (cheatMode) {
+            pendingJeiExtraction = new PendingJeiExtraction(event.getScreen(), hoveredKey.get(), true);
+            event.setCanceled(true);
             return;
         }
         if (player == null) {
@@ -140,16 +145,34 @@ public class ForgeClientEventListener {
         if (!WirelessTerminalGridResolver.hasWirelessTerminal(player)) {
             return;
         }
-        if (hoveredKey.isEmpty()) {
+        pendingJeiExtraction = new PendingJeiExtraction(event.getScreen(), hoveredKey.get(), false);
+        event.setCanceled(true);
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST, receiveCanceled = true)
+    public static void onJeiWirelessExtractMouseReleased(ScreenEvent.MouseButtonReleased.Pre event) {
+        if (event.getButton() != JEI_WIRELESS_EXTRACT_MOUSE_BUTTON) {
             return;
         }
-        JeiWirelessTerminalOrderPackets.sendExtractionRequest(hoveredKey.get());
+        PendingJeiExtraction pending = pendingJeiExtraction;
+        pendingJeiExtraction = null;
+        if (pending == null || pending.screen() != event.getScreen()) {
+            return;
+        }
+
         event.setCanceled(true);
+        if (pending.cheatMode()) {
+            JeiCheatModeCompat.executeCheatStackFallback(pending.key());
+        } else {
+            JeiWirelessTerminalOrderPackets.sendExtractionRequest(pending.key());
+        }
     }
 
     private static boolean isJeiWirelessExtractionInput(int button) {
         return button == JEI_WIRELESS_EXTRACT_MOUSE_BUTTON && Screen.hasShiftDown() && LDLib.isJeiLoaded();
     }
+
+    private record PendingJeiExtraction(Screen screen, AEKey key, boolean cheatMode) {}
 
     @SubscribeEvent
     public static void onRenderWorldLast(RenderLevelStageEvent event) {

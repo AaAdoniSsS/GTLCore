@@ -41,11 +41,15 @@ public final class RecipeMultiplierTracker {
         MULTIPLIERS.put(machine, multiply(DEFAULT, energyMultiplier, durationMultiplier));
     }
 
-    public static void finish(MetaMachine machine, boolean commit) {
+    public static void finish(MetaMachine machine, GTRecipe modifiedRecipe) {
         CaptureContext context = contextFor(machine);
         try {
-            if (commit && context != null) {
-                MULTIPLIERS.put(machine, context.captured == null ? DEFAULT : context.captured);
+            if (context != null) {
+                if (modifiedRecipe != null) {
+                    MULTIPLIERS.put(machine, context.captured == null ? DEFAULT : context.captured);
+                } else {
+                    MULTIPLIERS.remove(machine);
+                }
             }
         } finally {
             CAPTURE_CONTEXT.remove();
@@ -96,7 +100,7 @@ public final class RecipeMultiplierTracker {
 
         private CaptureContext(MetaMachine machine, GTRecipe baseRecipe) {
             this.machine = machine;
-            this.baseRecipe = baseRecipe;
+            this.baseRecipe = baseRecipe.copy();
         }
     }
 }

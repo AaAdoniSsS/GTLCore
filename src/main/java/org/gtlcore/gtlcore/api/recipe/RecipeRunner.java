@@ -25,6 +25,8 @@ import java.util.*;
 
 public final class RecipeRunner {
 
+    private static final Comparator<RecipeHandlePart> OUTPUT_HANDLER_COMPARATOR = RecipeHandlePart.COMPARATOR.reversed();
+
     private RecipeRunner() {
         throw new AssertionError("Utility class should not be instantiated");
     }
@@ -57,31 +59,35 @@ public final class RecipeRunner {
             List<Content> contents = entry.getValue();
             if (contents.isEmpty()) continue;
 
-            List<Content> chancedContents = new ObjectArrayList<>();
-            List<Object> contentList = recipeContent.computeIfAbsent(cap, c -> new ObjectArrayList<>());
+            List<Content> chancedContents = null;
+            List<Object> contentList = null;
             for (Content cont : contents) {
                 if (simulated) {
+                    if (contentList == null) contentList = new ObjectArrayList<>();
                     contentList.add(cont.content);
                 } else {
                     if (cont.chance >= cont.maxChance) {
+                        if (contentList == null) contentList = new ObjectArrayList<>();
                         contentList.add(cont.content);
                     } else if (cont.chance != 0) {
+                        if (chancedContents == null) chancedContents = new ObjectArrayList<>();
                         chancedContents.add(cont);
                     }
                 }
             }
-            if (!chancedContents.isEmpty()) {
+            if (chancedContents != null && !chancedContents.isEmpty()) {
                 ChanceBoostFunction function = recipe.getType().getChanceFunction();
                 int holderTier = holder.getChanceTier();
                 var cache = chanceCaches.get(cap);
                 chancedContents = LongChanceLogic.OR.roll(chancedContents, function, ((IGTRecipe) recipe).getEuTier(), holderTier, cache, ((IGTRecipe) recipe).getRealParallels(), cap);
                 if (chancedContents != null) {
+                    if (contentList == null) contentList = new ObjectArrayList<>();
                     for (Content cont : chancedContents) {
                         contentList.add(cont.content);
                     }
                 }
             }
-            if (contentList.isEmpty()) recipeContent.remove(cap);
+            if (contentList != null && !contentList.isEmpty()) recipeContent.put(cap, contentList);
         }
 
         return recipeContent;
@@ -301,7 +307,9 @@ public final class RecipeRunner {
 
         // Sort only if not already sorted (assuming handlers list is stable)
         // Consider caching sorted handlers in machine if this becomes a bottleneck
-        handlers.sort(RecipeHandlePart.COMPARATOR.reversed());
+        if (handlers.size() > 1 && !isSortedByPriority(handlers)) {
+            handlers.sort(OUTPUT_HANDLER_COMPARATOR);
+        }
 
         for (var handler : handlers) {
             recipeContent = handler.handleRecipe(IO.OUT, recipe, recipeContent, simulated);
@@ -309,6 +317,16 @@ public final class RecipeRunner {
         }
 
         return recipeContent;
+    }
+
+    private static boolean isSortedByPriority(List<RecipeHandlePart> handlers) {
+        RecipeHandlePart previous = handlers.get(0);
+        for (int i = 1; i < handlers.size(); i++) {
+            RecipeHandlePart current = handlers.get(i);
+            if (OUTPUT_HANDLER_COMPARATOR.compare(previous, current) > 0) return false;
+            previous = current;
+        }
+        return true;
     }
 
     private static Reference2ObjectOpenHashMap<RecipeCapability<?>, List<Object>> handleMEOutput(

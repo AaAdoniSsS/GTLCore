@@ -1,6 +1,7 @@
 package org.gtlcore.gtlcore.mixin.gtm.registry;
 
 import org.gtlcore.gtlcore.api.machine.trait.IRecipeCapabilityMachine;
+import org.gtlcore.gtlcore.api.recipe.RecipeMultiplierTracker;
 import org.gtlcore.gtlcore.api.recipe.RecipeResult;
 import org.gtlcore.gtlcore.api.recipe.RecipeRunnerHelper;
 import org.gtlcore.gtlcore.utils.NumberUtils;
@@ -25,6 +26,9 @@ import org.jetbrains.annotations.NotNull;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;
 import org.spongepowered.asm.mixin.Unique;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(GTRecipeModifiers.class)
 public abstract class GTRecipeModifiersMixin {
@@ -76,6 +80,17 @@ public abstract class GTRecipeModifiersMixin {
         if (eut > 0) return Math.max(1, (long) (eut * multiplier));
         if (eut < 0) return Math.min(-1, (long) (eut * multiplier));
         return 0;
+    }
+
+    @Inject(method = "pyrolyseOvenOverclock", at = @At("HEAD"), remap = false)
+    private static void gtlcore$capturePyrolyseReduction(MetaMachine machine, @NotNull GTRecipe recipe,
+                                                         @NotNull OCParams params, @NotNull OCResult result,
+                                                         CallbackInfoReturnable<GTRecipe> cir) {
+        if (machine instanceof CoilWorkableElectricMultiblockMachine coilMachine) {
+            int coilTier = coilMachine.getCoilTier();
+            double durationMultiplier = coilTier == 0 ? 4.0 / 3.0 : 2.0 / (coilTier + 1.0);
+            RecipeMultiplierTracker.captureReduction(machine, recipe, 1.0, durationMultiplier);
+        }
     }
 
     /**
