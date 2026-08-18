@@ -264,6 +264,7 @@ public class MEPatternBufferPartMachine extends MEPatternBufferPartMachineBase {
 
         if (oldPatternDetails != null && !oldPatternDetails.equals(newPatternDetailsWithOutCircuit)) {
             internalInv.getCacheManager().clearAllCaches();
+            internalInv.clearVirtualSupply();
             removeSlotFromGTRecipeCache(index);
             refundSlot(internalInv.getItemInventory(), internalInv.getFluidInventory());
             AEUtils.reFunds(buffer, getMainNode().getGrid(), actionSource);
@@ -891,13 +892,6 @@ public class MEPatternBufferPartMachine extends MEPatternBufferPartMachineBase {
                 }
             }
             return true;
-        }
-
-        @Override
-        public void clearInventories() {
-            super.clearInventories();
-            itemCatalystInventory.clear();
-            fluidCatalystInventory.clear();
         }
 
         @Override
