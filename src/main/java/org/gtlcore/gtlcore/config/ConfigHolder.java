@@ -14,6 +14,8 @@ public class ConfigHolder {
     public static final int DEFAULT_MACHINE_STARTUP_TICK_BUDGET_PER_LEVEL = 32;
     public static final int DEFAULT_MACHINE_STARTUP_AE_TICK_BUDGET_PER_LEVEL = 32;
     public static final int DEFAULT_MACHINE_STARTUP_TICK_TIME_BUDGET_MILLIS = 10;
+    public static final int DEFAULT_WORLD_LOAD_SLOW_CHUNK_STAGE_WARNING_MILLIS = 100;
+    public static final int DEFAULT_WORLD_LOAD_CHUNK_GENERATION_SUMMARY_INTERVAL = 256;
     public static final int DEFAULT_GTCEU_JEI_SLOW_RECIPE_TYPE_WARNING_MILLIS = 100;
     private static final Object LOCK = new Object();
 
@@ -124,6 +126,14 @@ public class ConfigHolder {
             "Log file: logs/gtlcore/world-load-performance-*.log"
     })
     public boolean enableWorldLoadPerformanceLogging = false;
+    @Configurable
+    @Configurable.Comment("区块生成阶段从调度到完成超过此毫秒数时，记录包含维度、区块坐标和阶段的警告")
+    @Configurable.Range(min = 1, max = 60000)
+    public int worldLoadSlowChunkStageWarningMillis = DEFAULT_WORLD_LOAD_SLOW_CHUNK_STAGE_WARNING_MILLIS;
+    @Configurable
+    @Configurable.Comment("每完成多少个区块生成阶段，输出一次按维度和阶段聚合的性能摘要")
+    @Configurable.Range(min = 1, max = 1048576)
+    public int worldLoadChunkGenerationSummaryInterval = DEFAULT_WORLD_LOAD_CHUNK_GENERATION_SUMMARY_INTERVAL;
     @Configurable
     @Configurable.Comment("每个维度每 tick 最多首次激活的普通 GT 机器数量")
     @Configurable.Range(min = 1, max = 4096)
