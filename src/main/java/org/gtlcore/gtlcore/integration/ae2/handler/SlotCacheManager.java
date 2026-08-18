@@ -166,11 +166,15 @@ public class SlotCacheManager implements ITagSerializable<CompoundTag> {
         return null;
     }
 
+    public void clearCircuitCache() {
+        circuitCache = -1;
+        circuitStack = ItemStack.EMPTY;
+    }
+
     public void clearAllCaches() {
         itemBestMatchCache.clear();
         fluidBestMatchCache.clear();
-        circuitCache = -1;
-        circuitStack = ItemStack.EMPTY;
+        clearCircuitCache();
     }
 
     @Override

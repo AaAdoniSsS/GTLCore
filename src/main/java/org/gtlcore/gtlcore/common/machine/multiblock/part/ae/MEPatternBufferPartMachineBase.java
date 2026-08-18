@@ -239,8 +239,12 @@ public abstract class MEPatternBufferPartMachineBase extends MEIOPartMachine
 
     protected void refundAll(ClickData clickData) {
         if (!clickData.isRemote) {
-            for (InternalSlot slot : getActiveInternalSlots()) {
+            // Every slot, not only the active ones: a slot whose sole content is a leftover virtual supply has an
+            // empty real inventory and would otherwise never be visited.
+            for (int i = 0; i < getInternalSlotCount(); i++) {
+                InternalSlot slot = getInternalSlot(i);
                 refundSlot(slot.itemInventory, slot.fluidInventory);
+                slot.clearVirtualSupply();
             }
             AEUtils.reFunds(buffer, getMainNode().getGrid(), actionSource);
         }
@@ -718,14 +722,18 @@ public abstract class MEPatternBufferPartMachineBase extends MEIOPartMachine
             return true;
         }
 
-        public void clearInventories() {
-            itemInventory.clear();
-            fluidInventory.clear();
-            // Tied to the pattern that vouched for them, so they go when its contents do.
+        /**
+         * Drops the pattern-vouched virtual supply. Safe at any time: the next dispatch pushes the wrapper again and
+         * re-establishes it. A real circuit is untouched -- its cache is owned by pattern processing, not by
+         * {@code virtualCircuitConfig}.
+         */
+        public void clearVirtualSupply() {
             virtualItemSupply.clear();
             virtualFluidSupply.clear();
-            virtualCircuitConfig = -1;
-            cacheManager.clearAllCaches();
+            if (virtualCircuitConfig >= 0) {
+                virtualCircuitConfig = -1;
+                cacheManager.clearCircuitCache();
+            }
         }
 
         public Object2LongMap<AEItemKey> getItemCatalystInventory() {
