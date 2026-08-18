@@ -2,6 +2,7 @@ package org.gtlcore.gtlcore.client;
 
 import org.gtlcore.gtlcore.GTLCore;
 import org.gtlcore.gtlcore.api.event.SourceTooltipRegistrationEvent;
+import org.gtlcore.gtlcore.client.compat.aef.AefFavoriteKeyCompat;
 import org.gtlcore.gtlcore.common.data.source_tooltip.SourceTooltip;
 import org.gtlcore.gtlcore.common.data.source_tooltip.register.*;
 
@@ -18,6 +19,7 @@ public class ModClientEventListener {
     @SubscribeEvent
     public static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
         NoClipClient.registerKeyMapping(event);
+        AefFavoriteKeyCompat.registerKeyMapping(event);
     }
 
     @SubscribeEvent

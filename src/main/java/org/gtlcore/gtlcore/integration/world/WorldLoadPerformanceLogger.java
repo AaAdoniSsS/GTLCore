@@ -2,12 +2,19 @@ package org.gtlcore.gtlcore.integration.world;
 
 import org.gtlcore.gtlcore.GTLCore;
 import org.gtlcore.gtlcore.config.ConfigHolder;
+import org.gtlcore.gtlcore.mixin.forge.ForgeChunkTicketOwnerAccessor;
 
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ChunkHolder;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.ForcedChunksSavedData;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.chunk.ChunkStatus;
+import net.minecraftforge.common.world.ForgeChunkManager;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.level.LevelEvent;
 import net.minecraftforge.event.server.ServerAboutToStartEvent;
@@ -16,6 +23,9 @@ import net.minecraftforge.event.server.ServerStartingEvent;
 import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.fml.loading.FMLPaths;
 
+import com.mojang.datafixers.util.Either;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.longs.LongSet;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.core.LoggerContext;
@@ -32,11 +42,19 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.LongAdder;
 
-/** Captures server-side world loading timings without adding work to the loading path. */
+/** Captures server-side world loading, chunk generation, and forced-chunk diagnostics. */
 public final class WorldLoadPerformanceLogger {
 
     private static final String LOGGER_NAME = "gtlcore.world_load.performance";
@@ -125,24 +143,97 @@ public final class WorldLoadPerformanceLogger {
                 activeSession = null;
                 return;
             }
-            if (!session.summaryWritten) writeSummary(session, "stopping_before_started");
+            if (!session.summaryWritten) {
+                writeSummary(session, "stopping_before_started");
+            } else {
+                writeChunkGenerationSummary(session, "server_stopping");
+            }
             info("[WORLD_LOAD] event=server_stopping server={} session_elapsed_ms={}", session.serverName(),
                     toMillis(System.nanoTime() - session.startedNanos));
             activeSession = null;
         }
     }
 
+    public static CompletableFuture<Either<ChunkAccess, ChunkHolder.ChunkLoadingFailure>> observeChunkGeneration(
+                                                                                                                 ServerLevel level,
+                                                                                                                 ChunkPos chunkPos,
+                                                                                                                 ChunkStatus status,
+                                                                                                                 CompletableFuture<Either<ChunkAccess, ChunkHolder.ChunkLoadingFailure>> future) {
+        if (!isEnabled()) return future;
+        long startedNanos = System.nanoTime();
+        future.whenComplete((result, exception) -> recordChunkGeneration(
+                level, chunkPos, status, System.nanoTime() - startedNanos,
+                exception == null && result != null && result.left().isPresent(), exception));
+        return future;
+    }
+
+    public static void onForcedChunksReinstated(ServerLevel level, ForcedChunksSavedData saveData) {
+        if (!isEnabled()) return;
+        Session session = getOrCreateSession(level.getServer(), "forced_chunks_reinstated");
+        Map<String, ForcedChunkSourceObservation> sources = new TreeMap<>();
+        collectForcedChunkSources(sources, saveData.getBlockForcedChunks().getChunks(), false, true);
+        collectForcedChunkSources(sources, saveData.getBlockForcedChunks().getTickingChunks(), true, true);
+        collectForcedChunkSources(sources, saveData.getEntityForcedChunks().getChunks(), false, false);
+        collectForcedChunkSources(sources, saveData.getEntityForcedChunks().getTickingChunks(), true, false);
+        String dimension = dimension(level);
+        info("[WORLD_LOAD] event=forced_chunk_sources dimension={} vanilla_chunks={} forge_mods={}",
+                dimension, saveData.getChunks().size(), sources.size());
+        sources.forEach((modId, observation) -> info(
+                "[WORLD_LOAD] event=forced_chunk_source dimension={} mod={} block_owners={} " +
+                        "block_chunks={} ticking_block_chunks={} entity_owners={} entity_chunks={} " +
+                        "ticking_entity_chunks={} unique_chunks={}",
+                dimension, modId, observation.blockOwners.size(), observation.blockChunks.size(),
+                observation.tickingBlockChunks.size(), observation.entityOwners.size(), observation.entityChunks.size(),
+                observation.tickingEntityChunks.size(), observation.uniqueChunkCount()));
+        session.forcedChunkSourceEvents.incrementAndGet();
+    }
+
+    private static void recordChunkGeneration(ServerLevel level, ChunkPos chunkPos, ChunkStatus status,
+                                              long elapsedNanos, boolean success, @Nullable Throwable exception) {
+        if (!isEnabled()) return;
+        Session session = getOrCreateSession(level.getServer(), "chunk_generation");
+        long completed = session.recordChunkGeneration(dimension(level), status.toString(), elapsedNanos, success);
+        long elapsedMillis = toMillis(elapsedNanos);
+        if (elapsedMillis >= slowChunkStageWarningMillis()) {
+            info("[WORLD_LOAD] event=slow_chunk_generation_stage dimension={} chunk_x={} chunk_z={} " +
+                    "stage={} elapsed_ms={} success={} thread={} error={}",
+                    dimension(level), chunkPos.x, chunkPos.z, status, elapsedMillis, success,
+                    Thread.currentThread().getName(), exception == null ? "none" : exception.getClass().getName());
+        }
+        int summaryInterval = chunkGenerationSummaryInterval();
+        if (completed % summaryInterval == 0) {
+            writeChunkGenerationSummary(session, "periodic");
+        }
+    }
+
+    private static <T extends Comparable<? super T>> void collectForcedChunkSources(
+                                                                                    Map<String, ForcedChunkSourceObservation> sources,
+                                                                                    Map<ForgeChunkManager.TicketOwner<T>, LongSet> tickets,
+                                                                                    boolean ticking,
+                                                                                    boolean blockOwner) {
+        for (Map.Entry<ForgeChunkManager.TicketOwner<T>, LongSet> entry : tickets.entrySet()) {
+            String modId = ((ForgeChunkTicketOwnerAccessor) (Object) entry.getKey()).gtlcore$getModId();
+            ForcedChunkSourceObservation observation = sources.computeIfAbsent(
+                    modId, ignored -> new ForcedChunkSourceObservation());
+            observation.add(entry.getKey(), entry.getValue(), ticking, blockOwner);
+        }
+    }
+
     private static Session getOrCreateSession(MinecraftServer server, String trigger) {
         Session session = activeSession;
-        if (session == null || session.server != server) {
-            session = new Session(server, System.nanoTime());
-            activeSession = session;
-            info("[WORLD_LOAD] event=session_started trigger={} server={} " +
-                    "machine_startup_tick_budget_enabled={} normal_budget={} ae_budget={} time_budget_ms={}",
-                    trigger, session.serverName(), machineStartupBudgetEnabled(), normalBudget(), aeBudget(),
-                    timeBudgetMillis());
+        if (session != null && session.server == server) return session;
+        synchronized (LOCK) {
+            session = activeSession;
+            if (session == null || session.server != server) {
+                session = new Session(server, System.nanoTime());
+                activeSession = session;
+                info("[WORLD_LOAD] event=session_started trigger={} server={} " +
+                        "machine_startup_tick_budget_enabled={} normal_budget={} ae_budget={} time_budget_ms={}",
+                        trigger, session.serverName(), machineStartupBudgetEnabled(), normalBudget(), aeBudget(),
+                        timeBudgetMillis());
+            }
+            return session;
         }
-        return session;
     }
 
     private static void writeSummary(Session session, String status) {
@@ -165,11 +256,13 @@ public final class WorldLoadPerformanceLogger {
         info("[WORLD_LOAD] event=summary status={} server={} total_ms={} world_preparation_ms={} " +
                 "startup_completion_ms={} levels={} level_load_events={} " +
                 "loaded_chunks={} forced_chunks={} used_heap_mib={} max_heap_mib={} heap_usage_percent={} " +
-                "available_processors={} optimization_candidates={}",
+                "available_processors={} chunk_generation_stages={} forced_chunk_source_events={} " +
+                "optimization_candidates={}",
                 status, session.serverName(), elapsedMillis, worldPreparationMillis, startupCompletionMillis,
                 session.levels.size(), session.levelLoadEvents,
                 loadedChunks, forcedChunks, usedHeapBytes / BYTES_PER_MEBIBYTE, maxHeapBytes / BYTES_PER_MEBIBYTE,
-                heapUsagePercent, runtime.availableProcessors(),
+                heapUsagePercent, runtime.availableProcessors(), session.chunkGenerationCompleted.get(),
+                session.forcedChunkSourceEvents.get(),
                 countCandidates(session, elapsedMillis, forcedChunks, heapUsagePercent));
         for (LevelObservation observation : session.levels.values()) {
             info("[WORLD_LOAD] event=level_load_observed dimension={} first_seen_ms={} last_seen_ms={} " +
@@ -202,6 +295,24 @@ public final class WorldLoadPerformanceLogger {
                     "action=profile_retained_world_data_and_review_heap_capacity",
                     heapUsagePercent);
         }
+        writeChunkGenerationSummary(session, status);
+    }
+
+    private static void writeChunkGenerationSummary(Session session, String reason) {
+        session.chunkGenerationByDimension.entrySet().stream().sorted(Map.Entry.comparingByKey())
+                .forEach(dimensionEntry -> dimensionEntry.getValue().entrySet().stream()
+                        .sorted(Map.Entry.comparingByKey())
+                        .forEach(stageEntry -> {
+                            StageObservation observation = stageEntry.getValue();
+                            long completed = observation.completed.sum();
+                            long totalNanos = observation.totalNanos.sum();
+                            info("[WORLD_LOAD] event=chunk_generation_summary reason={} dimension={} stage={} " +
+                                    "completed={} failed={} total_ms={} average_us={} max_ms={}",
+                                    reason, dimensionEntry.getKey(), stageEntry.getKey(), completed,
+                                    observation.failed.sum(), toMillis(totalNanos),
+                                    completed == 0 ? 0 : totalNanos / completed / 1_000L,
+                                    toMillis(observation.maxNanos.get()));
+                        }));
     }
 
     private static int countCandidates(Session session, long elapsedMillis, int forcedChunks, int heapUsagePercent) {
@@ -231,6 +342,16 @@ public final class WorldLoadPerformanceLogger {
     private static int timeBudgetMillis() {
         return ConfigHolder.INSTANCE == null ? ConfigHolder.DEFAULT_MACHINE_STARTUP_TICK_TIME_BUDGET_MILLIS :
                 ConfigHolder.INSTANCE.machineStartupTickTimeBudgetMillis;
+    }
+
+    private static int slowChunkStageWarningMillis() {
+        return ConfigHolder.INSTANCE == null ? ConfigHolder.DEFAULT_WORLD_LOAD_SLOW_CHUNK_STAGE_WARNING_MILLIS :
+                ConfigHolder.INSTANCE.worldLoadSlowChunkStageWarningMillis;
+    }
+
+    private static int chunkGenerationSummaryInterval() {
+        return ConfigHolder.INSTANCE == null ? ConfigHolder.DEFAULT_WORLD_LOAD_CHUNK_GENERATION_SUMMARY_INTERVAL :
+                ConfigHolder.INSTANCE.worldLoadChunkGenerationSummaryInterval;
     }
 
     private static void info(String message, Object... arguments) {
@@ -339,6 +460,9 @@ public final class WorldLoadPerformanceLogger {
         private final MinecraftServer server;
         private final long startedNanos;
         private final Map<String, LevelObservation> levels = new LinkedHashMap<>();
+        private final ConcurrentMap<String, ConcurrentMap<String, StageObservation>> chunkGenerationByDimension = new ConcurrentHashMap<>();
+        private final AtomicLong chunkGenerationCompleted = new AtomicLong();
+        private final AtomicLong forcedChunkSourceEvents = new AtomicLong();
         private long serverStartingNanos;
         private long serverStartedNanos;
         private int levelLoadEvents;
@@ -364,8 +488,58 @@ public final class WorldLoadPerformanceLogger {
                     toMillis(now - startedNanos), level.getGameTime());
         }
 
+        private long recordChunkGeneration(String dimension, String stage, long elapsedNanos, boolean success) {
+            chunkGenerationByDimension.computeIfAbsent(dimension, ignored -> new ConcurrentHashMap<>())
+                    .computeIfAbsent(stage, ignored -> new StageObservation())
+                    .record(elapsedNanos, success);
+            return chunkGenerationCompleted.incrementAndGet();
+        }
+
         private String serverName() {
             return server.getServerModName();
+        }
+    }
+
+    private static final class StageObservation {
+
+        private final LongAdder completed = new LongAdder();
+        private final LongAdder failed = new LongAdder();
+        private final LongAdder totalNanos = new LongAdder();
+        private final AtomicLong maxNanos = new AtomicLong();
+
+        private void record(long elapsedNanos, boolean success) {
+            completed.increment();
+            if (!success) failed.increment();
+            totalNanos.add(elapsedNanos);
+            maxNanos.accumulateAndGet(elapsedNanos, Math::max);
+        }
+    }
+
+    private static final class ForcedChunkSourceObservation {
+
+        private final Set<Object> blockOwners = new HashSet<>();
+        private final Set<Object> entityOwners = new HashSet<>();
+        private final LongSet blockChunks = new LongOpenHashSet();
+        private final LongSet tickingBlockChunks = new LongOpenHashSet();
+        private final LongSet entityChunks = new LongOpenHashSet();
+        private final LongSet tickingEntityChunks = new LongOpenHashSet();
+
+        private void add(Object owner, LongSet chunks, boolean ticking, boolean blockOwner) {
+            if (blockOwner) {
+                blockOwners.add(owner);
+                (ticking ? tickingBlockChunks : blockChunks).addAll(chunks);
+            } else {
+                entityOwners.add(owner);
+                (ticking ? tickingEntityChunks : entityChunks).addAll(chunks);
+            }
+        }
+
+        private int uniqueChunkCount() {
+            LongSet uniqueChunks = new LongOpenHashSet(blockChunks);
+            uniqueChunks.addAll(tickingBlockChunks);
+            uniqueChunks.addAll(entityChunks);
+            uniqueChunks.addAll(tickingEntityChunks);
+            return uniqueChunks.size();
         }
     }
 
