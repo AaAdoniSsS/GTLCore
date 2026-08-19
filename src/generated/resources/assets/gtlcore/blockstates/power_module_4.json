@@ -1,7 +1,7 @@
 {
   "variants": {
     "active=false": {
-      "model": "gtlcore:block/variant/power_module"
+      "model": "gtlcore:block/variant/power_module_4"
     },
     "active=true": {
       "model": "gtlcore:block/variant/power_module_active"

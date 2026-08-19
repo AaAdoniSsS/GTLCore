@@ -385,13 +385,13 @@ public class GTLBlocks {
             BlockMap.scMap, 3);
 
     public static final BlockEntry<ActiveBlock> POWER_MODULE = GTLBlocks.createActiveTierCasing("power_module",
-            "block/variant/power_module", BlockMap.sepmMap, 1);
+            "block/variant/power_module_1", BlockMap.sepmMap, 1);
     public static final BlockEntry<ActiveBlock> POWER_MODULE_2 = GTLBlocks.createActiveTierCasing("power_module_2",
-            "block/variant/power_module", BlockMap.sepmMap, 2);
+            "block/variant/power_module_2", BlockMap.sepmMap, 2);
     public static final BlockEntry<ActiveBlock> POWER_MODULE_3 = GTLBlocks.createActiveTierCasing("power_module_3",
-            "block/variant/power_module", BlockMap.sepmMap, 3);
+            "block/variant/power_module_3", BlockMap.sepmMap, 3);
     public static final BlockEntry<ActiveBlock> POWER_MODULE_4 = GTLBlocks.createActiveTierCasing("power_module_4",
-            "block/variant/power_module", BlockMap.sepmMap, 4);
+            "block/variant/power_module_4", BlockMap.sepmMap, 4);
     public static final BlockEntry<ActiveBlock> POWER_MODULE_5 = GTLBlocks.createActiveTierCasing("power_module_5",
-            "block/variant/power_module", BlockMap.sepmMap, 5);
+            "block/variant/power_module_5", BlockMap.sepmMap, 5);
 }
