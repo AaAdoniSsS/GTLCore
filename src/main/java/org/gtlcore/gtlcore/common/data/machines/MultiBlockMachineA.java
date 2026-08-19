@@ -30,6 +30,7 @@ import com.gregtechceu.gtceu.api.pattern.util.RelativeDirection;
 import com.gregtechceu.gtceu.api.recipe.GTRecipe;
 import com.gregtechceu.gtceu.api.recipe.OverclockingLogic;
 import com.gregtechceu.gtceu.api.recipe.RecipeHelper;
+import com.gregtechceu.gtceu.api.recipe.modifier.RecipeModifier;
 import com.gregtechceu.gtceu.common.data.*;
 import com.gregtechceu.gtceu.common.machine.multiblock.steam.LargeBoilerMachine;
 import com.gregtechceu.gtceu.utils.FormattingUtil;
@@ -813,11 +814,15 @@ public class MultiBlockMachineA {
                     Component.translatable("gtceu.precision_laser_engraver"), Component.translatable("gtceu.laser_engraver")))
             .tooltipBuilder(GTLMachines.GTL_ADD)
             .recipeModifiers((machine, recipe, params, result) -> {
-                if (machine instanceof WorkableElectricMultiblockMachine workableElectricMultiblockMachine && workableElectricMultiblockMachine.getRecipeType() == GTRecipeTypes.LASER_ENGRAVER_RECIPES) {
-                    return GTRecipeModifiers.hatchParallel(workableElectricMultiblockMachine, recipe, false, params, result);
+                OverclockingLogic logic = OverclockingLogic.PERFECT_OVERCLOCK;
+                if (machine instanceof WorkableElectricMultiblockMachine workable &&
+                        workable.getRecipeType() == GTRecipeTypes.LASER_ENGRAVER_RECIPES) {
+                    logic = OverclockingLogic.PERFECT_OVERCLOCK_SUBTICK;
+                    recipe = GTRecipeModifiers.hatchParallel(workable, recipe, false, params, result);
                 }
-                return recipe;
-            }, GTRecipeModifiers.ELECTRIC_OVERCLOCK.apply(OverclockingLogic.PERFECT_OVERCLOCK_SUBTICK))
+                RecipeModifier overclock = GTRecipeModifiers.ELECTRIC_OVERCLOCK.apply(logic);
+                return overclock.apply(machine, recipe, params, result);
+            })
             .appearanceBlock(GTLBlocks.IRIDIUM_CASING)
             .pattern(definition -> FactoryBlockPattern.start()
                     .aisle("     AAAAA     ", "     AEEEA     ", "AAAAAAEEEAAAAAA", "AEEEEEEEEEEEEEA", "AAAAAAEEEAAAAAA", "     AEEEA     ", "     AAAAA     ")
