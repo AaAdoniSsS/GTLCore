@@ -56,7 +56,7 @@ public final class TransfiniteComputationArrayLifecycleLogger {
 
     public static boolean isEnabled() {
         return ConfigHolder.INSTANCE == null ||
-                ConfigHolder.INSTANCE.enableTransfiniteComputationArrayLifecycleLogging;
+                ConfigHolder.INSTANCE.debugLogging.enableTransfiniteComputationArrayLifecycleLogging;
     }
 
     public static void logStructureCheckStarted(Level level, BlockPos controllerPos, long periodId,

@@ -1,5 +1,7 @@
 package org.gtlcore.gtlcore.mixin.gtm.gui;
 
+import org.gtlcore.gtlcore.api.recipe.IRecipeChanceDisplay;
+
 import com.gregtechceu.gtceu.api.GTValues;
 import com.gregtechceu.gtceu.api.capability.recipe.CWURecipeCapability;
 import com.gregtechceu.gtceu.api.recipe.GTRecipe;
@@ -13,6 +15,9 @@ import net.minecraft.network.chat.Component;
 
 import org.jetbrains.annotations.NotNull;
 import org.spongepowered.asm.mixin.*;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.*;
 
@@ -25,6 +30,31 @@ public abstract class GTRecipeWidgetMixin {
     @Shadow(remap = false)
     @Final
     private GTRecipe recipe;
+    @Shadow(remap = false)
+    private int tier;
+
+    @Shadow(remap = false)
+    private int getMinTier() {
+        throw new AssertionError();
+    }
+
+    @Inject(method = "setTier", at = @At("TAIL"), remap = false)
+    private void gtlcore$updateDisplayedChances(int tier, CallbackInfo ci) {
+        int recipeTier = getMinTier();
+        gtlcore$updateDisplayedChances(recipe.inputs, recipeTier);
+        gtlcore$updateDisplayedChances(recipe.outputs, recipeTier);
+        gtlcore$updateDisplayedChances(recipe.tickInputs, recipeTier);
+        gtlcore$updateDisplayedChances(recipe.tickOutputs, recipeTier);
+    }
+
+    @Unique
+    private void gtlcore$updateDisplayedChances(Map<?, List<Content>> contents, int recipeTier) {
+        for (List<Content> capabilityContents : contents.values()) {
+            for (Content content : capabilityContents) {
+                ((IRecipeChanceDisplay) (Object) content).gtlcore$setChanceDisplayTiers(recipeTier, this.tier);
+            }
+        }
+    }
 
     /**
      * @author .

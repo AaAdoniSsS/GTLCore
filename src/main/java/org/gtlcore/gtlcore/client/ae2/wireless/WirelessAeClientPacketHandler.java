@@ -21,6 +21,10 @@ public final class WirelessAeClientPacketHandler {
         PatternQuickUploadSelectionOverlay.open(packet.patternStack(), packet.entries());
     }
 
+    public static void handlePatternQuickUploadDuplicate(WirelessAePackets.PatternQuickUploadDuplicatePacket packet) {
+        PatternQuickUploadSelectionOverlay.showDuplicateNotice(packet.targetName());
+    }
+
     public static void handleMeInventoryAmount(MeInventoryAmountPackets.Response packet) {
         MeInventoryAmountClient.receive(packet);
     }

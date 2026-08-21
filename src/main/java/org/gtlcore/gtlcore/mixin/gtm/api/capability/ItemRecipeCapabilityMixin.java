@@ -2,6 +2,7 @@ package org.gtlcore.gtlcore.mixin.gtm.api.capability;
 
 import org.gtlcore.gtlcore.api.recipe.IParallelLogic;
 import org.gtlcore.gtlcore.api.recipe.ingredient.LongIngredient;
+import org.gtlcore.gtlcore.integration.jei.RecipeChanceTooltip;
 
 import com.gregtechceu.gtceu.api.capability.recipe.*;
 import com.gregtechceu.gtceu.api.recipe.GTRecipe;
@@ -15,7 +16,6 @@ import com.gregtechceu.gtceu.api.recipe.ui.GTRecipeTypeUI;
 import com.gregtechceu.gtceu.common.recipe.condition.ResearchCondition;
 import com.gregtechceu.gtceu.common.valueprovider.*;
 import com.gregtechceu.gtceu.config.ConfigHolder;
-import com.gregtechceu.gtceu.utils.FormattingUtil;
 import com.gregtechceu.gtceu.utils.ResearchManager;
 
 import com.lowdragmc.lowdraglib.gui.widget.SlotWidget;
@@ -36,7 +36,6 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.UnknownNullability;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;
-import org.spongepowered.asm.mixin.Unique;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -146,34 +145,11 @@ public abstract class ItemRecipeCapabilityMixin extends RecipeCapability<Ingredi
                     tooltips.add(Component.translatable("gtceu.machine.quantum_chest.items_stored")
                             .withStyle(ChatFormatting.DARK_AQUA)
                             .append(Component.literal(String.valueOf(amount))));
-                    gTLCore$setConsumedChance(content, ChanceLogic.OR, tooltips, io);
+                    RecipeChanceTooltip.add(content, ChanceLogic.OR, tooltips, io);
                     if (this.isTickSlot(index, io, recipe)) {
                         tooltips.add(Component.translatable("gtceu.gui.content.per_tick"));
                     }
                 });
-            }
-        }
-    }
-
-    @Unique
-    private static void gTLCore$setConsumedChance(Content content, ChanceLogic logic, List<Component> tooltips, IO io) {
-        var chance = content.chance;
-        if (chance < ChanceLogic.getMaxChancedValue()) {
-            if (chance == 0) {
-                tooltips.add(Component.translatable("gtceu.gui.content.chance_0"));
-            } else {
-                float chanceFloat = 100 * (float) content.chance / content.maxChance;
-                if (logic != ChanceLogic.NONE && logic != ChanceLogic.OR) {
-                    tooltips.add(Component.translatable(io == IO.IN ? "gtceu.gui.content.chance_1_logic_in" : "gtceu.gui.content.chance_1_logic",
-                            FormattingUtil.formatNumber2Places(chanceFloat), logic.getTranslation())
-                            .withStyle(ChatFormatting.YELLOW));
-                } else {
-                    tooltips.add(FormattingUtil.formatPercentage2Places(io == IO.IN ? "gtceu.gui.content.chance_1_in" : "gtceu.gui.content.chance_1", chanceFloat));
-                }
-                if (content.tierChanceBoost != 0) {
-                    var formatNumber = content.tierChanceBoost > 0 ? "+" + FormattingUtil.formatNumber2Places(content.tierChanceBoost / 100.0f) : FormattingUtil.formatNumber2Places(content.tierChanceBoost / 100.0f);
-                    tooltips.add(Component.translatable("gtceu.gui.content.tier_boost_fix", formatNumber).withStyle(ChatFormatting.YELLOW));
-                }
             }
         }
     }

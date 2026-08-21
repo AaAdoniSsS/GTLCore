@@ -49,7 +49,7 @@ public final class CraftingDispatchPerformanceLogger {
 
     public static boolean isEnabled() {
         return ConfigHolder.INSTANCE != null &&
-                ConfigHolder.INSTANCE.enableAe2CraftingDispatchPerformanceLogging;
+                ConfigHolder.INSTANCE.debugLogging.enableAe2CraftingDispatchPerformanceLogging;
     }
 
     public static boolean logIfNeeded(String cpuType, Level level, BlockPos pos, @Nullable Object jobId,
@@ -58,16 +58,16 @@ public final class CraftingDispatchPerformanceLogger {
                                       boolean storageBlocked, @Nullable Metrics metrics,
                                       long currentTick, long lastLoggedTick) {
         ConfigHolder config = ConfigHolder.INSTANCE;
-        if (config == null || !config.enableAe2CraftingDispatchPerformanceLogging) {
+        if (config == null || !config.debugLogging.enableAe2CraftingDispatchPerformanceLogging) {
             return false;
         }
 
         long elapsedMicros = elapsedNanos / NANOS_PER_MICROSECOND;
-        if (!storageBlocked && elapsedMicros < config.ae2CraftingDispatchPerformanceWarningMicros) {
+        if (!storageBlocked && elapsedMicros < config.debugLogging.ae2CraftingDispatchPerformanceWarningMicros) {
             return false;
         }
         if (lastLoggedTick != Long.MIN_VALUE &&
-                currentTick - lastLoggedTick < config.ae2CraftingDispatchPerformanceLogIntervalTicks) {
+                currentTick - lastLoggedTick < config.debugLogging.ae2CraftingDispatchPerformanceLogIntervalTicks) {
             return false;
         }
 

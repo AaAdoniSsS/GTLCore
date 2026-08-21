@@ -3,6 +3,8 @@ package org.gtlcore.gtlcore.client.ae2.wireless;
 import org.gtlcore.gtlcore.integration.ae2.pattern.PatternQuickUploadSelectionMenu;
 import org.gtlcore.gtlcore.integration.ae2.wireless.WirelessAePackets;
 
+import net.minecraft.ChatFormatting;
+import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -29,16 +31,26 @@ public final class PatternQuickUploadSelectionOverlay {
     private static final int ROW_TEXT_GAP = 2;
     private static final int SCROLLBAR_WIDTH = WirelessAeStyle.AE2_SCROLLBAR_WIDTH;
     private static final int SCROLLBAR_GAP = 4;
+    private static final int NOTICE_MAX_WIDTH = 320;
+    private static final int NOTICE_HEIGHT = 34;
+    private static final int NOTICE_SCREEN_MARGIN = 8;
+    private static final int NOTICE_TEXT_INSET = 16;
+    private static final int NOTICE_TITLE_Y = 5;
+    private static final int NOTICE_DETAIL_Y = 18;
+    private static final long NOTICE_DURATION_MILLIS = 6000L;
     private static final float OVERLAY_Z = 400.0F;
 
     private static ItemStack patternStack = ItemStack.EMPTY;
     private static List<PatternQuickUploadSelectionMenu.Entry> entries = List.of();
     private static int scrollOffset;
     private static boolean draggingScrollbar;
+    private static Component duplicateTargetName = Component.empty();
+    private static long duplicateNoticeExpiresAt;
 
     private PatternQuickUploadSelectionOverlay() {}
 
     public static void open(ItemStack stack, List<PatternQuickUploadSelectionMenu.Entry> targetEntries) {
+        clearDuplicateNotice();
         patternStack = stack.copy();
         entries = List.copyOf(targetEntries);
         scrollOffset = 0;
@@ -56,8 +68,15 @@ public final class PatternQuickUploadSelectionOverlay {
         return !patternStack.isEmpty() || !entries.isEmpty();
     }
 
+    public static void showDuplicateNotice(Component targetName) {
+        close();
+        duplicateTargetName = targetName.copy();
+        duplicateNoticeExpiresAt = Util.getMillis() + NOTICE_DURATION_MILLIS;
+    }
+
     public static void render(GuiGraphics graphics, int screenWidth, int screenHeight, int mouseX, int mouseY) {
         if (!isOpen()) {
+            renderDuplicateNotice(graphics, screenWidth);
             return;
         }
 
@@ -102,6 +121,61 @@ public final class PatternQuickUploadSelectionOverlay {
         } finally {
             graphics.pose().popPose();
         }
+    }
+
+    private static void renderDuplicateNotice(GuiGraphics graphics, int screenWidth) {
+        if (!isDuplicateNoticeVisible()) {
+            return;
+        }
+        int width = Math.min(NOTICE_MAX_WIDTH, Math.max(1, screenWidth - NOTICE_SCREEN_MARGIN * 2));
+        int left = (screenWidth - width) / 2;
+        int top = NOTICE_SCREEN_MARGIN;
+        Font font = Minecraft.getInstance().font;
+        Component title = Component.translatable("message.gtlcore.pattern_quick_upload_duplicate_title")
+                .withStyle(ChatFormatting.BOLD);
+        Component detail = Component.translatable(
+                "message.gtlcore.pattern_quick_upload_duplicate_detail",
+                duplicateTargetName);
+
+        graphics.pose().pushPose();
+        graphics.pose().translate(0.0F, 0.0F, OVERLAY_Z);
+        try {
+            WirelessAeStyle.drawButtonBackground(graphics, left, top, width, NOTICE_HEIGHT,
+                    true, false, true, false);
+            graphics.drawString(
+                    font,
+                    title,
+                    left + (width - font.width(title)) / 2,
+                    top + NOTICE_TITLE_Y,
+                    WirelessAeStyle.WARNING_TEXT,
+                    false);
+            WirelessAeStyle.drawTrimmedString(
+                    graphics,
+                    font,
+                    detail,
+                    left + NOTICE_TEXT_INSET,
+                    top + NOTICE_DETAIL_Y,
+                    width - NOTICE_TEXT_INSET * 2,
+                    WirelessAeStyle.TEXT);
+        } finally {
+            graphics.pose().popPose();
+        }
+    }
+
+    private static boolean isDuplicateNoticeVisible() {
+        if (duplicateTargetName.getString().isEmpty()) {
+            return false;
+        }
+        if (Util.getMillis() >= duplicateNoticeExpiresAt) {
+            clearDuplicateNotice();
+            return false;
+        }
+        return true;
+    }
+
+    private static void clearDuplicateNotice() {
+        duplicateTargetName = Component.empty();
+        duplicateNoticeExpiresAt = 0L;
     }
 
     public static boolean mouseClicked(double mouseX, double mouseY, int button, int screenWidth, int screenHeight) {

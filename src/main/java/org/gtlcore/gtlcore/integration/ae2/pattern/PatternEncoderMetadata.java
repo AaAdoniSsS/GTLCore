@@ -51,6 +51,21 @@ public final class PatternEncoderMetadata {
         return Optional.of(new Encoder(gtlcoreTag.getUUID(ENCODER_ID_KEY), encoderName));
     }
 
+    static void removeEncoder(ItemStack patternStack) {
+        CompoundTag tag = patternStack.getTag();
+        if (tag == null || !tag.contains(ROOT_KEY, Tag.TAG_COMPOUND)) {
+            return;
+        }
+        CompoundTag gtlcoreTag = tag.getCompound(ROOT_KEY);
+        gtlcoreTag.remove(ENCODER_ID_KEY);
+        gtlcoreTag.remove(ENCODER_NAME_KEY);
+        if (gtlcoreTag.isEmpty()) {
+            tag.remove(ROOT_KEY);
+        } else {
+            tag.put(ROOT_KEY, gtlcoreTag);
+        }
+    }
+
     public record Encoder(UUID id, String name) {
 
         public String displayName() {

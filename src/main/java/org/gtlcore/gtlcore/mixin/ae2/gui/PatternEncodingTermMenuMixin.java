@@ -473,7 +473,7 @@ public abstract class PatternEncodingTermMenuMixin extends MEStorageMenu impleme
             gTLCore$writePatternEncoder(preparedPattern);
         }
         PatternQuickUploadService.UploadResult uploadResult = PatternQuickUploadService.insertIntoTargetSlotResult(player, preparedPattern, target);
-        if (uploadResult != null) {
+        if (uploadResult.status() == PatternQuickUploadService.UploadStatus.INSERTED) {
             this.gTLCore$pendingQuickUploadRecipeTypeId = null;
             this.gTLCore$lastQuickUploadTarget = uploadResult.target();
             this.gTLCore$lastQuickUploadPattern = preparedPattern.copy();
@@ -483,6 +483,8 @@ public abstract class PatternEncodingTermMenuMixin extends MEStorageMenu impleme
                 gTLCore$awardPatternEncoded();
             }
             player.displayClientMessage(Component.translatable("message.gtlcore.pattern_quick_upload_inserted", target.targetName()), true);
+        } else if (uploadResult.status() == PatternQuickUploadService.UploadStatus.DUPLICATE) {
+            WirelessAePackets.sendPatternQuickUploadDuplicate(player, target.targetName());
         } else {
             player.displayClientMessage(Component.translatable("message.gtlcore.pattern_quick_upload_insert_failed"), true);
         }
