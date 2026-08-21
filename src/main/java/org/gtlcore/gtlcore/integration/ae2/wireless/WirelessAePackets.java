@@ -42,7 +42,7 @@ import java.util.function.Supplier;
 
 public final class WirelessAePackets {
 
-    private static final String PROTOCOL_VERSION = "11";
+    private static final String PROTOCOL_VERSION = "12";
     private static int nextPacketId;
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
@@ -117,6 +117,13 @@ public final class WirelessAePackets {
                 SelectPatternQuickUploadTargetPacket::decode,
                 SelectPatternQuickUploadTargetPacket::handle,
                 java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
+        CHANNEL.registerMessage(
+                nextPacketId++,
+                PatternQuickUploadDuplicatePacket.class,
+                PatternQuickUploadDuplicatePacket::encode,
+                PatternQuickUploadDuplicatePacket::decode,
+                PatternQuickUploadDuplicatePacket::handle,
+                java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT));
         CHANNEL.registerMessage(
                 nextPacketId++,
                 SyncThroughputMonitorTerminalPacket.class,
@@ -635,6 +642,38 @@ public final class WirelessAePackets {
                     menu.select(player, packet.index);
                 } else if (player != null && player.containerMenu instanceof PatterEncodingTermMenuModify menuModify) {
                     menuModify.gTLCore$selectQuickUploadTarget(packet.index);
+                }
+            });
+            context.setPacketHandled(true);
+        }
+    }
+
+    public static void sendPatternQuickUploadDuplicate(ServerPlayer player, Component targetName) {
+        CHANNEL.send(
+                PacketDistributor.PLAYER.with(() -> player),
+                new PatternQuickUploadDuplicatePacket(targetName));
+    }
+
+    public record PatternQuickUploadDuplicatePacket(Component targetName) {
+
+        private static void encode(PatternQuickUploadDuplicatePacket packet, FriendlyByteBuf buffer) {
+            buffer.writeComponent(packet.targetName);
+        }
+
+        private static PatternQuickUploadDuplicatePacket decode(FriendlyByteBuf buffer) {
+            return new PatternQuickUploadDuplicatePacket(buffer.readComponent());
+        }
+
+        private static void handle(PatternQuickUploadDuplicatePacket packet,
+                                   Supplier<NetworkEvent.Context> contextSupplier) {
+            NetworkEvent.Context context = contextSupplier.get();
+            context.enqueueWork(() -> {
+                try {
+                    Class.forName("org.gtlcore.gtlcore.client.ae2.wireless.WirelessAeClientPacketHandler")
+                            .getMethod("handlePatternQuickUploadDuplicate", PatternQuickUploadDuplicatePacket.class)
+                            .invoke(null, packet);
+                } catch (ReflectiveOperationException | RuntimeException ignored) {
+                    // Client-only handler is not present on dedicated servers.
                 }
             });
             context.setPacketHandled(true);

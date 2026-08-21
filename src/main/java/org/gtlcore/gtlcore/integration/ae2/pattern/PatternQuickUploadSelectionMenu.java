@@ -1,6 +1,7 @@
 package org.gtlcore.gtlcore.integration.ae2.pattern;
 
 import org.gtlcore.gtlcore.integration.ae2.wireless.GTLWirelessAeContent;
+import org.gtlcore.gtlcore.integration.ae2.wireless.WirelessAePackets;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
@@ -91,16 +92,23 @@ public class PatternQuickUploadSelectionMenu extends AbstractContainerMenu {
         }
         selected = true;
         Entry entry = entries.get(index);
-        if (PatternQuickUploadService.insertIntoTarget(player, patternStack, new PatternQuickUploadService.Target(
-                entry.levelKey(),
-                entry.bufferPos(),
-                entry.targetName(),
-                entry.recipeTypeId(),
-                entry.recipeTypeName()))) {
+        PatternQuickUploadService.UploadResult result = PatternQuickUploadService.insertIntoTargetSlotResult(
+                player,
+                patternStack,
+                new PatternQuickUploadService.Target(
+                        entry.levelKey(),
+                        entry.bufferPos(),
+                        entry.targetName(),
+                        entry.recipeTypeId(),
+                        entry.recipeTypeName()));
+        if (result.status() == PatternQuickUploadService.UploadStatus.INSERTED) {
             uploaded = true;
             patternStack = ItemStack.EMPTY;
             cancelStack = ItemStack.EMPTY;
             player.displayClientMessage(Component.translatable("message.gtlcore.pattern_quick_upload_inserted", entry.targetName()), true);
+            player.closeContainer();
+        } else if (result.status() == PatternQuickUploadService.UploadStatus.DUPLICATE) {
+            WirelessAePackets.sendPatternQuickUploadDuplicate(player, entry.targetName());
             player.closeContainer();
         } else {
             player.displayClientMessage(Component.translatable("message.gtlcore.pattern_quick_upload_insert_failed"), true);

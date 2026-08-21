@@ -160,7 +160,7 @@ public abstract class GTRecipeTypeCategoryMixin {
     @Unique
     private static int gtlcore$slowTypeWarningMillis() {
         return ConfigHolder.INSTANCE == null ? ConfigHolder.DEFAULT_GTCEU_JEI_SLOW_RECIPE_TYPE_WARNING_MILLIS :
-                ConfigHolder.INSTANCE.gtceuJeiSlowRecipeTypeWarningMillis;
+                ConfigHolder.INSTANCE.debugLogging.gtceuJeiSlowRecipeTypeWarningMillis;
     }
 
     @Unique

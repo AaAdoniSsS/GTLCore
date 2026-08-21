@@ -4,12 +4,14 @@ import org.gtlcore.gtlcore.api.machine.multiblock.IModularMachineHost;
 import org.gtlcore.gtlcore.api.machine.multiblock.IModularMachineModule;
 import org.gtlcore.gtlcore.api.recipe.RecipeResult;
 import org.gtlcore.gtlcore.client.gui.widget.IExtendedClickData;
+import org.gtlcore.gtlcore.common.data.GTLBlocks;
+import org.gtlcore.gtlcore.integration.machine.SpaceElevatorConnectionLogger;
 import org.gtlcore.gtlcore.utils.MachineUtil;
-import org.gtlcore.gtlcore.utils.Registries;
 import org.gtlcore.gtlcore.utils.datastructure.ModuleRenderInfo;
 
 import com.gregtechceu.gtceu.api.gui.GuiTextures;
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
+import com.gregtechceu.gtceu.api.machine.MetaMachine;
 import com.gregtechceu.gtceu.api.machine.feature.IMachineLife;
 
 import com.lowdragmc.lowdraglib.gui.util.ClickData;
@@ -71,7 +73,7 @@ public class SpaceElevatorMachine extends TierCasingMachine
     public void onStructureFormed() {
         super.onStructureFormed();
         safeClearModules();
-        scanAndConnectModules();
+        scanAndConnectSpaceElevatorModules("host_structure_formed");
     }
 
     @Override
@@ -155,16 +157,57 @@ public class SpaceElevatorMachine extends TierCasingMachine
     }
 
     private BlockPos getPowerCore(BlockPos pos, Level level) {
+        if (level == null) {
+            return null;
+        }
         BlockPos[] coordinates = new BlockPos[] { pos.offset(3, -2, 0),
                 pos.offset(-3, -2, 0),
                 pos.offset(0, -2, 3),
                 pos.offset(0, -2, -3) };
         for (BlockPos blockPos : coordinates) {
-            if (Objects.equals(Registries.getBlockId(level.getBlockState(blockPos).getBlock()), "gtlcore:power_core")) {
+            if (level.getBlockState(blockPos).is(GTLBlocks.POWER_CORE.get())) {
                 return blockPos;
             }
         }
         return null;
+    }
+
+    private void scanAndConnectSpaceElevatorModules(String trigger) {
+        Level level = getLevel();
+        if (level == null) {
+            return;
+        }
+        BlockPos powerCore = getPowerCore(getPos(), level);
+        BlockPos[] positions = getModuleScanPositions();
+        SpaceElevatorConnectionLogger.logScan(level, "host", getPos(), trigger, powerCore, null, positions);
+        for (BlockPos pos : positions) {
+            MetaMachine machine = MetaMachine.getMachine(level, pos);
+            boolean formed = machine instanceof IModularMachineModule<?, ?> module && module.isFormed();
+            boolean valid = isValidModule(machine);
+            SpaceElevatorConnectionLogger.logCandidate(
+                    level, "host", getPos(), pos, machineType(machine), formed,
+                    valid ? "accepted" : candidateRejection(machine, formed));
+            if (valid) {
+                @SuppressWarnings("unchecked")
+                IModularMachineModule<SpaceElevatorMachine, ?> module = (IModularMachineModule<SpaceElevatorMachine, ?>) machine;
+                module.connectToHost(this);
+                SpaceElevatorConnectionLogger.logConnection(level, machine.getPos(), getPos(), trigger, false);
+            }
+        }
+    }
+
+    private static String candidateRejection(MetaMachine machine, boolean formed) {
+        if (machine == null) {
+            return "missing_machine";
+        }
+        if (!(machine instanceof IModularMachineModule<?, ?>)) {
+            return "wrong_machine_type";
+        }
+        return formed ? "incompatible_host_type" : "module_not_formed";
+    }
+
+    private static String machineType(MetaMachine machine) {
+        return machine == null ? "none" : machine.getClass().getName();
     }
 
     private int getMAM() {

@@ -39,6 +39,22 @@ public final class JeiCheatModeCompat {
         }
     }
 
+    public static boolean reservesInputForEditMode(int mouseButton) {
+        try {
+            Object toggleState = invokeStatic("getClientToggleState");
+            if ((boolean) invoke(toggleState, "isEditModeEnabled")) {
+                return true;
+            }
+            Object keyMappings = invokeStatic("getKeyMappings");
+            Object mapping = invoke(keyMappings, "getToggleEditMode");
+            InputConstants.Key mouseKey = InputConstants.Type.MOUSE.getOrCreate(mouseButton);
+            return mapping instanceof IJeiKeyMapping jeiKeyMapping &&
+                    jeiKeyMapping.isActiveAndMatches(mouseKey);
+        } catch (ReflectiveOperationException | RuntimeException exception) {
+            return false;
+        }
+    }
+
     public static boolean executeCheatStackFallback(@Nullable AEKey key) {
         ItemStack stack = toCheatStack(key);
         if (stack.isEmpty()) {

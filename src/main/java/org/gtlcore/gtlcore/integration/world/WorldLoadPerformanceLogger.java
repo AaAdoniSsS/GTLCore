@@ -82,7 +82,7 @@ public final class WorldLoadPerformanceLogger {
     private WorldLoadPerformanceLogger() {}
 
     public static boolean isEnabled() {
-        return ConfigHolder.INSTANCE != null && ConfigHolder.INSTANCE.enableWorldLoadPerformanceLogging;
+        return ConfigHolder.INSTANCE != null && ConfigHolder.INSTANCE.debugLogging.enableWorldLoadPerformanceLogging;
     }
 
     public static void onServerAboutToStart(ServerAboutToStartEvent event) {
@@ -346,12 +346,12 @@ public final class WorldLoadPerformanceLogger {
 
     private static int slowChunkStageWarningMillis() {
         return ConfigHolder.INSTANCE == null ? ConfigHolder.DEFAULT_WORLD_LOAD_SLOW_CHUNK_STAGE_WARNING_MILLIS :
-                ConfigHolder.INSTANCE.worldLoadSlowChunkStageWarningMillis;
+                ConfigHolder.INSTANCE.debugLogging.worldLoadSlowChunkStageWarningMillis;
     }
 
     private static int chunkGenerationSummaryInterval() {
         return ConfigHolder.INSTANCE == null ? ConfigHolder.DEFAULT_WORLD_LOAD_CHUNK_GENERATION_SUMMARY_INTERVAL :
-                ConfigHolder.INSTANCE.worldLoadChunkGenerationSummaryInterval;
+                ConfigHolder.INSTANCE.debugLogging.worldLoadChunkGenerationSummaryInterval;
     }
 
     private static void info(String message, Object... arguments) {

@@ -107,7 +107,9 @@ public class ForgeClientEventListener {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onJeiWirelessOrderMousePressed(ScreenEvent.MouseButtonPressed.Pre event) {
-        if (event.isCanceled() || event.getButton() != JEI_WIRELESS_ORDER_MOUSE_BUTTON || !LDLib.isJeiLoaded()) {
+        if (event.isCanceled() || event.getButton() != JEI_WIRELESS_ORDER_MOUSE_BUTTON || !LDLib.isJeiLoaded() ||
+                JeiCheatModeCompat.reservesInputForEditMode(event.getButton()) ||
+                JeiMeInventoryTooltip.isFtbQuestsEditingScreen(event.getScreen())) {
             return;
         }
         JeiMeInventoryTooltip.getHoveredIngredientKey(event.getScreen(), event.getMouseX(), event.getMouseY()).ifPresent(key -> {
@@ -169,7 +171,8 @@ public class ForgeClientEventListener {
     }
 
     private static boolean isJeiWirelessExtractionInput(int button) {
-        return button == JEI_WIRELESS_EXTRACT_MOUSE_BUTTON && Screen.hasShiftDown() && LDLib.isJeiLoaded();
+        return button == JEI_WIRELESS_EXTRACT_MOUSE_BUTTON && Screen.hasShiftDown() && LDLib.isJeiLoaded() &&
+                !JeiCheatModeCompat.reservesInputForEditMode(button);
     }
 
     private record PendingJeiExtraction(Screen screen, AEKey key, boolean cheatMode) {}

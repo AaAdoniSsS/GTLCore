@@ -3,11 +3,13 @@ package org.gtlcore.gtlcore.common.machine.multiblock.electric;
 import org.gtlcore.gtlcore.api.machine.multiblock.IModularMachineModule;
 import org.gtlcore.gtlcore.common.data.GTLBlocks;
 import org.gtlcore.gtlcore.common.data.GTLRecipeModifiers;
+import org.gtlcore.gtlcore.integration.machine.SpaceElevatorConnectionLogger;
 import org.gtlcore.gtlcore.utils.MachineUtil;
 
 import com.gregtechceu.gtceu.api.GTValues;
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
 import com.gregtechceu.gtceu.api.machine.MetaMachine;
+import com.gregtechceu.gtceu.api.machine.TickableSubscription;
 import com.gregtechceu.gtceu.api.machine.feature.IMachineLife;
 import com.gregtechceu.gtceu.api.machine.multiblock.WorkableElectricMultiblockMachine;
 import com.gregtechceu.gtceu.api.machine.trait.RecipeLogic;
@@ -28,6 +30,7 @@ import net.minecraft.MethodsReturnNonnullByDefault;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.Level;
 
 import lombok.Getter;
 import lombok.Setter;
@@ -44,6 +47,7 @@ public class SpaceElevatorModuleMachine extends WorkableElectricMultiblockMachin
                                         implements IModularMachineModule<SpaceElevatorMachine, SpaceElevatorModuleMachine>, IMachineLife {
 
     protected static final ManagedFieldHolder MANAGED_FIELD_HOLDER = new ManagedFieldHolder(SpaceElevatorModuleMachine.class, WorkableElectricMultiblockMachine.MANAGED_FIELD_HOLDER);
+    private static final int CONNECTION_CHECK_INTERVAL_TICKS = 20;
 
     public SpaceElevatorModuleMachine(IMachineBlockEntity holder, boolean sepmTier, Object... args) {
         super(holder, args);
@@ -55,6 +59,8 @@ public class SpaceElevatorModuleMachine extends WorkableElectricMultiblockMachin
     private int moduleTier = 0;
 
     private final boolean sepmTier;
+    @Nullable
+    private TickableSubscription connectionSubscription;
 
     @Persisted
     @Nullable
@@ -83,13 +89,149 @@ public class SpaceElevatorModuleMachine extends WorkableElectricMultiblockMachin
 
     @Override
     public void onConnected(@NotNull SpaceElevatorMachine host) {
+        updateConnectionSubscription();
         getSpaceElevatorTier();
         recipeLogic.updateTickSubscription();
     }
 
     @Override
     public BlockPos[] getHostScanPositions() {
-        final BlockPos pos = getPos();
+        if (!(getLevel() instanceof ServerLevel serverLevel)) {
+            return MachineUtil.EMPTY_POS_ARRAY;
+        }
+        return getHostPositions(findPowerCore(serverLevel));
+    }
+
+    @Override
+    public void onStructureFormed() {
+        super.onStructureFormed();
+        updateConnectionSubscription();
+        reconcileHostConnection("module_structure_formed");
+    }
+
+    @Override
+    public void onStructureInvalid() {
+        super.onStructureInvalid();
+        removeFromHost(this.host);
+        updateConnectionSubscription();
+    }
+
+    @Override
+    public void onPartUnload() {
+        super.onPartUnload();
+        removeFromHost(this.host);
+        stopConnectionSubscription();
+    }
+
+    @Override
+    public void onMachineRemoved() {
+        removeFromHost(this.host);
+        stopConnectionSubscription();
+    }
+
+    @Override
+    public void onLoad() {
+        super.onLoad();
+        updateConnectionSubscription();
+    }
+
+    @Override
+    public void onUnload() {
+        stopConnectionSubscription();
+        super.onUnload();
+    }
+
+    @Override
+    public void removeFromHost(@Nullable SpaceElevatorMachine host) {
+        BlockPos previousHostPosition = getHostPosition();
+        IModularMachineModule.super.removeFromHost(host);
+        if (previousHostPosition != null) {
+            SpaceElevatorConnectionLogger.logDisconnection(
+                    getLevel(), getPos(), previousHostPosition, "module_or_host_lifecycle");
+        }
+    }
+
+    private void updateConnectionSubscription() {
+        if (isFormed()) {
+            if (connectionSubscription == null) {
+                connectionSubscription = subscribeServerTick(this::connectionTick);
+            }
+        } else {
+            stopConnectionSubscription();
+        }
+    }
+
+    private void stopConnectionSubscription() {
+        if (connectionSubscription != null) {
+            connectionSubscription.unsubscribe();
+            connectionSubscription = null;
+        }
+    }
+
+    private void connectionTick() {
+        if (!isFormed()) {
+            stopConnectionSubscription();
+            return;
+        }
+        if (getOffsetTimer() % CONNECTION_CHECK_INTERVAL_TICKS == 0) {
+            reconcileHostConnection("periodic_retry");
+        }
+    }
+
+    private void reconcileHostConnection(String trigger) {
+        if (!(getLevel() instanceof ServerLevel serverLevel)) {
+            return;
+        }
+
+        BlockPos savedHostPosition = getHostPosition();
+        SpaceElevatorMachine liveHost = getLiveHost(serverLevel, savedHostPosition);
+        if (liveHost != null) {
+            boolean repairedRegistration = !liveHost.getModuleSet().contains(this);
+            if (getHost() != liveHost || repairedRegistration) {
+                connectToHost(liveHost);
+                SpaceElevatorConnectionLogger.logConnection(
+                        serverLevel, getPos(), liveHost.getPos(), trigger, repairedRegistration);
+            }
+            return;
+        }
+
+        if (getHost() != null) {
+            removeFromHost(getHost());
+        }
+
+        BlockPos powerCore = findPowerCore(serverLevel);
+        BlockPos[] candidates = getHostPositions(powerCore);
+        SpaceElevatorConnectionLogger.logScan(
+                serverLevel, "module", getPos(), trigger, powerCore, savedHostPosition, candidates);
+        for (BlockPos candidatePos : candidates) {
+            MetaMachine machine = MetaMachine.getMachine(serverLevel, candidatePos);
+            boolean formed = machine instanceof SpaceElevatorMachine elevator && elevator.isFormed();
+            boolean valid = isValidHost(machine);
+            SpaceElevatorConnectionLogger.logCandidate(
+                    serverLevel, "module", getPos(), candidatePos, machineType(machine), formed,
+                    valid ? "accepted" : hostCandidateRejection(machine, formed));
+            if (valid) {
+                SpaceElevatorMachine candidateHost = (SpaceElevatorMachine) machine;
+                connectToHost(candidateHost);
+                SpaceElevatorConnectionLogger.logConnection(
+                        serverLevel, getPos(), candidateHost.getPos(), trigger, false);
+                return;
+            }
+        }
+    }
+
+    @Nullable
+    private SpaceElevatorMachine getLiveHost(ServerLevel level, @Nullable BlockPos position) {
+        if (position == null) {
+            return null;
+        }
+        MetaMachine machine = MetaMachine.getMachine(level, position);
+        return isValidHost(machine) ? (SpaceElevatorMachine) machine : null;
+    }
+
+    @Nullable
+    private BlockPos findPowerCore(Level level) {
+        BlockPos pos = getPos();
         BlockPos[] powerCorePositions = new BlockPos[] {
                 pos.offset(8, -2, 3),
                 pos.offset(8, -2, -3),
@@ -100,45 +242,38 @@ public class SpaceElevatorModuleMachine extends WorkableElectricMultiblockMachin
                 pos.offset(3, -2, -8),
                 pos.offset(-3, -2, -8)
         };
-
-        if (getLevel() instanceof ServerLevel serverLevel) {
-            for (BlockPos i : powerCorePositions) {
-                if (serverLevel.getBlockState(i).getBlock() == GTLBlocks.POWER_CORE.get()) {
-                    return new BlockPos[] {
-                            i.offset(3, 2, 0),
-                            i.offset(-3, 2, 0),
-                            i.offset(0, 2, 3),
-                            i.offset(0, 2, -3)
-                    };
-                }
+        for (BlockPos position : powerCorePositions) {
+            if (level.getBlockState(position).is(GTLBlocks.POWER_CORE.get())) {
+                return position;
             }
         }
-        return MachineUtil.EMPTY_POS_ARRAY;
+        return null;
     }
 
-    @Override
-    public void onStructureFormed() {
-        super.onStructureFormed();
-        if (!findAndConnectToHost()) {
-            removeFromHost(this.host);
+    private static BlockPos[] getHostPositions(@Nullable BlockPos powerCore) {
+        if (powerCore == null) {
+            return MachineUtil.EMPTY_POS_ARRAY;
         }
+        return new BlockPos[] {
+                powerCore.offset(3, 2, 0),
+                powerCore.offset(-3, 2, 0),
+                powerCore.offset(0, 2, 3),
+                powerCore.offset(0, 2, -3)
+        };
     }
 
-    @Override
-    public void onStructureInvalid() {
-        super.onStructureInvalid();
-        removeFromHost(this.host);
+    private static String hostCandidateRejection(MetaMachine machine, boolean formed) {
+        if (machine == null) {
+            return "missing_machine";
+        }
+        if (!(machine instanceof SpaceElevatorMachine)) {
+            return "wrong_machine_type";
+        }
+        return formed ? "invalid_host" : "host_not_formed";
     }
 
-    @Override
-    public void onPartUnload() {
-        super.onPartUnload();
-        removeFromHost(this.host);
-    }
-
-    @Override
-    public void onMachineRemoved() {
-        removeFromHost(this.host);
+    private static String machineType(MetaMachine machine) {
+        return machine == null ? "none" : machine.getClass().getName();
     }
 
     // ========================================

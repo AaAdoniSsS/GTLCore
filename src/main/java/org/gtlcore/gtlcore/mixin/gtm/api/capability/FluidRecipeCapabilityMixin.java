@@ -2,6 +2,7 @@ package org.gtlcore.gtlcore.mixin.gtm.api.capability;
 
 import org.gtlcore.gtlcore.api.recipe.IParallelLogic;
 import org.gtlcore.gtlcore.common.data.source_tooltip.SourceTooltip;
+import org.gtlcore.gtlcore.integration.jei.RecipeChanceTooltip;
 import org.gtlcore.gtlcore.utils.TextUtil;
 
 import com.gregtechceu.gtceu.api.capability.recipe.*;
@@ -10,7 +11,6 @@ import com.gregtechceu.gtceu.api.recipe.chance.logic.ChanceLogic;
 import com.gregtechceu.gtceu.api.recipe.content.*;
 import com.gregtechceu.gtceu.api.recipe.ingredient.FluidIngredient;
 import com.gregtechceu.gtceu.client.TooltipsHandler;
-import com.gregtechceu.gtceu.integration.GTRecipeWidget;
 
 import com.lowdragmc.lowdraglib.LDLib;
 import com.lowdragmc.lowdraglib.gui.widget.TankWidget;
@@ -118,7 +118,7 @@ public abstract class FluidRecipeCapabilityMixin extends RecipeCapability<FluidI
                 }
             }
 
-            GTRecipeWidget.setConsumedChance(content, ChanceLogic.OR, tooltips);
+            RecipeChanceTooltip.add(content, ChanceLogic.OR, tooltips, io);
             if (isTickSlot(index, io, recipe)) {
                 tooltips.add(Component.translatable("gtceu.gui.content.per_tick"));
             }

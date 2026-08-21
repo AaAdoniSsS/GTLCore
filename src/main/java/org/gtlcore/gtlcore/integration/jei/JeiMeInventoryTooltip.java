@@ -29,6 +29,8 @@ import java.util.Optional;
 
 public final class JeiMeInventoryTooltip {
 
+    private static final String FTB_QUESTS_SCREEN_CLASS = "dev.ftb.mods.ftbquests.client.gui.quests.QuestScreen";
+    private static final String FTB_QUESTS_CLIENT_FILE_CLASS = "dev.ftb.mods.ftbquests.client.ClientQuestFile";
     private static final TooltipListener LISTENER = new TooltipListener();
     private static @Nullable IJeiRuntime runtime;
     private static boolean registered;
@@ -83,6 +85,19 @@ public final class JeiMeInventoryTooltip {
     public static Optional<AEKey> getHoveredIngredientKey(Screen screen, double mouseX, double mouseY) {
         IJeiRuntime runtime = JeiMeInventoryTooltip.runtime;
         return runtime == null ? Optional.empty() : Optional.ofNullable(getHoveredKey(runtime, screen, mouseX, mouseY));
+    }
+
+    public static boolean isFtbQuestsEditingScreen(Screen screen) {
+        try {
+            if (!Class.forName(FTB_QUESTS_SCREEN_CLASS).isInstance(screen)) {
+                return false;
+            }
+            Class<?> clientQuestFileClass = Class.forName(FTB_QUESTS_CLIENT_FILE_CLASS);
+            Object clientQuestFile = clientQuestFileClass.getField("INSTANCE").get(null);
+            return clientQuestFile != null && (boolean) clientQuestFileClass.getMethod("canEdit").invoke(clientQuestFile);
+        } catch (ReflectiveOperationException | RuntimeException exception) {
+            return screen.getClass().getName().equals(FTB_QUESTS_SCREEN_CLASS);
+        }
     }
 
     private static @Nullable AEKey getHoveredKey(IJeiRuntime runtime, @Nullable Screen screen, double mouseX,

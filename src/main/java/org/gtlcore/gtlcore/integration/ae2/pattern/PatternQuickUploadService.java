@@ -87,23 +87,40 @@ public final class PatternQuickUploadService {
     }
 
     public static boolean insertIntoTarget(ServerPlayer player, ItemStack patternStack, Target target) {
-        return insertIntoTargetSlot(player, patternStack, target) >= 0;
+        return insertIntoTargetSlotResult(player, patternStack, target).status() == UploadStatus.INSERTED;
     }
 
     public static int insertIntoTargetSlot(ServerPlayer player, ItemStack patternStack, Target target) {
         UploadResult result = insertIntoTargetSlotResult(player, patternStack, target);
-        return result == null ? -1 : result.slot();
+        return result.status() == UploadStatus.INSERTED ? result.slot() : -1;
     }
 
-    @Nullable
     public static UploadResult insertIntoTargetSlotResult(ServerPlayer player, ItemStack patternStack, Target target) {
+        for (BlockPos bufferPos : target.bufferPositions()) {
+            PatternContainer container = resolveVisiblePatternContainer(player, target.levelKey(), bufferPos);
+            if (container != null && containsPattern(container, patternStack)) {
+                GTLCore.LOGGER.debug("{} upload skipped: duplicate pattern in target={} {}",
+                        LOG_PREFIX,
+                        target.levelKey().location(),
+                        bufferPos);
+                return new UploadResult(UploadStatus.DUPLICATE, target.withSingleBufferPos(bufferPos), -1);
+            }
+        }
         for (BlockPos bufferPos : target.bufferPositions()) {
             int slot = insertIntoTargetSlot(player, patternStack, target.levelKey(), bufferPos);
             if (slot >= 0) {
-                return new UploadResult(target.withSingleBufferPos(bufferPos), slot);
+                return new UploadResult(UploadStatus.INSERTED, target.withSingleBufferPos(bufferPos), slot);
             }
         }
-        return null;
+        return new UploadResult(UploadStatus.FAILED, target, -1);
+    }
+
+    @Nullable
+    private static PatternContainer resolveVisiblePatternContainer(ServerPlayer player,
+                                                                   ResourceKey<Level> targetLevelKey,
+                                                                   BlockPos targetPos) {
+        PatternContainer container = resolvePatternContainer(player.server.getLevel(targetLevelKey), targetPos);
+        return container != null && container.isVisibleInTerminal() ? container : null;
     }
 
     public static boolean removeFromTarget(ServerPlayer player, ItemStack patternStack, Target target) {
@@ -129,16 +146,12 @@ public final class PatternQuickUploadService {
         if (patternStack.isEmpty()) {
             return -1;
         }
-        PatternContainer container = resolvePatternContainer(player.server.getLevel(targetLevelKey), targetPos);
+        PatternContainer container = resolveVisiblePatternContainer(player, targetLevelKey, targetPos);
         if (container == null) {
             GTLCore.LOGGER.debug("{} insert rejected: no pattern container at {} {}",
                     LOG_PREFIX,
                     targetLevelKey.location(),
                     targetPos);
-            return -1;
-        }
-        if (!container.isVisibleInTerminal()) {
-            GTLCore.LOGGER.debug("{} insert rejected: target hidden at {} {}", LOG_PREFIX, targetLevelKey.location(), targetPos);
             return -1;
         }
         int slot = insertPattern(container, patternStack.copy());
@@ -464,7 +477,7 @@ public final class PatternQuickUploadService {
                     buffer.getPos());
             return;
         }
-        if (!canInsert(buffer, patternStack)) {
+        if (!canAcceptPattern(buffer, patternStack)) {
             GTLCore.LOGGER.debug("{} skipped buffer {} {}: no insertable pattern slot",
                     LOG_PREFIX,
                     levelKey.location(),
@@ -533,7 +546,7 @@ public final class PatternQuickUploadService {
                     molecularAssembler.getPos());
             return;
         }
-        if (!canInsert(molecularAssembler, patternStack)) {
+        if (!canAcceptPattern(molecularAssembler, patternStack)) {
             GTLCore.LOGGER.debug("{} skipped molecular assembler {} {}: no insertable pattern slot",
                     LOG_PREFIX,
                     levelKey.location(),
@@ -591,7 +604,7 @@ public final class PatternQuickUploadService {
                     matrixPos);
             return;
         }
-        if (!canInsert(matrixPattern, patternStack)) {
+        if (!canAcceptPattern(matrixPattern, patternStack)) {
             GTLCore.LOGGER.debug("{} skipped assembler matrix {} {}: no insertable pattern slot",
                     LOG_PREFIX,
                     levelKey.location(),
@@ -774,6 +787,36 @@ public final class PatternQuickUploadService {
         return false;
     }
 
+    private static boolean canAcceptPattern(PatternContainer container, ItemStack patternStack) {
+        return containsPattern(container, patternStack) || canInsert(container, patternStack);
+    }
+
+    private static boolean containsPattern(PatternContainer container, ItemStack patternStack) {
+        if (patternStack.isEmpty()) {
+            return false;
+        }
+        InternalInventory inventory = container.getTerminalPatternInventory();
+        for (int slot = 0; slot < inventory.size(); slot++) {
+            if (isSamePattern(inventory.getStackInSlot(slot), patternStack)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isSamePattern(ItemStack first, ItemStack second) {
+        if (!ItemStack.isSameItem(first, second)) {
+            return false;
+        }
+        ItemStack firstDefinition = first.copy();
+        ItemStack secondDefinition = second.copy();
+        PatternQuickUploadMetadata.removeRecipeTypes(firstDefinition);
+        PatternQuickUploadMetadata.removeRecipeTypes(secondDefinition);
+        PatternEncoderMetadata.removeEncoder(firstDefinition);
+        PatternEncoderMetadata.removeEncoder(secondDefinition);
+        return ItemStack.isSameItemSameTags(firstDefinition, secondDefinition);
+    }
+
     private static int insertPattern(PatternContainer container, ItemStack patternStack) {
         InternalInventory inventory = container.getTerminalPatternInventory();
         for (int slot = 0; slot < inventory.size(); slot++) {
@@ -836,7 +879,13 @@ public final class PatternQuickUploadService {
         }
     }
 
-    public record UploadResult(Target target, int slot) {}
+    public enum UploadStatus {
+        INSERTED,
+        DUPLICATE,
+        FAILED
+    }
+
+    public record UploadResult(UploadStatus status, Target target, int slot) {}
 
     public record Target(ResourceKey<Level> levelKey, BlockPos bufferPos, Component targetName, ResourceLocation recipeTypeId,
                          Component recipeTypeName, @Nullable AEItemKey targetIcon,

@@ -90,50 +90,14 @@ public class ConfigHolder {
     })
     public boolean enableAe2ManualCraftingInventoryLock = false;
     @Configurable
-    @Configurable.Comment({
-            "测试功能：将手动合成库存锁的申请、冲突、提取限制、提交和释放效果写入独立日志。",
-            "日志文件：logs/gtlcore/ae2-manual-crafting-inventory-lock-*.log",
-            "Experimental: Write manual crafting inventory lock acquisition, conflicts, extraction limits, submission, and release effects to a dedicated log.",
-            "Log file: logs/gtlcore/ae2-manual-crafting-inventory-lock-*.log"
-    })
-    public boolean enableAe2ManualCraftingInventoryLockLogging = false;
-    @Configurable
     @Configurable.Comment("AE2合成计算模式: LEGACY(原版), FAST(快速), ULTRA_FAST(极快), MAX_FAST(需求聚合)")
     public AE2CalculationMode ae2CalculationMode = AE2CalculationMode.MAX_FAST;
-    @Configurable
-    @Configurable.Comment("是否启用 MAX_FAST 独立计算性能日志")
-    public boolean enableMaxFastCalculationLogging = false;
-    @Configurable
-    @Configurable.Comment("是否将原生 AE2 CPU 与超限演算阵列的慢发配写入独立日志；关闭时不执行性能计时")
-    public boolean enableAe2CraftingDispatchPerformanceLogging = false;
-    @Configurable
-    @Configurable.Comment({
-            "将超限演算阵列的结构检测、成型、失效与 AE 联网检测写入独立日志。",
-            "日志文件：logs/gtlcore/transfinite-computation-array-lifecycle-*.log"
-    })
-    public boolean enableTransfiniteComputationArrayLifecycleLogging = false;
     @Configurable
     @Configurable.Comment({
             "世界加载时分批执行普通 GT 机器的首次 tick，避免大量强加载区块在同一 tick 集中激活。",
             "不延迟 NBT、能力、结构与 AE 节点加载；超限演算阵列本体优先执行。"
     })
     public boolean enableMachineStartupTickBudget = true;
-    @Configurable
-    @Configurable.Comment({
-            "记录服务器世界加载、维度加载事件和玩家进入世界的耗时，并输出优化候选。",
-            "日志文件：logs/gtlcore/world-load-performance-*.log",
-            "Record server world loading, dimension load events, and player world-entry timings with optimization candidates.",
-            "Log file: logs/gtlcore/world-load-performance-*.log"
-    })
-    public boolean enableWorldLoadPerformanceLogging = false;
-    @Configurable
-    @Configurable.Comment("区块生成阶段从调度到完成超过此毫秒数时，记录包含维度、区块坐标和阶段的警告")
-    @Configurable.Range(min = 1, max = 60000)
-    public int worldLoadSlowChunkStageWarningMillis = DEFAULT_WORLD_LOAD_SLOW_CHUNK_STAGE_WARNING_MILLIS;
-    @Configurable
-    @Configurable.Comment("每完成多少个区块生成阶段，输出一次按维度和阶段聚合的性能摘要")
-    @Configurable.Range(min = 1, max = 1048576)
-    public int worldLoadChunkGenerationSummaryInterval = DEFAULT_WORLD_LOAD_CHUNK_GENERATION_SUMMARY_INTERVAL;
     @Configurable
     @Configurable.Comment("每个维度每 tick 最多首次激活的普通 GT 机器数量")
     @Configurable.Range(min = 1, max = 4096)
@@ -149,18 +113,6 @@ public class ConfigHolder {
     @Configurable
     @Configurable.Comment("延迟 GTCEu JEI 配方注册期间不参与配方索引的文本与按钮，降低客户端启动分配开销")
     public boolean optimizeGtceuJeiRegistration = true;
-    @Configurable
-    @Configurable.Comment("单个 GTCEu JEI 配方类型注册超过此毫秒数时记录警告")
-    @Configurable.Range(min = 1, max = 60000)
-    public int gtceuJeiSlowRecipeTypeWarningMillis = DEFAULT_GTCEU_JEI_SLOW_RECIPE_TYPE_WARNING_MILLIS;
-    @Configurable
-    @Configurable.Comment("单个 AE2 CPU 调度超过此微秒数时记录性能警告")
-    @Configurable.Range(min = 1)
-    public int ae2CraftingDispatchPerformanceWarningMicros = 5000;
-    @Configurable
-    @Configurable.Comment("同一个 AE2 CPU 两次性能警告之间的最短 tick 间隔")
-    @Configurable.Range(min = 1)
-    public int ae2CraftingDispatchPerformanceLogIntervalTicks = 200;
     @Configurable
     @Configurable.Comment("新放置的普通 AE2 / 扩展样板供应器是否默认开启智能翻倍（ME 样板总成仍强制开启）")
     public boolean ae2PatternProviderAutoExpandDefault = false;
@@ -185,16 +137,78 @@ public class ConfigHolder {
     public boolean batchProcessingEnabledByDefault = false;
 
     @Configurable
-    @Configurable.Comment({
-            "是否将已开启批处理的机器的触发与未触发原因写入独立日志；诊断期间可能增加磁盘 I/O",
-            "每台机器一个日志文件：logs/gtlcore/batch-processing/<时间戳>-<机器名称>-<维度>-<坐标>.jsonl",
-            "Write batch-triggered and batch-not-triggered reasons for batch-enabled machines to dedicated logs; diagnostic use may increase disk I/O.",
-            "One log per machine: logs/gtlcore/batch-processing/<timestamp>-<machine-name>-<dimension>-<position>.jsonl"
-    })
-    public boolean enableBatchProcessingLogging = false;
+    public DebugLoggingOptions debugLogging = new DebugLoggingOptions();
 
     @Configurable
     public String[] mobList1 = new String[] { "chicken", "rabbit", "sheep", "cow", "horse", "pig", "donkey", "skeleton_horse", "iron_golem", "wolf", "goat", "parrot", "camel", "cat", "fox", "llama", "panda", "polar_bear" };
     @Configurable
     public String[] mobList2 = new String[] { "ghast", "zombie", "pillager", "zombie_villager", "skeleton", "drowned", "witch", "spider", "creeper", "husk", "wither_skeleton", "blaze", "zombified_piglin", "slime", "vindicator", "enderman" };
+
+    public static class DebugLoggingOptions {
+
+        @Configurable
+        @Configurable.Comment({
+                "测试功能：将手动合成库存锁的申请、冲突、提取限制、提交和释放效果写入独立日志。",
+                "日志文件：logs/gtlcore/ae2-manual-crafting-inventory-lock-*.log",
+                "Experimental: Write manual crafting inventory lock acquisition, conflicts, extraction limits, submission, and release effects to a dedicated log.",
+                "Log file: logs/gtlcore/ae2-manual-crafting-inventory-lock-*.log"
+        })
+        public boolean enableAe2ManualCraftingInventoryLockLogging = false;
+        @Configurable
+        @Configurable.Comment("是否启用 MAX_FAST 独立计算性能日志")
+        public boolean enableMaxFastCalculationLogging = false;
+        @Configurable
+        @Configurable.Comment("是否将原生 AE2 CPU 与超限演算阵列的慢发配写入独立日志；关闭时不执行性能计时")
+        public boolean enableAe2CraftingDispatchPerformanceLogging = false;
+        @Configurable
+        @Configurable.Comment({
+                "将超限演算阵列的结构检测、成型、失效与 AE 联网检测写入独立日志。",
+                "日志文件：logs/gtlcore/transfinite-computation-array-lifecycle-*.log"
+        })
+        public boolean enableTransfiniteComputationArrayLifecycleLogging = false;
+        @Configurable
+        @Configurable.Comment({
+                "记录服务器世界加载、维度加载事件和玩家进入世界的耗时，并输出优化候选。",
+                "日志文件：logs/gtlcore/world-load-performance-*.log",
+                "Record server world loading, dimension load events, and player world-entry timings with optimization candidates.",
+                "Log file: logs/gtlcore/world-load-performance-*.log"
+        })
+        public boolean enableWorldLoadPerformanceLogging = false;
+        @Configurable
+        @Configurable.Comment("区块生成阶段从调度到完成超过此毫秒数时，记录包含维度、区块坐标和阶段的警告")
+        @Configurable.Range(min = 1, max = 60000)
+        public int worldLoadSlowChunkStageWarningMillis = DEFAULT_WORLD_LOAD_SLOW_CHUNK_STAGE_WARNING_MILLIS;
+        @Configurable
+        @Configurable.Comment("每完成多少个区块生成阶段，输出一次按维度和阶段聚合的性能摘要")
+        @Configurable.Range(min = 1, max = 1048576)
+        public int worldLoadChunkGenerationSummaryInterval = DEFAULT_WORLD_LOAD_CHUNK_GENERATION_SUMMARY_INTERVAL;
+        @Configurable
+        @Configurable.Comment("单个 GTCEu JEI 配方类型注册超过此毫秒数时记录警告")
+        @Configurable.Range(min = 1, max = 60000)
+        public int gtceuJeiSlowRecipeTypeWarningMillis = DEFAULT_GTCEU_JEI_SLOW_RECIPE_TYPE_WARNING_MILLIS;
+        @Configurable
+        @Configurable.Comment("单个 AE2 CPU 调度超过此微秒数时记录性能警告")
+        @Configurable.Range(min = 1)
+        public int ae2CraftingDispatchPerformanceWarningMicros = 5000;
+        @Configurable
+        @Configurable.Comment("同一个 AE2 CPU 两次性能警告之间的最短 tick 间隔")
+        @Configurable.Range(min = 1)
+        public int ae2CraftingDispatchPerformanceLogIntervalTicks = 200;
+        @Configurable
+        @Configurable.Comment({
+                "是否将已开启批处理的机器的触发与未触发原因写入独立日志；诊断期间可能增加磁盘 I/O",
+                "每台机器一个日志文件：logs/gtlcore/batch-processing/<时间戳>-<机器名称>-<维度>-<坐标>.jsonl",
+                "Write batch-triggered and batch-not-triggered reasons for batch-enabled machines to dedicated logs; diagnostic use may increase disk I/O.",
+                "One log per machine: logs/gtlcore/batch-processing/<timestamp>-<machine-name>-<dimension>-<position>.jsonl"
+        })
+        public boolean enableBatchProcessingLogging = false;
+        @Configurable
+        @Configurable.Comment({
+                "记录太空电梯与模块的扫描、重试、连接和断开过程。",
+                "日志文件：logs/gtlcore/space-elevator-connection-*.log",
+                "Record space elevator module scans, retries, connections, and disconnections.",
+                "Log file: logs/gtlcore/space-elevator-connection-*.log"
+        })
+        public boolean enableSpaceElevatorConnectionLogging = false;
+    }
 }

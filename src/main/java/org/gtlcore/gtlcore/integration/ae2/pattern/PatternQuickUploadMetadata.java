@@ -115,7 +115,7 @@ public final class PatternQuickUploadMetadata {
         return recipeTypeId != null && !recipeTypeId.getNamespace().isEmpty() && !recipeTypeId.getPath().isEmpty();
     }
 
-    private static void removeRecipeTypes(ItemStack patternStack) {
+    static void removeRecipeTypes(ItemStack patternStack) {
         CompoundTag tag = patternStack.getTag();
         if (tag == null || !tag.contains(ROOT_KEY, Tag.TAG_COMPOUND)) {
             return;
