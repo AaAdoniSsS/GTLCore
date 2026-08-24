@@ -37,6 +37,8 @@ import static org.gtlcore.gtlcore.utils.Registries.getItemStack;
 public class ComputationProviderMachine extends WorkableElectricMultiblockMachine
                                         implements IOpticalComputationProvider, IControllable {
 
+    private static final long INFINITE_PROVIDER_EU_PER_REQUEST = Integer.MAX_VALUE;
+
     public int allocatedCWUt = 0;
     @Persisted
     public long totalCWU = 0;
@@ -54,24 +56,50 @@ public class ComputationProviderMachine extends WorkableElectricMultiblockMachin
 
     @Override
     public int requestCWUt(int cwut, boolean simulate, @NotNull Collection<IOpticalComputationProvider> seen) {
-        seen.add(this);
-        if (!canProvideCWUt) return 0;
+        if (!seen.add(this) || cwut <= 0 || !isComputationAvailable()) return 0;
         return allocatedCWUt(cwut, simulate);
     }
 
+    // Retain the original signature: GTL Additions shadows this method to delegate computation requests.
     private int allocatedCWUt(int cwut, boolean simulate) {
-        if (totalCWU < getMaxCWUt()) {
-            if (inf && inputEU(this, Integer.MAX_VALUE)) return Integer.MAX_VALUE;
-            if (inputEU(this, GTValues.VA[getTier()])) totalCWU += (long) Math.pow(2, getTier());
-            maxCWUt = 0;
+        return inf ? requestInfiniteCWUt(cwut, simulate) : allocateFiniteCWUt(cwut, simulate);
+    }
+
+    private int requestInfiniteCWUt(int cwut, boolean simulate) {
+        if (simulate) {
+            return canDrawEnergy(INFINITE_PROVIDER_EU_PER_REQUEST) ? cwut : 0;
         }
-        int maxCWUt = getMaxCWUt();
-        int availableCWUt = maxCWUt - this.allocatedCWUt;
-        int toAllocate = Math.min(cwut, (int) Math.min(availableCWUt, totalCWU));
-        if (!simulate) {
-            this.allocatedCWUt += toAllocate;
+        if (!inputEU(this, INFINITE_PROVIDER_EU_PER_REQUEST)) {
+            return 0;
         }
+        allocatedCWUt = (int) Math.min(Integer.MAX_VALUE, (long) allocatedCWUt + cwut);
+        return cwut;
+    }
+
+    private int allocateFiniteCWUt(int cwut, boolean simulate) {
+        int maximumCWUt = getMaxCWUt();
+        int availableCapacity = Math.max(0, maximumCWUt - allocatedCWUt);
+        long projectedCWU = totalCWU;
+        if (projectedCWU < maximumCWUt && canDrawEnergy(GTValues.VA[getTier()])) {
+            long generatedCWU = 1L << getTier();
+            if (simulate) {
+                projectedCWU = Math.min(maximumCWUt, projectedCWU + generatedCWU);
+            } else if (inputEU(this, GTValues.VA[getTier()])) {
+                totalCWU = Math.min(maximumCWUt, totalCWU + generatedCWU);
+                projectedCWU = totalCWU;
+            }
+        }
+        int toAllocate = Math.min(cwut, (int) Math.min(availableCapacity, projectedCWU));
+        if (!simulate) allocatedCWUt += toAllocate;
         return toAllocate;
+    }
+
+    private boolean canDrawEnergy(long eu) {
+        return getEnergyContainer().getEnergyStored() >= eu;
+    }
+
+    private boolean isComputationAvailable() {
+        return isFormed() && canProvideCWUt && !getRecipeLogic().isSuspend();
     }
 
     private static final ItemStack OPTICAL_MAINFRAME = getItemStack("kubejs:optical_mainframe", 8);
@@ -81,42 +109,39 @@ public class ComputationProviderMachine extends WorkableElectricMultiblockMachin
 
     @Override
     public int getMaxCWUt(@NotNull Collection<IOpticalComputationProvider> seen) {
-        seen.add(this);
+        if (!seen.add(this) || !isComputationAvailable()) return 0;
         if (inf) return Integer.MAX_VALUE;
         if (maxCWUt == 0) {
-            switch (getTier()) {
-                case 11 -> {
-                    if (MachineIO.notConsumableItem(this, OPTICAL_MAINFRAME)) return 1024;
-                }
-                case 12 -> {
-                    if (MachineIO.notConsumableItem(this, EXOTIC_MAINFRAME)) return 2048;
-                }
-                case 13 -> {
-                    if (MachineIO.notConsumableItem(this, COSMIC_MAINFRAME)) return 4096;
-                }
-                case 14 -> {
-                    if (MachineIO.notConsumableItem(this, SUPRACAUSAL_MAINFRAME)) return 8192;
-                }
-            }
-            return 0;
-        } else return maxCWUt;
+            maxCWUt = switch (getTier()) {
+                case GTValues.UIV -> MachineIO.notConsumableItem(this, OPTICAL_MAINFRAME) ? 1024 : 0;
+                case GTValues.UXV -> MachineIO.notConsumableItem(this, EXOTIC_MAINFRAME) ? 2048 : 0;
+                case GTValues.OpV -> MachineIO.notConsumableItem(this, COSMIC_MAINFRAME) ? 4096 : 0;
+                case GTValues.MAX -> MachineIO.notConsumableItem(this, SUPRACAUSAL_MAINFRAME) ? 8192 : 0;
+                default -> 0;
+            };
+        }
+        return maxCWUt;
     }
 
     @Override
     public boolean canBridge(@NotNull Collection<IOpticalComputationProvider> seen) {
-        seen.add(this);
-        return true;
+        return seen.add(this) && isComputationAvailable();
     }
 
     public void tick() {
-        totalCWU -= allocatedCWUt;
+        if (!isFormed()) {
+            allocatedCWUt = 0;
+            canProvideCWUt = false;
+            updateTickSubscription();
+            return;
+        }
+        if (!inf) totalCWU = Math.max(0, totalCWU - allocatedCWUt);
         if (getRecipeLogic().isSuspend()) {
             allocatedCWUt = 0;
             canProvideCWUt = false;
             return;
-        } else {
-            canProvideCWUt = true;
         }
+        canProvideCWUt = true;
         if (allocatedCWUt != 0) {
             getRecipeLogic().setStatus(RecipeLogic.Status.WORKING);
             allocatedCWUt = 0;
@@ -154,9 +179,18 @@ public class ComputationProviderMachine extends WorkableElectricMultiblockMachin
     @Override
     public void onStructureFormed() {
         super.onStructureFormed();
+        canProvideCWUt = true;
         if (getLevel() instanceof ServerLevel serverLevel) {
             serverLevel.getServer().tell(new TickTask(0, this::updateTickSubscription));
         }
+    }
+
+    @Override
+    public void onStructureInvalid() {
+        super.onStructureInvalid();
+        allocatedCWUt = 0;
+        canProvideCWUt = false;
+        updateTickSubscription();
     }
 
     @Override

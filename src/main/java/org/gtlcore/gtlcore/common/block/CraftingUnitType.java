@@ -1,8 +1,10 @@
 package org.gtlcore.gtlcore.common.block;
 
 import org.gtlcore.gtlcore.common.data.GTLBlocks;
+import org.gtlcore.gtlcore.common.data.GTLItems;
 
 import net.minecraft.world.item.Item;
+import net.minecraft.world.level.ItemLike;
 
 import appeng.block.crafting.CraftingUnitBlock;
 import appeng.block.crafting.ICraftingUnitType;
@@ -46,6 +48,17 @@ public enum CraftingUnitType implements ICraftingUnitType {
             case STORAGE_64M -> GTLBlocks.CRAFTING_STORAGE_64M;
             case STORAGE_256M -> GTLBlocks.CRAFTING_STORAGE_256M;
             case STORAGE_MAX -> GTLBlocks.CRAFTING_STORAGE_MAX;
+        };
+    }
+
+    public ItemLike getDisassemblyExtra() {
+        return switch (this) {
+            case STORAGE_1M -> GTLItems.CELL_COMPONENT_1M.get();
+            case STORAGE_4M -> GTLItems.CELL_COMPONENT_4M.get();
+            case STORAGE_16M -> GTLItems.CELL_COMPONENT_16M.get();
+            case STORAGE_64M -> GTLItems.CELL_COMPONENT_64M.get();
+            case STORAGE_256M -> GTLItems.CELL_COMPONENT_256M.get();
+            case STORAGE_MAX -> throw new IllegalStateException("MAX crafting storage has no disassembly component");
         };
     }
 

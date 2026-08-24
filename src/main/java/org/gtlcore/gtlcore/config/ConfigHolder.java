@@ -90,6 +90,9 @@ public class ConfigHolder {
     })
     public boolean enableAe2ManualCraftingInventoryLock = false;
     @Configurable
+    @Configurable.Comment("是否允许超限演算阵列在材料缺失时创建等待合成任务")
+    public boolean enableAe2MissingCrafting = true;
+    @Configurable
     @Configurable.Comment("AE2合成计算模式: LEGACY(原版), FAST(快速), ULTRA_FAST(极快), MAX_FAST(需求聚合)")
     public AE2CalculationMode ae2CalculationMode = AE2CalculationMode.MAX_FAST;
     @Configurable

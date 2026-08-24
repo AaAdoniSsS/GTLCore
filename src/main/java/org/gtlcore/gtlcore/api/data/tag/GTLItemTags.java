@@ -7,9 +7,9 @@ import net.minecraft.world.item.Item;
 
 public final class GTLItemTags {
 
-    public static final TagKey<Item> SIFTABLE = TagKey.create(
+    public static final TagKey<Item> SIFTABLES = TagKey.create(
             Registries.ITEM,
-            new ResourceLocation("forge", "siftable"));
+            new ResourceLocation("forge", "siftables"));
 
     private GTLItemTags() {}
 }

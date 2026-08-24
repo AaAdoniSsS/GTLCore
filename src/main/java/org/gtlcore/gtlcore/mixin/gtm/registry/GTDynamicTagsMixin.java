@@ -5,7 +5,6 @@ import org.gtlcore.gtlcore.api.data.tag.GTLItemTags;
 import com.gregtechceu.gtceu.api.GTCEuAPI;
 import com.gregtechceu.gtceu.api.data.chemical.ChemicalHelper;
 import com.gregtechceu.gtceu.api.data.chemical.material.Material;
-import com.gregtechceu.gtceu.api.data.chemical.material.info.MaterialFlags;
 import com.gregtechceu.gtceu.api.data.chemical.material.properties.PropertyKey;
 import com.gregtechceu.gtceu.api.data.tag.TagPrefix;
 import com.gregtechceu.gtceu.core.MixinHelpers;
@@ -55,7 +54,6 @@ public abstract class GTDynamicTagsMixin {
     private static boolean gtlcore$isSiftableOre(Material material) {
         return material.hasProperty(PropertyKey.ORE) &&
                 material.hasProperty(PropertyKey.GEM) &&
-                material.hasFlag(MaterialFlags.HIGH_SIFTER_OUTPUT) &&
                 !ChemicalHelper.get(TagPrefix.crushedPurified, material).isEmpty();
     }
 
@@ -73,7 +71,7 @@ public abstract class GTDynamicTagsMixin {
             return;
         }
 
-        tags.computeIfAbsent(GTLItemTags.SIFTABLE.location(), ignored -> new ArrayList<>())
+        tags.computeIfAbsent(GTLItemTags.SIFTABLES.location(), ignored -> new ArrayList<>())
                 .add(new TagLoader.EntryWithSource(TagEntry.element(itemId), TAG_SOURCE));
     }
 }
