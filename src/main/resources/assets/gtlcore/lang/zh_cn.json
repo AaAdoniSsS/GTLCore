@@ -99,7 +99,7 @@
   "config.gtlcore.option.ae2CraftingServiceUpdateInterval": "AE2合成更新间隔",
   "config.gtlcore.option.ae2StorageServiceUpdateInterval": "AE2库存更新间隔",
   "config.gtlcore.option.enableAe2ManualCraftingInventoryLock": "锁定手动合成计划库存（测试功能）",
-  "config.gtlcore.option.enableAe2MissingCrafting": "启用超限演算阵列缺失合成",
+  "config.gtlcore.option.enableAe2MissingCrafting": "启用超限演算阵列缺失合成（测试功能）",
   "config.gtlcore.option.enableAe2ManualCraftingInventoryLockLogging": "启用手动合成库存锁效果日志（测试功能）",
   "config.gtlcore.option.blackBlockList": "FTBU连锁黑名单",
   "config.gtlcore.option.cellType": "AE磁盘存储类型倍数",
