@@ -1,6 +1,7 @@
 package org.gtlcore.gtlcore.mixin.gtm.api.machine;
 
 import com.gregtechceu.gtceu.api.block.ActiveBlock;
+import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
 import com.gregtechceu.gtceu.api.machine.feature.multiblock.IMultiController;
 import com.gregtechceu.gtceu.api.pattern.*;
 import com.gregtechceu.gtceu.common.machine.multiblock.part.*;
@@ -10,6 +11,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 
+import com.hepdd.gtmthings.common.block.machine.multiblock.part.HugeBusPartMachine;
 import it.unimi.dsi.fastutil.longs.*;
 import org.spongepowered.asm.mixin.*;
 
@@ -51,6 +53,12 @@ public abstract class MultiblockStateMixin {
                             if (activeBlocks.contains(pos.asLong())) {
                                 return;
                             }
+                        } else if (serverLevel.getBlockEntity(pos) instanceof IMachineBlockEntity IMBE) {
+                            var metaMachine = IMBE.getMetaMachine();
+                            if (metaMachine instanceof ItemBusPartMachine ||
+                                    metaMachine instanceof FluidHatchPartMachine ||
+                                    metaMachine instanceof HugeBusPartMachine)
+                                return;
                         }
                     }
 
