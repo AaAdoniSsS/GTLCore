@@ -115,6 +115,20 @@ public abstract class WorkableMultiblockMachineMixin extends MultiblockControlle
     public void onWaiting() {}
 
     /**
+     * Keep polling only for computation-starved machines. Optical networks do not notify the controller when a
+     * remote provider becomes available again, so unsubscribing here makes the failure permanent until unrelated
+     * inventory state changes.
+     *
+     * @author GTLCore
+     * @reason Retry recipes after remote optical computation becomes available again.
+     */
+    @Overwrite(remap = false)
+    public boolean keepSubscribing() {
+        return recipeLogic instanceof IRecipeStatus status &&
+                RecipeResult.FAIL_NO_ENOUGH_CWU_IN.equals(status.getRecipeStatus());
+    }
+
+    /**
      * @author .
      * @reason .
      */

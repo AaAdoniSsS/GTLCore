@@ -31,6 +31,7 @@ public final class JeiMeInventoryTooltip {
 
     private static final String FTB_QUESTS_SCREEN_CLASS = "dev.ftb.mods.ftbquests.client.gui.quests.QuestScreen";
     private static final String FTB_QUESTS_CLIENT_FILE_CLASS = "dev.ftb.mods.ftbquests.client.ClientQuestFile";
+    private static final String FTB_SCREEN_WRAPPER_CLASS = "dev.ftb.mods.ftblibrary.ui.IScreenWrapper";
     private static final TooltipListener LISTENER = new TooltipListener();
     private static @Nullable IJeiRuntime runtime;
     private static boolean registered;
@@ -88,16 +89,28 @@ public final class JeiMeInventoryTooltip {
     }
 
     public static boolean isFtbQuestsEditingScreen(Screen screen) {
+        boolean questsScreen = false;
         try {
-            if (!Class.forName(FTB_QUESTS_SCREEN_CLASS).isInstance(screen)) {
+            Object ftbGui = getFtbGui(screen);
+            questsScreen = Class.forName(FTB_QUESTS_SCREEN_CLASS).isInstance(ftbGui);
+            if (!questsScreen) {
                 return false;
             }
             Class<?> clientQuestFileClass = Class.forName(FTB_QUESTS_CLIENT_FILE_CLASS);
             Object clientQuestFile = clientQuestFileClass.getField("INSTANCE").get(null);
             return clientQuestFile != null && (boolean) clientQuestFileClass.getMethod("canEdit").invoke(clientQuestFile);
         } catch (ReflectiveOperationException | RuntimeException exception) {
-            return screen.getClass().getName().equals(FTB_QUESTS_SCREEN_CLASS);
+            return questsScreen || screen.getClass().getName().equals(FTB_QUESTS_SCREEN_CLASS);
         }
+    }
+
+    private static @Nullable Object getFtbGui(Screen screen) throws ReflectiveOperationException {
+        Class<?> questScreenClass = Class.forName(FTB_QUESTS_SCREEN_CLASS);
+        if (questScreenClass.isInstance(screen)) {
+            return screen;
+        }
+        Class<?> screenWrapperClass = Class.forName(FTB_SCREEN_WRAPPER_CLASS);
+        return screenWrapperClass.isInstance(screen) ? screenWrapperClass.getMethod("getGui").invoke(screen) : null;
     }
 
     private static @Nullable AEKey getHoveredKey(IJeiRuntime runtime, @Nullable Screen screen, double mouseX,
@@ -144,7 +157,7 @@ public final class JeiMeInventoryTooltip {
 
     private static boolean isFtbScreen(Screen screen) {
         try {
-            Class<?> screenWrapper = Class.forName("dev.ftb.mods.ftblibrary.ui.IScreenWrapper");
+            Class<?> screenWrapper = Class.forName(FTB_SCREEN_WRAPPER_CLASS);
             return screenWrapper.isInstance(screen);
         } catch (ClassNotFoundException exception) {
             return false;

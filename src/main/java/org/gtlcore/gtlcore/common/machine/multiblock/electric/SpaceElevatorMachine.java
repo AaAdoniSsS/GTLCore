@@ -218,6 +218,11 @@ public class SpaceElevatorMachine extends TierCasingMachine
     }
 
     @Override
+    public boolean keepSubscribing() {
+        return true;
+    }
+
+    @Override
     public boolean onWorking() {
         boolean value = super.onWorking();
         if (getOffsetTimer() % 20 == 0) {

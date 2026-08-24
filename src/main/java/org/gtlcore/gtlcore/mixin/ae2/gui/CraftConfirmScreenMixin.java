@@ -14,8 +14,11 @@ import appeng.api.stacks.AEKey;
 import appeng.client.gui.AEBaseScreen;
 import appeng.client.gui.me.crafting.CraftConfirmScreen;
 import appeng.client.gui.style.ScreenStyle;
+import appeng.core.localization.GuiText;
 import appeng.menu.me.crafting.CraftConfirmMenu;
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -25,6 +28,14 @@ import java.util.List;
 
 @Mixin(CraftConfirmScreen.class)
 public abstract class CraftConfirmScreenMixin extends AEBaseScreen<CraftConfirmMenu> {
+
+    @Shadow(remap = false)
+    @Final
+    private Button start;
+
+    @Shadow(remap = false)
+    @Final
+    private Button selectCPU;
 
     @Unique
     private static final String GTLCORE$FAVORITE_MISSING_WIDGET_ID = "favoriteMissing";
@@ -51,6 +62,18 @@ public abstract class CraftConfirmScreenMixin extends AEBaseScreen<CraftConfirmM
 
     @Inject(method = "updateBeforeRender", at = @At("TAIL"), remap = false)
     private void gtlcore$updateFavoriteMissingButton(CallbackInfo ci) {
+        var plan = this.menu.getPlan();
+        boolean missingCraft = plan != null && plan.isSimulation() &&
+                ((IConfirmStartMenu) this.menu).gtlcore$isMissingCraftAvailable();
+        if (plan != null && plan.isSimulation() && !this.menu.hasNoCPU()) {
+            this.selectCPU.active = true;
+        }
+        this.start.setMessage(missingCraft ?
+                Component.translatable("gui.gtlcore.ae.missing_craft") : GuiText.Start.text());
+        if (missingCraft && !this.menu.hasNoCPU()) {
+            this.start.active = true;
+        }
+
         if (this.gtlcore$favoriteMissing == null) {
             return;
         }

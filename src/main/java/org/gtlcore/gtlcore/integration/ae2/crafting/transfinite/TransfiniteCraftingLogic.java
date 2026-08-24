@@ -95,9 +95,15 @@ public final class TransfiniteCraftingLogic implements ICraftingJobSuspension, I
             AELog.warn("Transfinite crafting CPU inventory is not empty when a job is submitted.");
         }
 
-        GenericStack missingIngredient = CraftingCpuHelper.tryExtractInitialItems(plan, grid, this.inventory, source);
-        if (missingIngredient != null) {
-            return CraftingSubmitResult.missingIngredient(missingIngredient);
+        KeyCounter extractionShortfall = new KeyCounter();
+        if (plan instanceof MissingCraftingPlan) {
+            extractAvailableInitialItems(plan, grid, source, extractionShortfall);
+        } else {
+            GenericStack missingIngredient = CraftingCpuHelper.tryExtractInitialItems(
+                    plan, grid, this.inventory, source);
+            if (missingIngredient != null) {
+                return CraftingSubmitResult.missingIngredient(missingIngredient);
+            }
         }
 
         Integer playerId = source.player()
@@ -107,7 +113,8 @@ public final class TransfiniteCraftingLogic implements ICraftingJobSuspension, I
         UUID craftId = UUID.randomUUID();
         CraftingLink cpuLink = new CraftingLink(
                 CraftingCpuHelper.generateLinkData(craftId, requester == null, false), this.cpu);
-        this.job = new TransfiniteCraftingJob(plan, cpuLink, playerId, this::onWaitingForChanged);
+        this.job = new TransfiniteCraftingJob(
+                plan, extractionShortfall, cpuLink, playerId, this::onWaitingForChanged);
         indexAllWaitingItems();
         markChanged();
         notifyJobOwner(this.job, CraftingJobStatusPacket.Status.STARTED);
@@ -122,6 +129,22 @@ public final class TransfiniteCraftingLogic implements ICraftingJobSuspension, I
         craftingService.addLink(cpuLink);
         craftingService.addLink(requesterLink);
         return CraftingSubmitResult.successful(requesterLink);
+    }
+
+    private void extractAvailableInitialItems(ICraftingPlan plan, IGrid grid, IActionSource source,
+                                              KeyCounter extractionShortfall) {
+        var storage = grid.getStorageService().getInventory();
+        for (var entry : plan.usedItems()) {
+            AEKey key = entry.getKey();
+            long required = entry.getLongValue();
+            long extracted = storage.extract(key, required, Actionable.MODULATE, source);
+            if (extracted > 0) {
+                this.inventory.insert(key, extracted, Actionable.MODULATE);
+            }
+            if (extracted < required) {
+                extractionShortfall.add(key, required - extracted);
+            }
+        }
     }
 
     public void tickCraftingLogic(IEnergyService energyService, CraftingService craftingService) {

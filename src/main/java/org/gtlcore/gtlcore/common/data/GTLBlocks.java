@@ -33,6 +33,7 @@ import net.minecraftforge.client.model.generators.ConfiguredModel;
 import net.minecraftforge.client.model.generators.ModelFile;
 
 import appeng.block.crafting.AbstractCraftingUnitBlock;
+import appeng.block.crafting.CraftingBlockItem;
 import appeng.block.crafting.CraftingUnitBlock;
 import appeng.blockentity.AEBaseBlockEntity;
 import appeng.blockentity.crafting.CraftingBlockEntity;
@@ -84,7 +85,9 @@ public class GTLBlocks {
                             }, AbstractCraftingUnitBlock.POWERED);
                 })
                 .defaultLoot()
-                .item(BlockItem::new)
+                .item((block, properties) -> tier == -1 ?
+                        new BlockItem(block, properties) :
+                        new CraftingBlockItem(block, properties, Type::getDisassemblyExtra))
                 .model((ctx, provider) -> provider.withExistingParent(ctx.getName(),
                         provider.modLoc("block/crafting/" + ctx.getName())))
                 .build()

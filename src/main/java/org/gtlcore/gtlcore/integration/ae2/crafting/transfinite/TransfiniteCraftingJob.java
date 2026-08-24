@@ -15,6 +15,7 @@ import appeng.api.networking.crafting.ICraftingPlan;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
+import appeng.api.stacks.KeyCounter;
 import appeng.crafting.CraftingLink;
 import appeng.crafting.execution.ElapsedTimeTracker;
 import appeng.crafting.inv.ListCraftingInventory;
@@ -43,8 +44,8 @@ final class TransfiniteCraftingJob {
     private long remainingAmount;
     private boolean suspended;
 
-    TransfiniteCraftingJob(ICraftingPlan plan, CraftingLink link, @Nullable Integer playerId,
-                           ListCraftingInventory.ChangeListener waitingForListener) {
+    TransfiniteCraftingJob(ICraftingPlan plan, KeyCounter extractionShortfall, CraftingLink link,
+                           @Nullable Integer playerId, ListCraftingInventory.ChangeListener waitingForListener) {
         this.finalOutput = plan.finalOutput();
         this.remainingAmount = this.finalOutput.amount();
         this.waitingFor = new ListCraftingInventory(waitingForListener);
@@ -55,6 +56,12 @@ final class TransfiniteCraftingJob {
         for (var entry : plan.emittedItems()) {
             this.waitingFor.insert(entry.getKey(), entry.getLongValue(), Actionable.MODULATE);
             addTrackedItems(entry.getLongValue(), entry.getKey());
+        }
+        for (var entry : plan.missingItems()) {
+            addMissingInput(entry.getKey(), entry.getLongValue());
+        }
+        for (var entry : extractionShortfall) {
+            addMissingInput(entry.getKey(), entry.getLongValue());
         }
         for (var entry : plan.patternTimes().entrySet()) {
             this.tasks.put(entry.getKey(), NumberUtils.saturatedAdd(
@@ -115,6 +122,11 @@ final class TransfiniteCraftingJob {
 
     private void addTrackedItems(long amount, AEKey key) {
         ((ElapsedTimeTrackerAccessor) this.timeTracker).invokeAddMaxItems(amount, key.getType());
+    }
+
+    private void addMissingInput(AEKey key, long amount) {
+        this.waitingFor.insert(key, amount, Actionable.MODULATE);
+        addTrackedItems(amount, key);
     }
 
     CraftingLink getLink() {

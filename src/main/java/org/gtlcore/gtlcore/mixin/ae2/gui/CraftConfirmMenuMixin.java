@@ -6,6 +6,8 @@ import org.gtlcore.gtlcore.integration.ae2.common.IConfirmStartMenu;
 import org.gtlcore.gtlcore.integration.ae2.common.ILongCraftAmountMenu;
 import org.gtlcore.gtlcore.integration.ae2.common.ILongCraftConfirmMenu;
 import org.gtlcore.gtlcore.integration.ae2.crafting.ManualCraftingInventoryLock;
+import org.gtlcore.gtlcore.integration.ae2.crafting.transfinite.MissingCraftingPlan;
+import org.gtlcore.gtlcore.integration.ae2.crafting.transfinite.TransfiniteCraftingCPU;
 
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
@@ -33,6 +35,7 @@ import appeng.helpers.IMenuCraftingPacket;
 import appeng.menu.AEBaseMenu;
 import appeng.menu.ISubMenu;
 import appeng.menu.MenuOpener;
+import appeng.menu.guisync.GuiSync;
 import appeng.menu.me.common.IClientRepo;
 import appeng.menu.me.common.IncrementalUpdateHelper;
 import appeng.menu.me.crafting.CraftAmountMenu;
@@ -69,6 +72,9 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
 
     @Shadow(remap = false)
     private ICraftingPlan result;
+
+    @Shadow(remap = false)
+    private ICraftingCPU selectedCpu;
 
     @Shadow(remap = false)
     private AEKey whatToCraft;
@@ -130,6 +136,10 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
 
     @Unique
     private CalculationStrategy gtlcore$calculationStrategy = CalculationStrategy.REPORT_MISSING_ITEMS;
+
+    @Unique
+    @GuiSync(IConfirmStartMenu.GUI_SYNC_MISSING_CRAFT_AVAILABLE)
+    private boolean gtlcore$missingCraftAvailable;
 
     @Inject(method = "<init>", at = @At("RETURN"), remap = false)
     private void onConstructed(int id, Inventory ip, ISubMenuHost host, CallbackInfo ci) {
@@ -208,6 +218,11 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
     }
 
     @Override
+    public boolean gtlcore$isMissingCraftAvailable() {
+        return this.gtlcore$missingCraftAvailable;
+    }
+
+    @Override
     public boolean gtlcore$planLongAmountJob(AEKey whatToCraft, long amount, CalculationStrategy strategy) {
         this.gtlcore$releaseInventoryReservation();
         this.gtlcore$calculationStrategy = strategy;
@@ -274,6 +289,13 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
         gtlcore$lastSentStored = current;
     }
 
+    @Inject(method = "broadcastChanges",
+            at = @At(value = "INVOKE", target = "Lappeng/menu/AEBaseMenu;broadcastChanges()V"))
+    private void gtlcore$syncMissingCraftAvailability(CallbackInfo ci) {
+        this.gtlcore$missingCraftAvailable = ConfigHolder.INSTANCE.enableAe2MissingCrafting &&
+                gtlcore$findMissingCraftCpu(null) != null;
+    }
+
     @Unique
     private KeyCounter gtlcore$getRelevantStoredAmounts() {
         KeyCounter relevantStored = new KeyCounter();
@@ -312,15 +334,61 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
                                                                       ICraftingCPU target,
                                                                       boolean prioritizePower,
                                                                       IActionSource source) {
+        TransfiniteCraftingCPU missingCraftCpu = ConfigHolder.INSTANCE.enableAe2MissingCrafting && plan.simulation() ?
+                gtlcore$findMissingCraftCpu(plan) : null;
+        ICraftingCPU submittedTarget = missingCraftCpu == null ? target : missingCraftCpu;
+        ICraftingPlan submittedPlan = missingCraftCpu != null ?
+                new MissingCraftingPlan(plan) : plan;
         var reservation = plan == this.gtlcore$reservedPlan ? this.gtlcore$inventoryReservation : null;
         ICraftingSubmitResult submitResult = reservation == null ?
-                craftingService.submitJob(plan, requester, target, prioritizePower, source) :
+                craftingService.submitJob(submittedPlan, requester, submittedTarget, prioritizePower, source) :
                 reservation.submit(() -> craftingService.submitJob(
-                        plan, requester, target, prioritizePower, source));
+                        submittedPlan, requester, submittedTarget, prioritizePower, source));
         if (submitResult.successful()) {
             this.gtlcore$releaseInventoryReservation();
         }
         return submitResult;
+    }
+
+    @Redirect(
+              method = "startJob",
+              at = @At(
+                       value = "INVOKE",
+                       target = "Lappeng/api/networking/crafting/ICraftingPlan;simulation()Z"),
+              remap = false)
+    private boolean gtlcore$allowMissingCraftOnTransfiniteCpu(ICraftingPlan plan) {
+        return plan.simulation() && (!ConfigHolder.INSTANCE.enableAe2MissingCrafting ||
+                gtlcore$findMissingCraftCpu(plan) == null);
+    }
+
+    @Unique
+    private @Nullable TransfiniteCraftingCPU gtlcore$findMissingCraftCpu(@Nullable ICraftingPlan plan) {
+        if (this.selectedCpu instanceof TransfiniteCraftingCPU selected) {
+            return gtlcore$isUsableMissingCraftCpu(selected, plan, false) ? selected : null;
+        }
+        if (this.selectedCpu != null) {
+            return null;
+        }
+
+        var grid = getGrid();
+        if (grid == null) {
+            return null;
+        }
+        for (ICraftingCPU cpu : grid.getCraftingService().getCpus()) {
+            if (cpu instanceof TransfiniteCraftingCPU candidate &&
+                    gtlcore$isUsableMissingCraftCpu(candidate, plan, true)) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    @Unique
+    private boolean gtlcore$isUsableMissingCraftCpu(TransfiniteCraftingCPU cpu, @Nullable ICraftingPlan plan,
+                                                    boolean automaticSelection) {
+        return cpu.isCapacityView() && cpu.isActive() &&
+                (plan == null || cpu.getAvailableStorage() >= plan.bytes()) &&
+                (!automaticSelection || cpu.getHost().canBeAutoSelectedFor(this.getActionSource()));
     }
 
     @Inject(method = "removed", at = @At("HEAD"))

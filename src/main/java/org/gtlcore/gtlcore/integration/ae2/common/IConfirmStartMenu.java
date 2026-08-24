@@ -9,6 +9,8 @@ import java.util.List;
 
 public interface IConfirmStartMenu {
 
+    short GUI_SYNC_MISSING_CRAFT_AVAILABLE = 100;
+
     IClientRepo gtlcore$getClientRepo();
 
     /**
@@ -22,4 +24,7 @@ public interface IConfirmStartMenu {
      * 客户端：当前实际缺失的材料（计划缺失 + 算料后库存被其他任务消耗的条目），带缓存。
      */
     List<AEKey> gtlcore$getMissingNow();
+
+    /** 客户端：当前选中的 CPU 是否支持在材料缺失时创建等待任务。 */
+    boolean gtlcore$isMissingCraftAvailable();
 }
