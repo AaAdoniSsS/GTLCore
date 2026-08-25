@@ -86,6 +86,9 @@ public abstract class ExportOnlyAEStockingFluidListMixin extends ExportOnlyAEFlu
         if (io != IO.IN || left.isEmpty()) {
             return left;
         }
+        if (!this$0.isWorkingEnabled()) {
+            return left;
+        }
         IGrid grid = this$0.getMainNode().getGrid();
         if (grid == null) {
             return left;
