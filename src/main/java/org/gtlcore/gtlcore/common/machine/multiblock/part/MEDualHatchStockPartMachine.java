@@ -11,6 +11,7 @@ import org.gtlcore.gtlcore.api.recipe.ingredient.LongIngredient;
 import org.gtlcore.gtlcore.client.gui.widget.AEDualConfigWidget;
 import org.gtlcore.gtlcore.config.ConfigHolder;
 import org.gtlcore.gtlcore.integration.ae2.AEUtils;
+import org.gtlcore.gtlcore.utils.MachineUtil;
 
 import com.gregtechceu.gtceu.api.capability.recipe.IO;
 import com.gregtechceu.gtceu.api.gui.GuiTextures;
@@ -92,6 +93,7 @@ public class MEDualHatchStockPartMachine extends MEBusPartMachine implements IDa
     @Persisted
     protected NotifiableFluidTank fluidTank;
 
+    @DescSynced
     @Setter
     protected int page = 1;
 
@@ -103,6 +105,12 @@ public class MEDualHatchStockPartMachine extends MEBusPartMachine implements IDa
     public MEDualHatchStockPartMachine(IMachineBlockEntity holder, Object... args) {
         super(holder, IO.IN, args);
         fluidTank = createTank();
+    }
+
+    @Override
+    public void setWorkingEnabled(boolean workingEnabled) {
+        super.setWorkingEnabled(workingEnabled);
+        MachineUtil.notifyControllersRecipeLogic(this);
     }
 
     @Override
@@ -473,6 +481,9 @@ public class MEDualHatchStockPartMachine extends MEBusPartMachine implements IDa
             if (io != IO.IN || left.isEmpty()) {
                 return left;
             }
+            if (!MEDualHatchStockPartMachine.this.isWorkingEnabled()) {
+                return left;
+            }
             IGrid grid = getMainNode().getGrid();
             if (grid == null) {
                 return left;
@@ -564,7 +575,7 @@ public class MEDualHatchStockPartMachine extends MEBusPartMachine implements IDa
                 if (this.config != null) {
                     // Extract the items from the real net to either validate (simulate)
                     // or extract (modulate) when this is called
-                    if (!isOnline()) return ItemStack.EMPTY;
+                    if (!isOnline() || !MEDualHatchStockPartMachine.this.isWorkingEnabled()) return ItemStack.EMPTY;
                     IGrid grid = getMainNode().getGrid();
                     if (grid == null) return ItemStack.EMPTY;
                     MEStorage aeNetwork = grid.getStorageService().getInventory();
@@ -647,6 +658,9 @@ public class MEDualHatchStockPartMachine extends MEBusPartMachine implements IDa
         @Override
         public List<FluidIngredient> handleRecipeInner(IO io, GTRecipe recipe, List<FluidIngredient> left, @Nullable String slotName, boolean simulate) {
             if (io != IO.IN || left.isEmpty()) {
+                return left;
+            }
+            if (!MEDualHatchStockPartMachine.this.isWorkingEnabled()) {
                 return left;
             }
             IGrid grid = getMainNode().getGrid();
@@ -741,7 +755,7 @@ public class MEDualHatchStockPartMachine extends MEBusPartMachine implements IDa
             if (this.stock != null && this.config != null) {
                 // Extract the items from the real net to either validate (simulate)
                 // or extract (modulate) when this is called
-                if (!isOnline()) return FluidStack.empty();
+                if (!isOnline() || !MEDualHatchStockPartMachine.this.isWorkingEnabled()) return FluidStack.empty();
                 IGrid grid = getMainNode().getGrid();
                 if (grid == null) return FluidStack.empty();
                 MEStorage aeNetwork = grid.getStorageService().getInventory();

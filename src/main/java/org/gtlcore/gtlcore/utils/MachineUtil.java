@@ -4,7 +4,10 @@ import org.gtlcore.gtlcore.api.recipe.RecipeResult;
 
 import com.gregtechceu.gtceu.GTCEu;
 import com.gregtechceu.gtceu.api.capability.recipe.IO;
+import com.gregtechceu.gtceu.api.machine.feature.IRecipeLogicMachine;
+import com.gregtechceu.gtceu.api.machine.feature.multiblock.IMultiController;
 import com.gregtechceu.gtceu.api.machine.multiblock.WorkableMultiblockMachine;
+import com.gregtechceu.gtceu.api.machine.multiblock.part.MultiblockPartMachine;
 import com.gregtechceu.gtceu.api.recipe.GTRecipe;
 import com.gregtechceu.gtceu.api.recipe.ingredient.IntCircuitIngredient;
 import com.gregtechceu.gtceu.common.data.GTRecipeTypes;
@@ -116,6 +119,19 @@ public class MachineUtil {
             return recipe.handleTickRecipeIO(IO.IN, machine, machine.recipeLogic.getChanceCaches());
         }
         return false;
+    }
+
+    /**
+     * 通知部件的所有控制器重新检查配方逻辑订阅。
+     * 用于库存类（stocking）输入部件的暂停切换：其"库存"即 ME 网络，
+     * 暂停/恢复不会产生本地库存变化通知，需主动唤醒可能已退订休眠的控制器。
+     */
+    public static void notifyControllersRecipeLogic(MultiblockPartMachine part) {
+        for (IMultiController controller : part.getControllers()) {
+            if (controller instanceof IRecipeLogicMachine machine) {
+                machine.getRecipeLogic().updateTickSubscription();
+            }
+        }
     }
 
     public static void createItemEntity(ServerLevel level, double x, double y, double z, ItemStack itemStack) {

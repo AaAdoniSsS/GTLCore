@@ -85,6 +85,9 @@ public abstract class ExportOnlyAEStockingItemListMixin extends ExportOnlyAEItem
         if (io != IO.IN || left.isEmpty()) {
             return left;
         }
+        if (!this$0.isWorkingEnabled()) {
+            return left;
+        }
         IGrid grid = this$0.getMainNode().getGrid();
         if (grid == null) {
             return left;

@@ -2,6 +2,7 @@ package org.gtlcore.gtlcore.mixin.gtm.ae.machine;
 
 import org.gtlcore.gtlcore.api.machine.trait.MEPart.IModifiableSyncOffset;
 import org.gtlcore.gtlcore.api.machine.trait.MEStock.IOptimizedMEList;
+import org.gtlcore.gtlcore.utils.MachineUtil;
 
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
 import com.gregtechceu.gtceu.api.machine.feature.multiblock.IMultiController;
@@ -32,6 +33,12 @@ public abstract class MEStockingHatchPartMachineMixin extends MEInputHatchPartMa
 
     public MEStockingHatchPartMachineMixin(IMachineBlockEntity holder, Object... args) {
         super(holder, args);
+    }
+
+    @Override
+    public void setWorkingEnabled(boolean workingEnabled) {
+        super.setWorkingEnabled(workingEnabled);
+        MachineUtil.notifyControllersRecipeLogic(this);
     }
 
     @Inject(method = "<init>", at = @At("RETURN"), remap = false)

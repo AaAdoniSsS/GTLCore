@@ -7,6 +7,7 @@ import org.gtlcore.gtlcore.api.machine.trait.MEStock.IMESlot;
 import org.gtlcore.gtlcore.api.machine.trait.MEStock.IOptimizedMEList;
 import org.gtlcore.gtlcore.api.recipe.ingredient.LongIngredient;
 import org.gtlcore.gtlcore.config.ConfigHolder;
+import org.gtlcore.gtlcore.utils.MachineUtil;
 
 import com.gregtechceu.gtceu.api.capability.recipe.IO;
 import com.gregtechceu.gtceu.api.gui.fancy.*;
@@ -75,6 +76,12 @@ public class TagFilterMEStockBusPartMachine extends MEInputBusPartMachine implem
 
     public TagFilterMEStockBusPartMachine(IMachineBlockEntity holder, Object... args) {
         super(holder, args);
+    }
+
+    @Override
+    public void setWorkingEnabled(boolean workingEnabled) {
+        super.setWorkingEnabled(workingEnabled);
+        MachineUtil.notifyControllersRecipeLogic(this);
     }
 
     @Override
@@ -293,6 +300,9 @@ public class TagFilterMEStockBusPartMachine extends MEInputBusPartMachine implem
             if (io != IO.IN || left.isEmpty()) {
                 return left;
             }
+            if (!TagFilterMEStockBusPartMachine.this.isWorkingEnabled()) {
+                return left;
+            }
             IGrid grid = getMainNode().getGrid();
             if (grid == null) {
                 return left;
@@ -382,7 +392,7 @@ public class TagFilterMEStockBusPartMachine extends MEInputBusPartMachine implem
                 if (this.config != null) {
                     // Extract the items from the real net to either validate (simulate)
                     // or extract (modulate) when this is called
-                    if (!isOnline()) return ItemStack.EMPTY;
+                    if (!isOnline() || !TagFilterMEStockBusPartMachine.this.isWorkingEnabled()) return ItemStack.EMPTY;
                     IGrid grid = getMainNode().getGrid();
                     if (grid == null) return ItemStack.EMPTY;
                     MEStorage aeNetwork = grid.getStorageService().getInventory();

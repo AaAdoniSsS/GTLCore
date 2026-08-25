@@ -7,6 +7,7 @@ import org.gtlcore.gtlcore.api.machine.trait.MEStock.IMESlot;
 import org.gtlcore.gtlcore.api.machine.trait.MEStock.IOptimizedMEList;
 import org.gtlcore.gtlcore.config.ConfigHolder;
 import org.gtlcore.gtlcore.integration.ae2.AEUtils;
+import org.gtlcore.gtlcore.utils.MachineUtil;
 
 import com.gregtechceu.gtceu.api.capability.recipe.IO;
 import com.gregtechceu.gtceu.api.gui.fancy.*;
@@ -75,6 +76,12 @@ public class TagFilterMEStockHatchPartMachine extends MEInputHatchPartMachine im
 
     public TagFilterMEStockHatchPartMachine(IMachineBlockEntity holder, Object... args) {
         super(holder, args);
+    }
+
+    @Override
+    public void setWorkingEnabled(boolean workingEnabled) {
+        super.setWorkingEnabled(workingEnabled);
+        MachineUtil.notifyControllersRecipeLogic(this);
     }
 
     @Override
@@ -288,6 +295,9 @@ public class TagFilterMEStockHatchPartMachine extends MEInputHatchPartMachine im
             if (io != IO.IN || left.isEmpty()) {
                 return left;
             }
+            if (!TagFilterMEStockHatchPartMachine.this.isWorkingEnabled()) {
+                return left;
+            }
             IGrid grid = getMainNode().getGrid();
             if (grid == null) {
                 return left;
@@ -371,7 +381,7 @@ public class TagFilterMEStockHatchPartMachine extends MEInputHatchPartMachine im
         @Override
         public FluidStack drain(long maxDrain, boolean simulate, boolean notifyChanges) {
             if (this.stock != null && this.config != null) {
-                if (!isOnline()) return FluidStack.empty();
+                if (!isOnline() || !TagFilterMEStockHatchPartMachine.this.isWorkingEnabled()) return FluidStack.empty();
                 IGrid grid = getMainNode().getGrid();
                 if (grid == null) return FluidStack.empty();
                 MEStorage aeNetwork = grid.getStorageService().getInventory();

@@ -164,11 +164,11 @@ public class DysonSphereMachine extends WorkableElectricMultiblockMachine {
         int duration = getRecipeLogic().getDuration();
         if (duration <= 0) return value;
 
-        if (!upgradeTriggeredThisRecipe && progress + 1 >= duration && getDysonSphereData() < 10000 && isLaunch(currentRecipe)) {
+        if (!upgradeTriggeredThisRecipe && progress + 1 >= duration && isLaunch(currentRecipe)) {
             upgradeTriggeredThisRecipe = true;
             if (getDysonSpheredamageData() > 60) {
                 this.DysonSpheredamageData = 0;
-            } else {
+            } else if (getDysonSphereData() < 10000) {
                 this.DysonSphereData++;
             }
         }
