@@ -57,5 +57,12 @@ public class TootipsModify {
 
         MachineDefinition largeChemicalReactor = GTMachines.LARGE_CHEMICAL_REACTOR;
         largeChemicalReactor.setTooltipBuilder(largeChemicalReactor.getTooltipBuilder().andThen((itemStack, components) -> components.add(1, Component.translatable("gtceu.machine.perfect_oc"))));
+
+        MachineDefinition researchStation = GTResearchMachines.RESEARCH_STATION;
+        researchStation.setTooltipBuilder(researchStation.getTooltipBuilder().andThen((itemStack, components) -> {
+            components.add(1, Component.translatable("gtceu.machine.research_station.tooltip.0"));
+            components.add(2, Component.translatable("gtceu.machine.research_station.tooltip.1"));
+            components.add(3, Component.translatable("gtceu.machine.research_station.tooltip.2"));
+        }));
     }
 }
