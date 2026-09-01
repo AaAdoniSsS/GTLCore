@@ -2,7 +2,7 @@
   "type": "minecraft:crafting_shapeless",
   "category": "misc",
   "ingredients": [
-    {"item": "ae2:pattern_access_terminal"},
+    {"item": "ae2:terminal"},
     {"item": "gtlcore:throughput_monitor"}
   ],
   "result": {"item": "gtlcore:me_chamber_manager_terminal"},
