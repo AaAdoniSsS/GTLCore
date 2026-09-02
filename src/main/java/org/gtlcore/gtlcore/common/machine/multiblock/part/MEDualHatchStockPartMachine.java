@@ -94,6 +94,7 @@ public class MEDualHatchStockPartMachine extends MEBusPartMachine implements IDa
     protected NotifiableFluidTank fluidTank;
 
     @DescSynced
+    @Persisted
     @Setter
     protected int page = 1;
 

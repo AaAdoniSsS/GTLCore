@@ -1076,11 +1076,33 @@ public abstract class CraftingTreeNodeMixin implements ICraftingTreeNode {
     @Override
     @Unique
     public void gtlcore$resetFastState() {
-        if (this.nodes == null) {
-            return;
+        if (this.nodes != null) {
+            for (CraftingTreeProcess node : this.nodes) {
+                ((ICraftingTreeProcess) node).gtlcore$resetFastState();
+            }
         }
-        for (CraftingTreeProcess node : this.nodes) {
-            ((ICraftingTreeProcess) node).gtlcore$resetFastState();
+        if (this.gTLCore$maxFastExecutor != null) {
+            this.gTLCore$maxFastExecutor.resetAttemptState();
+        }
+        if (this.gTLCore$maxFastCandidateGraphRoots != null) {
+            for (ICraftingTreeNode candidateRoot : this.gTLCore$maxFastCandidateGraphRoots) {
+                if (candidateRoot != null) {
+                    candidateRoot.gtlcore$resetFastState();
+                }
+            }
+        }
+        if (this.gTLCore$maxFastCandidateGraphExecutors != null) {
+            for (MaxFastExecutor candidateExecutor : this.gTLCore$maxFastCandidateGraphExecutors) {
+                if (candidateExecutor != null) {
+                    candidateExecutor.resetAttemptState();
+                }
+            }
+        }
+        if (this.gTLCore$maxFastCycleCandidateGraphRoot != null) {
+            this.gTLCore$maxFastCycleCandidateGraphRoot.gtlcore$resetFastState();
+        }
+        if (this.gTLCore$maxFastCycleCandidateGraphExecutor != null) {
+            this.gTLCore$maxFastCycleCandidateGraphExecutor.resetAttemptState();
         }
     }
 
