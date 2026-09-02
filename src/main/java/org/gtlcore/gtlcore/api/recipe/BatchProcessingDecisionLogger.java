@@ -188,6 +188,10 @@ public final class BatchProcessingDecisionLogger {
                 "log.gtlcore.batch_processing.reason.time_limit_rejected",
                 "批处理时间上限不足以容纳一个配方周期",
                 "The batch time limit cannot fit one recipe cycle"),
+        TIME_LIMIT_FALLBACK_SINGLE_CYCLE(
+                "log.gtlcore.batch_processing.reason.time_limit_fallback_single_cycle",
+                "批处理时间窗小于单周期时长，回退为单周期执行",
+                "The batch window is shorter than one recipe cycle; falling back to one normal cycle"),
         TIME_LIMIT_SINGLE_CYCLE(
                 "log.gtlcore.batch_processing.reason.time_limit_single_cycle",
                 "批处理时间上限只能容纳一个配方周期",

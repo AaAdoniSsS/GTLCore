@@ -186,7 +186,11 @@ public final class BatchProcessing {
         int maxCycles = timeLimit / recipe.duration;
         long realParallels = Math.max(1, IGTRecipe.of(recipe).getRealParallels());
         maxCycles = (int) Math.min(maxCycles, Long.MAX_VALUE / realParallels);
-        if (maxCycles <= 0) return new BatchSizeDecision(0, TIME_LIMIT_REJECTED, maxCycles, maxCycles);
+        if (maxCycles <= 0) {
+            // A short batch window must fall back to one normal cycle; rejecting the recipe
+            // here would stop a machine solely because batching is enabled.
+            return new BatchSizeDecision(1, TIME_LIMIT_FALLBACK_SINGLE_CYCLE, maxCycles, 0);
+        }
         if (maxCycles == 1) return new BatchSizeDecision(1, TIME_LIMIT_SINGLE_CYCLE, maxCycles, maxCycles);
 
         int amountLimitedCycles = limitByLongAmounts(recipe, maxCycles);
