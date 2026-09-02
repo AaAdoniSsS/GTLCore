@@ -4,9 +4,11 @@ import org.gtlcore.gtlcore.GTLCore;
 import org.gtlcore.gtlcore.client.ae2.wireless.MEChamberManagerTerminalScreen;
 import org.gtlcore.gtlcore.common.data.machines.MultiBlockMachineA;
 
+import com.gregtechceu.gtceu.api.capability.recipe.ItemRecipeCapability;
 import com.gregtechceu.gtceu.api.data.tag.TagPrefix;
 import com.gregtechceu.gtceu.api.data.worldgen.GTOreDefinition;
 import com.gregtechceu.gtceu.api.data.worldgen.WorldGenLayers;
+import com.gregtechceu.gtceu.api.recipe.GTRecipe;
 import com.gregtechceu.gtceu.api.registry.GTRegistries;
 import com.gregtechceu.gtceu.common.data.GTBlocks;
 import com.gregtechceu.gtceu.common.data.GTItems;
@@ -14,6 +16,7 @@ import com.gregtechceu.gtceu.common.item.IntCircuitBehaviour;
 
 import com.lowdragmc.lowdraglib.LDLib;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
@@ -21,6 +24,7 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraftforge.common.Tags;
 
 import mezz.jei.api.IModPlugin;
@@ -119,6 +123,9 @@ public class GTLJEIPlugin implements IModPlugin {
 
     private static void hideUnobtainableOres(IJeiRuntime runtime) {
         var obtainableOres = getObtainableOres();
+        if (obtainableOres == null) {
+            return;
+        }
 
         var unobtainableOres = runtime.getIngredientManager().getAllItemStacks().stream()
                 .filter(GTLJEIPlugin::isOreItem)
@@ -150,7 +157,42 @@ public class GTLJEIPlugin implements IModPlugin {
                         });
             }
         }
-        return obtainableOres;
+        return addRecipeOutputs(obtainableOres) ? obtainableOres : null;
+    }
+
+    /**
+     * Include ores produced by custom machines (for example, space elevator
+     * modules), which are not represented by world-generation vein entries.
+     */
+    private static boolean addRecipeOutputs(Set<Item> obtainableOres) {
+        var minecraft = Minecraft.getInstance();
+        var recipeManager = minecraft.level != null ? minecraft.level.getRecipeManager() :
+                minecraft.getConnection() != null ? minecraft.getConnection().getRecipeManager() : null;
+        if (recipeManager == null) {
+            GTLCore.LOGGER.warn("Skipped recipe-based ore visibility because the client recipe manager is unavailable");
+            return false;
+        }
+
+        for (var recipe : recipeManager.getRecipes()) {
+            if (!(recipe instanceof GTRecipe gtRecipe)) {
+                continue;
+            }
+            addOreItemsFromContents(gtRecipe.getOutputContents(ItemRecipeCapability.CAP), obtainableOres);
+            addOreItemsFromContents(gtRecipe.getTickOutputContents(ItemRecipeCapability.CAP), obtainableOres);
+        }
+        return true;
+    }
+
+    private static void addOreItemsFromContents(List<com.gregtechceu.gtceu.api.recipe.content.Content> contents,
+                                                Set<Item> obtainableOres) {
+        for (var content : contents) {
+            Ingredient ingredient = ItemRecipeCapability.CAP.of(content.getContent());
+            for (ItemStack stack : ingredient.getItems()) {
+                if (isOreItem(stack)) {
+                    obtainableOres.add(stack.getItem());
+                }
+            }
+        }
     }
 
     private static Set<TagPrefix> getHostPrefixes(GTOreDefinition oreDefinition) {
