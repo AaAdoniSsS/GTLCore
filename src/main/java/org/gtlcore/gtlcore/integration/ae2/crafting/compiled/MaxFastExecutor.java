@@ -112,6 +112,12 @@ public final class MaxFastExecutor {
         }
     }
 
+    public void resetAttemptState() {
+        this.preparedBoundaryCache.clear();
+        Arrays.fill(this.aggregatedPreparedBoundaries, null);
+        this.stack.clear();
+    }
+
     public void execute(ICraftingTreeNode root, CraftingSimulationState inv, long requestedAmount,
                         @Nullable KeyCounter containerItems, MaxFastMetrics metrics)
                                                                                      throws CraftBranchFailure,

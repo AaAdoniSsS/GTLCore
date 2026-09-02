@@ -683,6 +683,7 @@
   "log.gtlcore.batch_processing.reason.not_recipe_logic_machine": "The machine does not implement the recipe-logic interface",
   "log.gtlcore.batch_processing.reason.non_positive_duration": "The recipe duration is zero or negative, so only one cycle can run",
   "log.gtlcore.batch_processing.reason.time_limit_rejected": "The batch time limit cannot fit one recipe cycle",
+  "log.gtlcore.batch_processing.reason.time_limit_fallback_single_cycle": "The batch window is shorter than one recipe cycle; falling back to one normal cycle",
   "log.gtlcore.batch_processing.reason.time_limit_single_cycle": "The batch time limit can fit only one recipe cycle",
   "log.gtlcore.batch_processing.reason.amount_overflow": "An item or fluid amount is invalid or exceeds long capacity, so batching was aborted",
   "log.gtlcore.batch_processing.reason.amount_limit_single_cycle": "Item or fluid amount limits allow only one recipe cycle",

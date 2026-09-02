@@ -683,6 +683,7 @@
   "log.gtlcore.batch_processing.reason.not_recipe_logic_machine": "机器未实现配方逻辑接口",
   "log.gtlcore.batch_processing.reason.non_positive_duration": "配方时长小于或等于零，只能执行一个周期",
   "log.gtlcore.batch_processing.reason.time_limit_rejected": "批处理时间上限不足以容纳一个配方周期",
+  "log.gtlcore.batch_processing.reason.time_limit_fallback_single_cycle": "批处理时间窗小于单周期时长，回退为单周期执行",
   "log.gtlcore.batch_processing.reason.time_limit_single_cycle": "批处理时间上限只能容纳一个配方周期",
   "log.gtlcore.batch_processing.reason.amount_overflow": "配方物品或流体数量无效或总量溢出 long 容量，批处理被中止",
   "log.gtlcore.batch_processing.reason.amount_limit_single_cycle": "物品或流体总量上限只允许一个配方周期",

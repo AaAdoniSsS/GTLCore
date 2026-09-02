@@ -49,6 +49,7 @@ public class MEDualInputHatchPartMachine extends MEInputBusPartMachine implement
     protected NotifiableFluidTank fluidTank;
 
     @DescSynced
+    @Persisted
     @Setter
     protected int page = 1;
 

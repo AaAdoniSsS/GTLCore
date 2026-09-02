@@ -78,6 +78,9 @@ public abstract class CraftingCalculationMixin implements ICraftingCalculation {
     private NetworkCraftingSimulationState networkInv;
     @Shadow(remap = false)
     @Final
+    private CraftingTreeNode tree;
+    @Shadow(remap = false)
+    @Final
     private ICraftingSimulationRequester simRequester;
     @Shadow(remap = false)
     @Final
@@ -463,8 +466,11 @@ public abstract class CraftingCalculationMixin implements ICraftingCalculation {
     }
 
     @Inject(method = "runCraftAttempt", at = @At("HEAD"), remap = false)
-    private void gTLCore$beginMaxFastAttempt(boolean simulate, long amount,
-                                             CallbackInfoReturnable<CraftingPlan> cir) {
+    private void gTLCore$beginCraftAttempt(boolean simulate, long amount,
+                                           CallbackInfoReturnable<CraftingPlan> cir) {
+        if (this.gTLCore$calculationMode != AE2CalculationMode.LEGACY) {
+            ((ICraftingTreeNode) this.tree).gtlcore$resetFastState();
+        }
         if (this.gTLCore$calculationMode == AE2CalculationMode.MAX_FAST) {
             this.gTLCore$maxFastMetrics.beginAttempt(amount, simulate);
         }
