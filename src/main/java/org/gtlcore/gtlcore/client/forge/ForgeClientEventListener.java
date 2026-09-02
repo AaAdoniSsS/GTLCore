@@ -2,6 +2,8 @@ package org.gtlcore.gtlcore.client.forge;
 
 import org.gtlcore.gtlcore.GTLCore;
 import org.gtlcore.gtlcore.client.ae2.JeiTerminalSearchTarget;
+import org.gtlcore.gtlcore.client.gui.IPatternModifierScreen;
+import org.gtlcore.gtlcore.client.gui.SetReplaceAmountScreen;
 import org.gtlcore.gtlcore.common.item.StructureWriteBehavior;
 import org.gtlcore.gtlcore.integration.ae2.WirelessTerminalGridResolver;
 import org.gtlcore.gtlcore.integration.ae2.wireless.JeiWirelessTerminalOrderPackets;
@@ -18,6 +20,7 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
@@ -26,17 +29,23 @@ import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
 import net.minecraftforge.client.event.ScreenEvent;
 import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.entity.player.ItemTooltipEvent;
 import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
 import appeng.api.stacks.AEKey;
+import appeng.api.stacks.GenericStack;
+import appeng.core.localization.ButtonToolTips;
+import appeng.core.localization.Tooltips;
+import com.glodblock.github.extendedae.client.gui.GuiPatternModifier;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import org.lwjgl.glfw.GLFW;
 
+import java.util.ArrayList;
 import java.util.Optional;
 
 @Mod.EventBusSubscriber(modid = GTLCore.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
@@ -176,6 +185,58 @@ public class ForgeClientEventListener {
     }
 
     private record PendingJeiExtraction(Screen screen, AEKey key, boolean cheatMode) {}
+
+    /**
+     * 样板修改器材料替换页中键打开数量编辑界面（仿 AE2 样板编码终端行为）。
+     */
+    @SubscribeEvent
+    public static void onPatternModifierReplaceAmountMousePressed(ScreenEvent.MouseButtonPressed.Pre event) {
+        if (!(event.getScreen() instanceof GuiPatternModifier screen) || screen.getMenu().page != 1 ||
+                !Minecraft.getInstance().options.keyPickItem.matchesMouse(event.getButton())) {
+            return;
+        }
+        Slot slot = screen.getSlotUnderMouse();
+        if (slot == null || !slot.hasItem() ||
+                (slot != screen.getMenu().replaceTarget && slot != screen.getMenu().replaceWith)) {
+            return;
+        }
+        ((IPatternModifierScreen) screen).gtlcore$openReplaceAmountScreen(slot);
+        event.setCanceled(true);
+    }
+
+    /**
+     * 样板修改器材料替换槽 tooltip 追加数量与中键设置提示。
+     */
+    @SubscribeEvent
+    public static void onPatternModifierReplaceSlotTooltip(ItemTooltipEvent event) {
+        if (!(Minecraft.getInstance().screen instanceof GuiPatternModifier screen) || screen.getMenu().page != 1) {
+            return;
+        }
+        Slot slot = screen.getSlotUnderMouse();
+        if (slot == null || (slot != screen.getMenu().replaceTarget && slot != screen.getMenu().replaceWith)) {
+            return;
+        }
+        var unwrapped = GenericStack.fromItemStack(event.getItemStack());
+        if (unwrapped != null) {
+            event.getToolTip().add(Tooltips.getAmountTooltip(ButtonToolTips.Amount, unwrapped));
+        }
+        event.getToolTip().add(Tooltips.getSetAmountTooltip());
+    }
+
+    /**
+     * 移除 InvTweaks 添加到样板修改器数量编辑子屏上的排序按钮（低优先级保证在 InvTweaks 之后执行）。
+     */
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public static void onSetReplaceAmountScreenInit(ScreenEvent.Init.Post event) {
+        if (!(event.getScreen() instanceof SetReplaceAmountScreen)) {
+            return;
+        }
+        for (var listener : new ArrayList<>(event.getListenersList())) {
+            if (listener.getClass().getName().startsWith("invtweaks.gui.InvTweaksButton")) {
+                event.removeListener(listener);
+            }
+        }
+    }
 
     @SubscribeEvent
     public static void onRenderWorldLast(RenderLevelStageEvent event) {
