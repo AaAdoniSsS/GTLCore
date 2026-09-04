@@ -103,11 +103,11 @@ public class MachineRecipe {
                 .duration(400).EUt(480).save(provider);
 
         ASSEMBLER_RECIPES.recipeBuilder("adv")
-                .inputItems(AdvancedMultiBlockMachine.FLUID_DRILLING_RIG[ZPM])
+                .inputItems(AdvancedMultiBlockMachineB.FLUID_DRILLING_RIG[ZPM])
                 .inputItems(CIRCUIT.getIngredient(UEV), 4)
                 .inputItems(CONVEYOR_MODULE_UHV, 4)
                 .inputItems(FLUID_REGULATOR_UHV, 4)
-                .outputItems(AdvancedMultiBlockMachine.ADVANCED_INFINITE_DRILLER)
+                .outputItems(AdvancedMultiBlockMachineB.ADVANCED_INFINITE_DRILLER)
                 .duration(400).EUt(V[UEV]).save(provider);
 
         ASSEMBLER_RECIPES.recipeBuilder("virtual_ingredient")
@@ -153,7 +153,7 @@ public class MachineRecipe {
         ASSEMBLER_RECIPES.recipeBuilder("conversion_simulate_card")
                 .inputItems(FIELD_GENERATOR_LuV)
                 .inputItems(AEItems.SPEED_CARD, 2)
-                .inputItems(AdvancedMultiBlockMachine.BLOCK_CONVERSION_ROOM, 1)
+                .inputItems(AdvancedMultiBlockMachineA.BLOCK_CONVERSION_ROOM, 1)
                 .inputItems(CIRCUIT.getIngredient(LuV), 2)
                 .inputFluids(SolderingAlloy.getFluid(L))
                 .outputItems(GTLItems.CONVERSION_SIMULATE_CARD)
@@ -271,7 +271,7 @@ public class MachineRecipe {
                 .inputItems(GTItems.ELECTRIC_PUMP_UV, 4)
                 .inputItems(gear, Neutronium, 4)
                 .circuitMeta(2)
-                .outputItems(AdvancedMultiBlockMachine.FLUID_DRILLING_RIG[ZPM])
+                .outputItems(AdvancedMultiBlockMachineB.FLUID_DRILLING_RIG[ZPM])
                 .duration(400).EUt(VA[UV]).save(provider);
 
         ASSEMBLER_RECIPES.recipeBuilder("wood_distillation")
@@ -384,9 +384,9 @@ public class MachineRecipe {
                 GTItems.FIELD_GENERATOR_UIV.asStack(), 'H', GTMachines.HULL[13].asStack());
 
         VanillaRecipeHelper.addShapedRecipe(provider, true, "large_block_conversion_room",
-                AdvancedMultiBlockMachine.LARGE_BLOCK_CONVERSION_ROOM.asStack(), "SES", "EHE", "SES",
+                AdvancedMultiBlockMachineA.LARGE_BLOCK_CONVERSION_ROOM.asStack(), "SES", "EHE", "SES",
                 'S', GTItems.SENSOR_ZPM.asStack(), 'E', GTItems.EMITTER_ZPM.asStack(), 'H',
-                AdvancedMultiBlockMachine.BLOCK_CONVERSION_ROOM.asStack());
+                AdvancedMultiBlockMachineA.BLOCK_CONVERSION_ROOM.asStack());
 
         List<ItemEntry<ComponentItem>> WIRELESS_ENERGY_RECEIVE_COVER = List.of(
                 CustomItems.WIRELESS_ENERGY_RECEIVE_COVER_LV,
@@ -674,7 +674,7 @@ public class MachineRecipe {
                 .inputItems(CIRCUIT.getIngredient(MAX), 16)
                 .inputItems(ChemicalHelper.get(rod, GTLMaterials.Infinity), 32)
                 .inputItems(ChemicalHelper.get(plateDouble, GTLMaterials.Starmetal), 32)
-                .inputItems(AdvancedMultiBlockMachine.SPACE_PROBE_SURFACE_RECEPTION, 8)
+                .inputItems(AdvancedMultiBlockMachineA.SPACE_PROBE_SURFACE_RECEPTION, 8)
                 .inputItems(GTLBlocks.ADVANCED_FUSION_COIL, 16)
                 .inputItems(getItem("kubejs:awakened_core"), 16)
                 .inputItems(ChemicalHelper.get(GTLTagPrefix.nanoswarm, GTLMaterials.BlackDwarfMatter), 64)
@@ -682,11 +682,11 @@ public class MachineRecipe {
                 .inputItems(GTLItems.INSANELY_ULTIMATE_BATTERY)
                 .inputFluids(GTLMaterials.SuperMutatedLivingSolder.getFluid(32000))
                 .inputFluids(GTLMaterials.Periodicium.getFluid(16000))
-                .stationResearch(b -> b.researchStack(AdvancedMultiBlockMachine.SPACE_PROBE_SURFACE_RECEPTION.asStack())
+                .stationResearch(b -> b.researchStack(AdvancedMultiBlockMachineA.SPACE_PROBE_SURFACE_RECEPTION.asStack())
                         .dataStack(GTItems.TOOL_DATA_MODULE.asStack())
                         .EUt(VA[UXV])
                         .CWUt(2048))
-                .outputItems(AdvancedMultiBlockMachine.SPACE_COSMIC_PROBE_RECEIVERS)
+                .outputItems(AdvancedMultiBlockMachineA.SPACE_COSMIC_PROBE_RECEIVERS)
                 .duration(2000)
                 .EUt(GTValues.VA[OpV])
                 .save(provider);
@@ -802,7 +802,7 @@ public class MachineRecipe {
         ASSEMBLY_LINE_RECIPES.recipeBuilder("advanced_neutron_activator")
                 .inputItems(CIRCUIT.getIngredient(UXV), 32)
                 .inputItems(ChemicalHelper.get(frameGt, GTLMaterials.BlackTitanium), 32)
-                .inputItems(AdvancedMultiBlockMachine.NEUTRON_ACTIVATOR, 16)
+                .inputItems(AdvancedMultiBlockMachineB.NEUTRON_ACTIVATOR, 16)
                 .inputItems(GTLMachines.NEUTRON_COMPRESSOR, 16)
                 .inputItems(GTLMachines.NEUTRON_ACCELERATOR[UHV], 8)
                 .inputItems(GTLMachines.NEUTRON_ACCELERATOR[UEV], 8)
@@ -814,7 +814,7 @@ public class MachineRecipe {
                 .inputFluids(GTMaterials.Oganesson.getFluid(1296))
                 .inputFluids(GTLMaterials.Vibranium.getFluid(1296))
                 .outputItems(AdditionalMultiBlockMachine.ADVANCED_NEUTRON_ACTIVATOR)
-                .stationResearch(b -> b.researchStack(AdvancedMultiBlockMachine.NEUTRON_ACTIVATOR.asStack())
+                .stationResearch(b -> b.researchStack(AdvancedMultiBlockMachineB.NEUTRON_ACTIVATOR.asStack())
                         .dataStack(GTItems.TOOL_DATA_MODULE.asStack())
                         .EUt(VA[UXV])
                         .CWUt(512))

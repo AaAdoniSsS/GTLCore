@@ -24,7 +24,7 @@ import java.util.Set;
 
 import javax.annotation.ParametersAreNonnullByDefault;
 
-import static org.gtlcore.gtlcore.common.data.machines.AdvancedMultiBlockMachine.SUPRACHRONAL_ASSEMBLY_LINE_MODULE;
+import static org.gtlcore.gtlcore.common.data.machines.AdvancedMultiBlockMachineA.SUPRACHRONAL_ASSEMBLY_LINE_MODULE;
 
 @ParametersAreNonnullByDefault
 @MethodsReturnNonnullByDefault

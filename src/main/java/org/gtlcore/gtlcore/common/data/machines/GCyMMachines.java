@@ -3,6 +3,7 @@ package org.gtlcore.gtlcore.common.data.machines;
 import org.gtlcore.gtlcore.common.data.GTLMachines;
 import org.gtlcore.gtlcore.common.data.GTLRecipeModifiers;
 import org.gtlcore.gtlcore.common.data.GTLRecipeTypes;
+import org.gtlcore.gtlcore.common.data.machines.structure.GCyMMachinesStructure;
 
 import com.gregtechceu.gtceu.GTCEu;
 import com.gregtechceu.gtceu.api.GTCEuAPI;
@@ -15,7 +16,6 @@ import com.gregtechceu.gtceu.api.machine.MultiblockMachineDefinition;
 import com.gregtechceu.gtceu.api.machine.multiblock.CoilWorkableElectricMultiblockMachine;
 import com.gregtechceu.gtceu.api.machine.multiblock.PartAbility;
 import com.gregtechceu.gtceu.api.machine.multiblock.WorkableElectricMultiblockMachine;
-import com.gregtechceu.gtceu.api.pattern.FactoryBlockPattern;
 import com.gregtechceu.gtceu.api.pattern.MultiblockShapeInfo;
 import com.gregtechceu.gtceu.api.pattern.Predicates;
 import com.gregtechceu.gtceu.api.pattern.TraceabilityPredicate;
@@ -82,12 +82,7 @@ public class GCyMMachines {
             .recipeModifiers(GTLRecipeModifiers.GCYM_REDUCTION, GTRecipeModifiers.PARALLEL_HATCH,
                     GTRecipeModifiers.ELECTRIC_OVERCLOCK.apply(OverclockingLogic.NON_PERFECT_OVERCLOCK_SUBTICK))
             .appearanceBlock(CASING_SECURE_MACERATION)
-            .pattern(definition -> FactoryBlockPattern.start()
-                    .aisle("XXXXX", "XXXXX", "XXXXX", "XXXXX")
-                    .aisle("XXXXX", "XGGGX", "XGGGX", "XAAAX")
-                    .aisle("XXXXX", "XGGGX", "XGGGX", "XAAAX")
-                    .aisle("XXXXX", "XGGGX", "XGGGX", "XAAAX")
-                    .aisle("XXXXX", "XXXXX", "XXSXX", "XXXXX")
+            .pattern(definition -> GCyMMachinesStructure.LARGE_MACERATION_TOWER
                     .where('S', controller(blocks(definition.get())))
                     .where('X', blocks(CASING_SECURE_MACERATION.get()).setMinGlobalLimited(55)
                             .or(Predicates.autoAbilities(definition.getRecipeTypes()))
@@ -115,14 +110,7 @@ public class GCyMMachines {
             .recipeModifiers(GTLRecipeModifiers.GCYM_REDUCTION, GTRecipeModifiers.PARALLEL_HATCH,
                     GTRecipeModifiers.ELECTRIC_OVERCLOCK.apply(OverclockingLogic.NON_PERFECT_OVERCLOCK_SUBTICK))
             .appearanceBlock(CASING_WATERTIGHT)
-            .pattern(definition -> FactoryBlockPattern.start()
-                    .aisle("XXXXX", "XXXXX", "XXXXX")
-                    .aisle("XXXXX", "XTTTX", "X   X")
-                    .aisle("XXXXX", "X   X", "X   X")
-                    .aisle("XXXXX", "X   X", "X   X")
-                    .aisle("XXXXX", "X   X", "X   X")
-                    .aisle("XXXXX", "XTTTX", "X   X")
-                    .aisle("XXXXX", "XXSXX", "XXXXX")
+            .pattern(definition -> GCyMMachinesStructure.LARGE_CHEMICAL_BATH
                     .where('S', controller(blocks(definition.get())))
                     .where('X', blocks(CASING_WATERTIGHT.get()).setMinGlobalLimited(55)
                             .or(Predicates.autoAbilities(definition.getRecipeTypes()))
@@ -150,12 +138,7 @@ public class GCyMMachines {
             .recipeModifiers(GTLRecipeModifiers.GCYM_REDUCTION, GTRecipeModifiers.PARALLEL_HATCH,
                     GTRecipeModifiers.ELECTRIC_OVERCLOCK.apply(OverclockingLogic.NON_PERFECT_OVERCLOCK_SUBTICK))
             .appearanceBlock(CASING_VIBRATION_SAFE)
-            .pattern(definition -> FactoryBlockPattern.start()
-                    .aisle("#XXX#", "XXXXX", "#XXX#")
-                    .aisle("XXXXX", "XAPAX", "XXXXX")
-                    .aisle("XXXXX", "XPAPX", "XXXXX")
-                    .aisle("XXXXX", "XAPAX", "XXXXX")
-                    .aisle("#XXX#", "XXSXX", "#XXX#")
+            .pattern(definition -> GCyMMachinesStructure.LARGE_CENTRIFUGE
                     .where('S', controller(blocks(definition.get())))
                     .where('X', blocks(CASING_VIBRATION_SAFE.get()).setMinGlobalLimited(40)
                             .or(Predicates.autoAbilities(definition.getRecipeTypes()))
@@ -184,12 +167,7 @@ public class GCyMMachines {
             .recipeModifiers(GTLRecipeModifiers.GCYM_REDUCTION, GTRecipeModifiers.PARALLEL_HATCH,
                     GTRecipeModifiers.ELECTRIC_OVERCLOCK.apply(OverclockingLogic.NON_PERFECT_OVERCLOCK_SUBTICK))
             .appearanceBlock(CASING_REACTION_SAFE)
-            .pattern(definition -> FactoryBlockPattern.start()
-                    .aisle("#XXX#", "#XXX#", "#XXX#", "#XXX#", "#XXX#", "##F##")
-                    .aisle("XXXXX", "XAPAX", "XAAAX", "XAPAX", "XAAAX", "##F##")
-                    .aisle("XXXXX", "XPPPX", "XAPAX", "XPPPX", "XAGAX", "FFGFF")
-                    .aisle("XXXXX", "XAPAX", "XAAAX", "XAPAX", "XAAAX", "##F##")
-                    .aisle("#XXX#", "#XSX#", "#XXX#", "#XXX#", "#XXX#", "##F##")
+            .pattern(definition -> GCyMMachinesStructure.LARGE_MIXER
                     .where('S', controller(blocks(definition.get())))
                     .where('X', blocks(CASING_REACTION_SAFE.get()).setMinGlobalLimited(50)
                             .or(autoAbilities(definition.getRecipeTypes()))
@@ -220,11 +198,7 @@ public class GCyMMachines {
             .recipeModifiers(GTLRecipeModifiers.GCYM_REDUCTION, GTRecipeModifiers.PARALLEL_HATCH,
                     GTRecipeModifiers.ELECTRIC_OVERCLOCK.apply(OverclockingLogic.NON_PERFECT_OVERCLOCK_SUBTICK))
             .appearanceBlock(CASING_NONCONDUCTING)
-            .pattern(definition -> FactoryBlockPattern.start()
-                    .aisle("XXXXX", "XXXXX", "XXXXX")
-                    .aisle("XXXXX", "XCCCX", "XCCCX")
-                    .aisle("XXXXX", "XCCCX", "XCCCX")
-                    .aisle("XXXXX", "XXSXX", "XXXXX")
+            .pattern(definition -> GCyMMachinesStructure.LARGE_ELECTROLYZER
                     .where('S', controller(blocks(definition.get())))
                     .where('X', blocks(CASING_NONCONDUCTING.get()).setMinGlobalLimited(30)
                             .or(Predicates.autoAbilities(definition.getRecipeTypes()))
@@ -252,11 +226,7 @@ public class GCyMMachines {
             .recipeModifiers(GTLRecipeModifiers.GCYM_REDUCTION, GTRecipeModifiers.PARALLEL_HATCH,
                     GTRecipeModifiers.ELECTRIC_OVERCLOCK.apply(OverclockingLogic.NON_PERFECT_OVERCLOCK_SUBTICK))
             .appearanceBlock(CASING_NONCONDUCTING)
-            .pattern(definition -> FactoryBlockPattern.start()
-                    .aisle("XXXXX", "XXXXX", "XXXXX")
-                    .aisle("XCXCX", "XCXCX", "XCXCX")
-                    .aisle("XCXCX", "XCXCX", "XCXCX")
-                    .aisle("XXXXX", "XXSXX", "XXXXX")
+            .pattern(definition -> GCyMMachinesStructure.LARGE_ELECTROMAGNET
                     .where('S', controller(blocks(definition.get())))
                     .where('X', blocks(CASING_NONCONDUCTING.get()).setMinGlobalLimited(35)
                             .or(Predicates.autoAbilities(definition.getRecipeTypes()))
@@ -283,13 +253,7 @@ public class GCyMMachines {
             .recipeModifiers(GTLRecipeModifiers.GCYM_REDUCTION, GTRecipeModifiers.PARALLEL_HATCH,
                     GTRecipeModifiers.ELECTRIC_OVERCLOCK.apply(OverclockingLogic.NON_PERFECT_OVERCLOCK_SUBTICK))
             .appearanceBlock(CASING_TUNGSTENSTEEL_ROBUST)
-            .pattern(definition -> FactoryBlockPattern.start()
-                    .aisle("XXX", "XXX", "XXX")
-                    .aisle("XXX", "XAX", "XXX")
-                    .aisle("XXX", "XAX", "XXX")
-                    .aisle("XXX", "XAX", "XXX")
-                    .aisle("XXX", "XAX", "XXX")
-                    .aisle("XXX", "XSX", "XXX")
+            .pattern(definition -> GCyMMachinesStructure.LARGE_PACKER
                     .where('S', controller(blocks(definition.get())))
                     .where('X', blocks(CASING_TUNGSTENSTEEL_ROBUST.get()).setMinGlobalLimited(30)
                             .or(Predicates.autoAbilities(definition.getRecipeTypes()))
@@ -316,10 +280,7 @@ public class GCyMMachines {
             .recipeModifiers(GTLRecipeModifiers.GCYM_REDUCTION, GTRecipeModifiers.PARALLEL_HATCH,
                     GTRecipeModifiers.ELECTRIC_OVERCLOCK.apply(OverclockingLogic.NON_PERFECT_OVERCLOCK_SUBTICK))
             .appearanceBlock(CASING_LARGE_SCALE_ASSEMBLING)
-            .pattern(definition -> FactoryBlockPattern.start()
-                    .aisle("XXXXXXXXX", "XXXXXXXXX", "XXXXXXXXX")
-                    .aisle("XXXXXXXXX", "XAAAXAAAX", "XGGGXXXXX")
-                    .aisle("XXXXXXXXX", "XGGGXXSXX", "XGGGX###X")
+            .pattern(definition -> GCyMMachinesStructure.LARGE_ASSEMBLER
                     .where('S', controller(blocks(definition.get())))
                     .where('X', blocks(CASING_LARGE_SCALE_ASSEMBLING.get()).setMinGlobalLimited(40)
                             .or(Predicates.autoAbilities(definition.getRecipeTypes()))
@@ -349,12 +310,7 @@ public class GCyMMachines {
             .recipeModifiers(GTLRecipeModifiers.GCYM_REDUCTION, GTRecipeModifiers.PARALLEL_HATCH,
                     GTRecipeModifiers.ELECTRIC_OVERCLOCK.apply(OverclockingLogic.NON_PERFECT_OVERCLOCK_SUBTICK))
             .appearanceBlock(CASING_LARGE_SCALE_ASSEMBLING)
-            .pattern(definition -> FactoryBlockPattern.start()
-                    .aisle("XXXXXXX", "XXXXXXX", "XXXXXXX")
-                    .aisle("XXXXXXX", "XPPPPPX", "XGGGGGX")
-                    .aisle("XXXXXXX", "XAAAAPX", "XGGGGGX")
-                    .aisle("XXXXXXX", "XTTTTXX", "XXXXXXX")
-                    .aisle("#####XX", "#####SX", "#####XX")
+            .pattern(definition -> GCyMMachinesStructure.LARGE_CIRCUIT_ASSEMBLER
                     .where('S', controller(blocks(definition.get())))
                     .where('X', blocks(CASING_LARGE_SCALE_ASSEMBLING.get()).setMinGlobalLimited(55)
                             .or(Predicates.autoAbilities(definition.getRecipeTypes(), false, false, true, true, true,
@@ -396,12 +352,7 @@ public class GCyMMachines {
             }, GTLRecipeModifiers.GCYM_REDUCTION, GTRecipeModifiers.PARALLEL_HATCH,
                     GTRecipeModifiers.ELECTRIC_OVERCLOCK.apply(OverclockingLogic.NON_PERFECT_OVERCLOCK_SUBTICK))
             .appearanceBlock(CASING_HIGH_TEMPERATURE_SMELTING)
-            .pattern(definition -> FactoryBlockPattern.start()
-                    .aisle("#XXX#", "#XXX#", "#XXX#", "#XXX#")
-                    .aisle("XXXXX", "XCACX", "XCACX", "XXXXX")
-                    .aisle("XXXXX", "XAAAX", "XAAAX", "XXMXX")
-                    .aisle("XXXXX", "XACAX", "XACAX", "XXXXX")
-                    .aisle("#XXX#", "#XSX#", "#XXX#", "#XXX#")
+            .pattern(definition -> GCyMMachinesStructure.LARGE_ARC_SMELTER
                     .where('S', controller(blocks(definition.get())))
                     .where('X', blocks(CASING_HIGH_TEMPERATURE_SMELTING.get()).setMinGlobalLimited(45)
                             .or(Predicates.autoAbilities(definition.getRecipeTypes()))
@@ -431,12 +382,7 @@ public class GCyMMachines {
             .recipeModifiers(GTLRecipeModifiers.GCYM_REDUCTION, GTRecipeModifiers.PARALLEL_HATCH,
                     GTRecipeModifiers.ELECTRIC_OVERCLOCK.apply(OverclockingLogic.NON_PERFECT_OVERCLOCK_SUBTICK))
             .appearanceBlock(CASING_LASER_SAFE_ENGRAVING)
-            .pattern(definition -> FactoryBlockPattern.start()
-                    .aisle("XXXXX", "XXGXX", "XXGXX", "XXXXX")
-                    .aisle("XXXXX", "XAAAX", "XAAAX", "XKKKX")
-                    .aisle("XXXXX", "GAAAG", "GACAG", "XKXKX")
-                    .aisle("XXXXX", "XAAAX", "XAAAX", "XKKKX")
-                    .aisle("XXSXX", "XXGXX", "XXGXX", "XXXXX")
+            .pattern(definition -> GCyMMachinesStructure.LARGE_ENGRAVING_LASER
                     .where('S', controller(blocks(definition.get())))
                     .where('C', blocks(CASING_TUNGSTENSTEEL_PIPE.get()))
                     .where('X', blocks(CASING_LASER_SAFE_ENGRAVING.get()).setMinGlobalLimited(45)
@@ -466,12 +412,7 @@ public class GCyMMachines {
             .recipeModifiers(GTLRecipeModifiers.GCYM_REDUCTION, GTRecipeModifiers.PARALLEL_HATCH,
                     GTRecipeModifiers.ELECTRIC_OVERCLOCK.apply(OverclockingLogic.NON_PERFECT_OVERCLOCK_SUBTICK))
             .appearanceBlock(CASING_VIBRATION_SAFE)
-            .pattern(definition -> FactoryBlockPattern.start()
-                    .aisle("#X#X#", "#X#X#", "#XXX#", "XXXXX", "#XXX#")
-                    .aisle("XXXXX", "XAXAX", "XKKKX", "XKKKX", "X###X")
-                    .aisle("#XXX#", "#XAX#", "XKKKX", "XKKKX", "X###X")
-                    .aisle("XXXXX", "XAXAX", "XKKKX", "XKKKX", "X###X")
-                    .aisle("#X#X#", "#X#X#", "#XSX#", "XXXXX", "#XXX#")
+            .pattern(definition -> GCyMMachinesStructure.LARGE_SIFTING_FUNNEL
                     .where('S', controller(blocks(definition.get())))
                     .where('X', blocks(CASING_VIBRATION_SAFE.get()).setMinGlobalLimited(50)
                             .or(Predicates.autoAbilities(definition.getRecipeTypes()))
@@ -500,12 +441,7 @@ public class GCyMMachines {
             .recipeType(ALLOY_BLAST_RECIPES)
             .recipeModifiers(GTRecipeModifiers::ebfOverclock)
             .appearanceBlock(CASING_HIGH_TEMPERATURE_SMELTING)
-            .pattern(definition -> FactoryBlockPattern.start()
-                    .aisle("#XXX#", "#CCC#", "#GGG#", "#CCC#", "#XXX#")
-                    .aisle("XXXXX", "CAAAC", "GAAAG", "CAAAC", "XXXXX")
-                    .aisle("XXXXX", "CAAAC", "GAAAG", "CAAAC", "XXMXX")
-                    .aisle("XXXXX", "CAAAC", "GAAAG", "CAAAC", "XXXXX")
-                    .aisle("#XSX#", "#CCC#", "#GGG#", "#CCC#", "#XXX#")
+            .pattern(definition -> GCyMMachinesStructure.BLAST_ALLOY_SMELTER
                     .where('S', controller(blocks(definition.get())))
                     .where('X', blocks(CASING_HIGH_TEMPERATURE_SMELTING.get()).setMinGlobalLimited(30)
                             .or(autoAbilities(definition.getRecipeTypes()))
@@ -561,12 +497,7 @@ public class GCyMMachines {
             .recipeModifiers(GTLRecipeModifiers.GCYM_REDUCTION, GTRecipeModifiers.PARALLEL_HATCH,
                     GTRecipeModifiers.ELECTRIC_OVERCLOCK.apply(OverclockingLogic.NON_PERFECT_OVERCLOCK_SUBTICK))
             .appearanceBlock(CASING_WATERTIGHT)
-            .pattern(definition -> FactoryBlockPattern.start()
-                    .aisle("XXX", "XXX", "XXX")
-                    .aisle("XXX", "XTX", "XXX")
-                    .aisle("XXX", "XTX", "XXX")
-                    .aisle("XXX", "XTX", "XXX")
-                    .aisle("XXX", "XSX", "XXX")
+            .pattern(definition -> GCyMMachinesStructure.LARGE_AUTOCLAVE
                     .where('S', controller(blocks(definition.get())))
                     .where('X', blocks(CASING_WATERTIGHT.get()).setMinGlobalLimited(30)
                             .or(autoAbilities(definition.getRecipeTypes()))
@@ -595,10 +526,7 @@ public class GCyMMachines {
             .recipeModifiers(GTLRecipeModifiers.GCYM_REDUCTION, GTRecipeModifiers.PARALLEL_HATCH,
                     GTRecipeModifiers.ELECTRIC_OVERCLOCK.apply(OverclockingLogic.NON_PERFECT_OVERCLOCK_SUBTICK))
             .appearanceBlock(CASING_STRESS_PROOF)
-            .pattern(definition -> FactoryBlockPattern.start()
-                    .aisle("XXXXXXX", "XXXXXXX", "XXXXXXX")
-                    .aisle("XXXXXXX", "XAXGGGX", "XXXXXXX")
-                    .aisle("XXXXXXX", "XSXCCCX", "XXXXXXX")
+            .pattern(definition -> GCyMMachinesStructure.LARGE_MATERIAL_PRESS
                     .where('S', controller(blocks(definition.get())))
                     .where('X', blocks(CASING_STRESS_PROOF.get()).setMinGlobalLimited(40)
                             .or(autoAbilities(definition.getRecipeTypes()))
@@ -628,12 +556,7 @@ public class GCyMMachines {
             .recipeModifiers(GTLRecipeModifiers.GCYM_REDUCTION, GTRecipeModifiers.PARALLEL_HATCH,
                     GTRecipeModifiers.ELECTRIC_OVERCLOCK.apply(OverclockingLogic.NON_PERFECT_OVERCLOCK_SUBTICK))
             .appearanceBlock(CASING_CORROSION_PROOF)
-            .pattern(definition -> FactoryBlockPattern.start()
-                    .aisle("#XXX#", "#XXX#", "#XXX#", "#XXX#", "#####")
-                    .aisle("XXXXX", "XCCCX", "XAAAX", "XXAXX", "##X##")
-                    .aisle("XXXXX", "XCPCX", "XAPAX", "XAPAX", "#XMX#")
-                    .aisle("XXXXX", "XCCCX", "XAAAX", "XXAXX", "##X##")
-                    .aisle("#XXX#", "#XSX#", "#XXX#", "#XXX#", "#####")
+            .pattern(definition -> GCyMMachinesStructure.LARGE_BREWER
                     .where('S', controller(blocks(definition.get())))
                     .where('X', blocks(CASING_CORROSION_PROOF.get()).setMinGlobalLimited(50)
                             .or(autoAbilities(definition.getRecipeTypes()))
@@ -664,11 +587,7 @@ public class GCyMMachines {
             .recipeModifiers(GTLRecipeModifiers.GCYM_REDUCTION, GTRecipeModifiers.PARALLEL_HATCH,
                     GTRecipeModifiers.ELECTRIC_OVERCLOCK.apply(OverclockingLogic.NON_PERFECT_OVERCLOCK_SUBTICK))
             .appearanceBlock(CASING_SHOCK_PROOF)
-            .pattern(definition -> FactoryBlockPattern.start()
-                    .aisle("XXXXXXX", "XXXXXXX", "XXXXXXX", "##XXXXX")
-                    .aisle("XXXXXXX", "XAXCCCX", "XXXAAAX", "##XXXXX")
-                    .aisle("XXXXXXX", "XAXCCCX", "XXXAAAX", "##XXXXX")
-                    .aisle("XXXXXXX", "XSXGGGX", "XXXGGGX", "##XXXXX")
+            .pattern(definition -> GCyMMachinesStructure.LARGE_CUTTER
                     .where('S', controller(blocks(definition.get())))
                     .where('X', blocks(CASING_SHOCK_PROOF.get()).setMinGlobalLimited(65)
                             .or(autoAbilities(definition.getRecipeTypes()))
@@ -701,11 +620,7 @@ public class GCyMMachines {
             .pattern(definition -> {
                 TraceabilityPredicate casingPredicate = blocks(CASING_WATERTIGHT.get()).setMinGlobalLimited(40);
 
-                return FactoryBlockPattern.start(RIGHT, BACK, UP)
-                        .aisle("#YYY#", "YYYYY", "YYYYY", "YYYYY", "#YYY#")
-                        .aisle("#YSY#", "YAAAY", "YAAAY", "YAAAY", "#YYY#")
-                        .aisle("##X##", "#XAX#", "XAPAX", "#XAX#", "##X##").setRepeatable(1, 12)
-                        .aisle("#####", "#ZZZ#", "#ZCZ#", "#ZZZ#", "#####")
+                return GCyMMachinesStructure.LARGE_DISTILLERY
                         .where('S', controller(blocks(definition.get())))
                         .where('Y', casingPredicate.or(abilities(IMPORT_ITEMS))
                                 .or(abilities(INPUT_ENERGY).setMinGlobalLimited(1).setMaxGlobalLimited(2))
@@ -793,10 +708,7 @@ public class GCyMMachines {
             .recipeModifiers(GTLRecipeModifiers.GCYM_REDUCTION, GTRecipeModifiers.PARALLEL_HATCH,
                     GTRecipeModifiers.ELECTRIC_OVERCLOCK.apply(OverclockingLogic.NON_PERFECT_OVERCLOCK_SUBTICK))
             .appearanceBlock(CASING_WATERTIGHT)
-            .pattern(definition -> FactoryBlockPattern.start()
-                    .aisle("XXXXX", "XXXXX", "XXXXX")
-                    .aisle("XXXXX", "XCACX", "XXXXX")
-                    .aisle("XXXXX", "XXSXX", "XXXXX")
+            .pattern(definition -> GCyMMachinesStructure.LARGE_EXTRACTOR
                     .where('S', controller(blocks(definition.get())))
                     .where('X', blocks(CASING_WATERTIGHT.get()).setMinGlobalLimited(25)
                             .or(autoAbilities(definition.getRecipeTypes()))
@@ -824,12 +736,7 @@ public class GCyMMachines {
             .recipeModifiers(GTLRecipeModifiers.GCYM_REDUCTION, GTRecipeModifiers.PARALLEL_HATCH,
                     GTRecipeModifiers.ELECTRIC_OVERCLOCK.apply(OverclockingLogic.NON_PERFECT_OVERCLOCK_SUBTICK))
             .appearanceBlock(CASING_STRESS_PROOF)
-            .pattern(definition -> FactoryBlockPattern.start()
-                    .aisle("##XXX", "##XXX", "##XXX")
-                    .aisle("##XXX", "##XPX", "##XGX").setRepeatable(2)
-                    .aisle("XXXXX", "XXXPX", "XXXGX")
-                    .aisle("XXXXX", "XAXPX", "XXXGX")
-                    .aisle("XXXXX", "XSXXX", "XXXXX")
+            .pattern(definition -> GCyMMachinesStructure.LARGE_EXTRUDER
                     .where('S', controller(blocks(definition.get())))
                     .where('X', blocks(CASING_STRESS_PROOF.get()).setMinGlobalLimited(40)
                             .or(autoAbilities(definition.getRecipeTypes()))
@@ -859,12 +766,7 @@ public class GCyMMachines {
             .recipeModifiers(GTLRecipeModifiers.GCYM_REDUCTION, GTRecipeModifiers.PARALLEL_HATCH,
                     GTRecipeModifiers.ELECTRIC_OVERCLOCK.apply(OverclockingLogic.NON_PERFECT_OVERCLOCK_SUBTICK))
             .appearanceBlock(CASING_WATERTIGHT)
-            .pattern(definition -> FactoryBlockPattern.start()
-                    .aisle("#XXX#", "#XXX#", "#XXX#", "#XXX#")
-                    .aisle("XXXXX", "XCACX", "XCACX", "XXXXX")
-                    .aisle("XXXXX", "XAAAX", "XAAAX", "XXXXX")
-                    .aisle("XXXXX", "XCACX", "XCACX", "XXXXX")
-                    .aisle("#XXX#", "#XSX#", "#XXX#", "#XXX#")
+            .pattern(definition -> GCyMMachinesStructure.LARGE_SOLIDIFIER
                     .where('S', controller(blocks(definition.get())))
                     .where('X', blocks(CASING_WATERTIGHT.get()).setMinGlobalLimited(45)
                             .or(autoAbilities(definition.getRecipeTypes()))
@@ -893,10 +795,7 @@ public class GCyMMachines {
             .recipeModifiers(GTLRecipeModifiers.GCYM_REDUCTION, GTRecipeModifiers.PARALLEL_HATCH,
                     GTRecipeModifiers.ELECTRIC_OVERCLOCK.apply(OverclockingLogic.NON_PERFECT_OVERCLOCK_SUBTICK))
             .appearanceBlock(CASING_STRESS_PROOF)
-            .pattern(definition -> FactoryBlockPattern.start()
-                    .aisle("XXXXX", "XXXXX", "XXX##")
-                    .aisle("XXXXX", "X#CCX", "XXXXX")
-                    .aisle("XXXXX", "XSXXX", "XXX##")
+            .pattern(definition -> GCyMMachinesStructure.LARGE_WIREMILL
                     .where('S', controller(blocks(definition.get())))
                     .where('X', blocks(CASING_STRESS_PROOF.get()).setMinGlobalLimited(25)
                             .or(autoAbilities(definition.getRecipeTypes()))
@@ -930,59 +829,7 @@ public class GCyMMachines {
             .appearanceBlock(CASING_HIGH_TEMPERATURE_SMELTING)
             .pattern(definition -> {
                 TraceabilityPredicate casing = blocks(CASING_HIGH_TEMPERATURE_SMELTING.get()).setMinGlobalLimited(360);
-                return FactoryBlockPattern.start()
-                        .aisle("##XXXXXXXXX##", "##XXXXXXXXX##", "#############", "#############", "#############",
-                                "#############", "#############", "#############", "#############", "#############",
-                                "#############", "#############", "#############", "#############", "#############",
-                                "#############", "#############")
-                        .aisle("#XXXXXXXXXXX#", "#XXXXXXXXXXX#", "###F#####F###", "###F#####F###", "###FFFFFFF###",
-                                "#############", "#############", "#############", "#############", "#############",
-                                "####FFFFF####", "#############", "#############", "#############", "#############",
-                                "#############", "#############")
-                        .aisle("XXXXXXXXXXXXX", "XXXXVVVVVXXXX", "##F#######F##", "##F#######F##", "##FFFHHHFFF##",
-                                "##F#######F##", "##F#######F##", "##F#######F##", "##F#######F##", "##F#######F##",
-                                "##FFFHHHFFF##", "#############", "#############", "#############", "#############",
-                                "#############", "###TTTTTTT###")
-                        .aisle("XXXXXXXXXXXXX", "XXXXXXXXXXXXX", "#F####P####F#", "#F####P####F#", "#FFHHHPHHHFF#",
-                                "######P######", "######P######", "######P######", "######P######", "######P######",
-                                "##FHHHPHHHF##", "######P######", "######P######", "######P######", "######P######",
-                                "######P######", "##TTTTPTTTT##")
-                        .aisle("XXXXXXXXXXXXX", "XXVXXXXXXXVXX", "####BBPBB####", "####TITIT####", "#FFHHHHHHHFF#",
-                                "####BITIB####", "####CCCCC####", "####CCCCC####", "####CCCCC####", "####BITIB####",
-                                "#FFHHHHHHHFF#", "####BITIB####", "####CCCCC####", "####CCCCC####", "####CCCCC####",
-                                "####BITIB####", "##TTTTPTTTT##")
-                        .aisle("XXXXXXXXXXXXX", "XXVXXXXXXXVXX", "####BAAAB####", "####IAAAI####", "#FHHHAAAHHHF#",
-                                "####IAAAI####", "####CAAAC####", "####CAAAC####", "####CAAAC####", "####IAAAI####",
-                                "#FHHHAAAHHHF#", "####IAAAI####", "####CAAAC####", "####CAAAC####", "####CAAAC####",
-                                "####IAAAI####", "##TTTTPTTTT##")
-                        .aisle("XXXXXXXXXXXXX", "XXVXXXXXXXVXX", "###PPAAAPP###", "###PTAAATP###", "#FHPHAAAHPHF#",
-                                "###PTAAATP###", "###PCAAACP###", "###PCAAACP###", "###PCAAACP###", "###PTAAATP###",
-                                "#FHPHAAAHPHF#", "###PTAAATP###", "###PCAAACP###", "###PCAAACP###", "###PCAAACP###",
-                                "###PTAAATP###", "##TPPPMPPPT##")
-                        .aisle("XXXXXXXXXXXXX", "XXVXXXXXXXVXX", "####BAAAB####", "####IAAAI####", "#FHHHAAAHHHF#",
-                                "####IAAAI####", "####CAAAC####", "####CAAAC####", "####CAAAC####", "####IAAAI####",
-                                "#FHHHAAAHHHF#", "####IAAAI####", "####CAAAC####", "####CAAAC####", "####CAAAC####",
-                                "####IAAAI####", "##TTTTPTTTT##")
-                        .aisle("XXXXXXXXXXXXX", "XXVXXXXXXXVXX", "####BBPBB####", "####TITIT####", "#FFHHHHHHHFF#",
-                                "####BITIB####", "####CCCCC####", "####CCCCC####", "####CCCCC####", "####BITIB####",
-                                "#FFHHHHHHHFF#", "####BITIB####", "####CCCCC####", "####CCCCC####", "####CCCCC####",
-                                "####BITIB####", "##TTTTPTTTT##")
-                        .aisle("XXXXXXXXXXXXX", "XXXXXXXXXXXXX", "#F####P####F#", "#F####P####F#", "#FFHHHPHHHFF#",
-                                "######P######", "######P######", "######P######", "######P######", "######P######",
-                                "##FHHHPHHHF##", "######P######", "######P######", "######P######", "######P######",
-                                "######P######", "##TTTTPTTTT##")
-                        .aisle("XXXXXXXXXXXXX", "XXXXVVVVVXXXX", "##F#######F##", "##F#######F##", "##FFFHHHFFF##",
-                                "##F#######F##", "##F#######F##", "##F#######F##", "##F#######F##", "##F#######F##",
-                                "##FFFHHHFFF##", "#############", "#############", "#############", "#############",
-                                "#############", "###TTTTTTT###")
-                        .aisle("#XXXXXXXXXXX#", "#XXXXXXXXXXX#", "###F#####F###", "###F#####F###", "###FFFFFFF###",
-                                "#############", "#############", "#############", "#############", "#############",
-                                "####FFFFF####", "#############", "#############", "#############", "#############",
-                                "#############", "#############")
-                        .aisle("##XXXXXXXXX##", "##XXXXSXXXX##", "#############", "#############", "#############",
-                                "#############", "#############", "#############", "#############", "#############",
-                                "#############", "#############", "#############", "#############", "#############",
-                                "#############", "#############")
+                return GCyMMachinesStructure.MEGA_BLAST_FURNACE
                         .where('S', controller(blocks(definition.get())))
                         .where('X', casing.or(autoAbilities(definition.getRecipeTypes()))
                                 .or(Predicates.autoAbilities(true, false, true)))
@@ -1097,19 +944,7 @@ public class GCyMMachines {
             .recipeModifiers(GTLRecipeModifiers.GCYM_REDUCTION, GTRecipeModifiers.PARALLEL_HATCH,
                     GTRecipeModifiers.ELECTRIC_OVERCLOCK.apply(OverclockingLogic.NON_PERFECT_OVERCLOCK_SUBTICK))
             .appearanceBlock(CASING_ALUMINIUM_FROSTPROOF)
-            .pattern(definition -> FactoryBlockPattern.start()
-                    .aisle("XXXXXXX#KKK", "XXXXXXX#KVK", "XXXXXXX#KVK", "XXXXXXX#KVK", "XXXXXXX#KKK", "XXXXXXX####",
-                            "XXXXXXX####")
-                    .aisle("XXXXXXX#KVK", "XPPPPPPPPPV", "XPAPAPX#VPV", "XPPPPPPPPPV", "XPAPAPX#KVK", "XPPPPPX####",
-                            "XXXXXXX####")
-                    .aisle("XXXXXXX#KVK", "XPAPAPXAVPV", "XAAAAAX#VPV", "XPAAAPX#VPV", "XAAAAAX#KVK", "XPAPAPX####",
-                            "XXXXXXX####")
-                    .aisle("XXXXXXX#KVK", "XPAPAPPPPPV", "XAAAAAX#VPV", "XPAAAPPPPPV", "XAAAAAX#KVK", "XPAPAPX####",
-                            "XXXXXXX####")
-                    .aisle("XXXXXXX#KKK", "XPPPPPX#KVK", "XPA#APX#KVK", "XPAAAPX#KVK", "XPAAAPX#KKK", "XPPPPPX####",
-                            "XXXXXXX####")
-                    .aisle("#XXXXX#####", "#XXSXX#####", "#XGGGX#####", "#XGGGX#####", "#XGGGX#####", "#XXXXX#####",
-                            "###########")
+            .pattern(definition -> GCyMMachinesStructure.MEGA_VACUUM_FREEZER
                     .where('S', controller(blocks(definition.get())))
                     .where('X', blocks(CASING_ALUMINIUM_FROSTPROOF.get()).setMinGlobalLimited(140)
                             .or(autoAbilities(definition.getRecipeTypes()))

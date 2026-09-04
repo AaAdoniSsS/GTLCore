@@ -118,7 +118,8 @@ public class GTLMachines {
         ShapeInfosModify.init();
         GeneratorMachine.init();
         MultiBlockMachineA.init();
-        AdvancedMultiBlockMachine.init();
+        AdvancedMultiBlockMachineA.init();
+        AdvancedMultiBlockMachineB.init();
         AdditionalMultiBlockMachine.init();
         GTAEMachines.init();
     }

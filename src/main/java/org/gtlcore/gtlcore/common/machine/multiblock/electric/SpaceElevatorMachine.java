@@ -12,6 +12,7 @@ import org.gtlcore.gtlcore.utils.datastructure.ModuleRenderInfo;
 import com.gregtechceu.gtceu.api.gui.GuiTextures;
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
 import com.gregtechceu.gtceu.api.machine.MetaMachine;
+import com.gregtechceu.gtceu.api.machine.TickableSubscription;
 import com.gregtechceu.gtceu.api.machine.feature.IMachineLife;
 
 import com.lowdragmc.lowdraglib.gui.util.ClickData;
@@ -40,17 +41,30 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
-import static org.gtlcore.gtlcore.common.data.machines.AdvancedMultiBlockMachine.ASSEMBLER_MODULE;
-import static org.gtlcore.gtlcore.common.data.machines.AdvancedMultiBlockMachine.RESOURCE_COLLECTION;
+import static org.gtlcore.gtlcore.common.data.machines.AdvancedMultiBlockMachineA.ASSEMBLER_MODULE;
+import static org.gtlcore.gtlcore.common.data.machines.AdvancedMultiBlockMachineA.RESOURCE_COLLECTION;
 
 public class SpaceElevatorMachine extends TierCasingMachine
                                   implements IModularMachineHost<SpaceElevatorMachine>, IMachineLife {
 
     private final Set<IModularMachineModule<SpaceElevatorMachine, ?>> modules = new ReferenceOpenHashSet<>();
     private int mam = 0;
+    private TickableSubscription connectionSubscription;
 
     public SpaceElevatorMachine(IMachineBlockEntity holder) {
         super(holder, "SEPMTier");
+    }
+
+    @Override
+    public void onLoad() {
+        super.onLoad();
+        updateConnectionSubscription();
+    }
+
+    @Override
+    public void onUnload() {
+        stopConnectionSubscription();
+        super.onUnload();
     }
 
     @Override
@@ -62,11 +76,13 @@ public class SpaceElevatorMachine extends TierCasingMachine
     public void onStructureInvalid() {
         super.onStructureInvalid();
         safeClearModules();
+        stopConnectionSubscription();
     }
 
     @Override
     public void onMachineRemoved() {
         safeClearModules();
+        stopConnectionSubscription();
     }
 
     @Override
@@ -74,6 +90,39 @@ public class SpaceElevatorMachine extends TierCasingMachine
         super.onStructureFormed();
         safeClearModules();
         scanAndConnectSpaceElevatorModules("host_structure_formed");
+        updateConnectionSubscription();
+    }
+
+    /**
+     * 主机侧周期性兜底重连：仅当已连接模块数少于槽位数时重扫。
+     * 修复「主机已成型后拆除模块再重新放置、或模块事件时序错过」时不再连接的问题
+     * （模块成型事件只会在模块自身生命周期触发一次，主机不再重扫则永久掉线）。
+     */
+    private void updateConnectionSubscription() {
+        if (isFormed()) {
+            if (connectionSubscription == null) {
+                connectionSubscription = subscribeServerTick(this::connectionTick);
+            }
+        } else {
+            stopConnectionSubscription();
+        }
+    }
+
+    private void stopConnectionSubscription() {
+        if (connectionSubscription != null) {
+            connectionSubscription.unsubscribe();
+            connectionSubscription = null;
+        }
+    }
+
+    private void connectionTick() {
+        if (!isFormed()) {
+            stopConnectionSubscription();
+            return;
+        }
+        if (getOffsetTimer() % 20L == 0L && modules.size() < getModuleScanPositions().length) {
+            scanAndConnectSpaceElevatorModules("host_periodic_retry");
+        }
     }
 
     @Override

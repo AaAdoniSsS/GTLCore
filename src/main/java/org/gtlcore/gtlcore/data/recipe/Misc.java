@@ -4,7 +4,7 @@ import org.gtlcore.gtlcore.GTLCore;
 import org.gtlcore.gtlcore.common.data.GTLItems;
 import org.gtlcore.gtlcore.common.data.GTLMachines;
 import org.gtlcore.gtlcore.common.data.machines.AdditionalMultiBlockMachine;
-import org.gtlcore.gtlcore.common.data.machines.AdvancedMultiBlockMachine;
+import org.gtlcore.gtlcore.common.data.machines.AdvancedMultiBlockMachineA;
 import org.gtlcore.gtlcore.common.recipe.condition.GravityCondition;
 import org.gtlcore.gtlcore.config.ConfigHolder;
 import org.gtlcore.gtlcore.utils.Registries;
@@ -97,7 +97,7 @@ public class Misc {
         }
 
         VanillaRecipeHelper.addShapelessRecipe(provider, "simulation_machine",
-                AdvancedMultiBlockMachine.SIMULATION_MACHINE.asStack(), "A", Blocks.COBBLESTONE);
+                AdvancedMultiBlockMachineA.SIMULATION_MACHINE.asStack(), "A", Blocks.COBBLESTONE);
 
         WOOD_DISTILLATION_RECIPES.recipeBuilder("wood_distillation_recipes")
                 .inputItems(ItemTags.LOGS, 16)
