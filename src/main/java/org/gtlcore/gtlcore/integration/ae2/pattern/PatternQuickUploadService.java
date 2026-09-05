@@ -497,7 +497,7 @@ public final class PatternQuickUploadService {
             if (recipeType.registryName == null) {
                 continue;
             }
-            if (!recipeTypeIds.contains(recipeType.registryName)) {
+            if (!recipeTypeMatches(recipeType, recipeTypeIds)) {
                 continue;
             }
             TargetKey key = new TargetKey(levelKey, buffer.getPos(), recipeType.registryName);
@@ -635,6 +635,19 @@ public final class PatternQuickUploadService {
                         terminalGroup.name().getString());
             }
         }
+    }
+
+    /**
+     * Large variants such as {@code gtceu:large_chemical_reactor} copy every recipe of their small map, so a pattern
+     * resolved against the small type also belongs on machines of the large type.
+     */
+    private static boolean recipeTypeMatches(GTRecipeType machineRecipeType, Set<ResourceLocation> recipeTypeIds) {
+        if (recipeTypeIds.contains(machineRecipeType.registryName)) {
+            return true;
+        }
+        GTRecipeType smallRecipeMap = machineRecipeType.getSmallRecipeMap();
+        return smallRecipeMap != null && smallRecipeMap.registryName != null &&
+                recipeTypeIds.contains(smallRecipeMap.registryName);
     }
 
     private static boolean hasFormedController(Iterable<IMultiController> controllers) {

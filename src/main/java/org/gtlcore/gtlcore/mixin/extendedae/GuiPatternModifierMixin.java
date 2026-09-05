@@ -3,6 +3,7 @@ package org.gtlcore.gtlcore.mixin.extendedae;
 import org.gtlcore.gtlcore.client.gui.IPatternModifierScreen;
 import org.gtlcore.gtlcore.client.gui.ModifyIcon;
 import org.gtlcore.gtlcore.client.gui.ModifyIconButton;
+import org.gtlcore.gtlcore.client.gui.PatternModifierClientState;
 import org.gtlcore.gtlcore.client.gui.SetReplaceAmountScreen;
 
 import net.minecraft.client.gui.components.Button;
@@ -124,6 +125,9 @@ public abstract class GuiPatternModifierMixin extends AEBaseScreen<ContainerPatt
 
     @Unique
     private void gtlcore$createButtons() {
+        PatternModifierClientState state = PatternModifierClientState.get();
+        this.gtlcore$scope = state.scope;
+        this.gtlcore$insertDelete = state.insertDelete;
         this.gtlcore$scaleButtons = new ArrayList<>();
         this.gtlcore$scaleButtons.add(gtlcore$createScaleButton(2, false, ModifyIcon.MULTIPLY_2,
                 Component.translatable("gui.gtlcore.pattern_recipe_multiply_2"),
@@ -145,6 +149,8 @@ public abstract class GuiPatternModifierMixin extends AEBaseScreen<ContainerPatt
                 Component.translatable("tooltip.gtlcore.pattern_materials_divide_5")));
         this.gtlcore$scopeButton = Button.builder(Component.empty(), b -> {
             this.gtlcore$scope = (this.gtlcore$scope + 1) % 3;
+            state.scope = this.gtlcore$scope;
+            state.save();
             gtlcore$updateScopeButton();
         }).size(28, 18)
                 .tooltip(Tooltip.create(Component.translatable("tooltip.gtlcore.pattern_modify_scope")))
@@ -155,6 +161,8 @@ public abstract class GuiPatternModifierMixin extends AEBaseScreen<ContainerPatt
                 Component.translatable("tooltip.gtlcore.pattern_modifier.swap_replace"));
         this.gtlcore$insertDeleteButton = new IconButton(b -> {
             this.gtlcore$insertDelete = !this.gtlcore$insertDelete;
+            state.insertDelete = this.gtlcore$insertDelete;
+            state.save();
         }) {
 
             @Override

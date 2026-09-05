@@ -194,6 +194,14 @@ public class VirtualIngredientSupplyMachine extends MetaMachine
     // ==================== Persistence ====================
 
     @Override
+    public void onRotated(@NotNull Direction oldFacing, @NotNull Direction newFacing) {
+        super.onRotated(oldFacing, newFacing);
+        if (!getHolder().self().getPersistentData().getBoolean("isAllFacing")) {
+            getMainNode().setExposedOnSides(EnumSet.of(newFacing));
+        }
+    }
+
+    @Override
     public void loadCustomPersistedData(@NotNull CompoundTag tag) {
         super.loadCustomPersistedData(tag);
         if (tag.getCompound("ForgeData").getBoolean("isAllFacing")) {
