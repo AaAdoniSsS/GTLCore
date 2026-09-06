@@ -408,15 +408,21 @@ public final class MEChamberManagerTerminalScreen extends AEBaseScreen<MEChamber
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (keyCode == GLFW.GLFW_KEY_E || keyCode == minecraft.options.keyInventory.getKey().getValue()) {
-            return true;
-        }
         if (configuratorOverlay.isOpen()) {
             if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
                 configuratorOverlay.close();
                 return true;
             }
             return configuratorOverlay.keyPressed(keyCode, scanCode, modifiers);
+        }
+        boolean inventoryKey = keyCode == GLFW.GLFW_KEY_E ||
+                keyCode == minecraft.options.keyInventory.getKey().getValue();
+        if (inventoryKey) {
+            // A focused text field still receives the typed character through charTyped.
+            if (!isTextFieldFocused()) {
+                onClose();
+            }
+            return true;
         }
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
             onClose();
@@ -432,6 +438,10 @@ public final class MEChamberManagerTerminalScreen extends AEBaseScreen<MEChamber
             return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    private boolean isTextFieldFocused() {
+        return searchField.isFocused() || amountField.isFocused() || priorityField.isFocused();
     }
 
     @Override

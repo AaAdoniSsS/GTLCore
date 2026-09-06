@@ -161,11 +161,40 @@ public final class PatternQuickUploadRecipeTypeResolver {
                 checkedRecipes,
                 matchedRecipes,
                 recipeTypeIds);
+        collapseSmallLargePairs(recipeTypeIds);
         if (recipeTypeIds.size() > 1) {
             GTLCore.LOGGER.debug("{} resolver rejected ambiguous GT recipe types {}", LOG_PREFIX, recipeTypeIds);
             return Set.of();
         }
         return recipeTypeIds;
+    }
+
+    /**
+     * Large variants (e.g. {@code gtceu:large_chemical_reactor}) auto-copy every recipe of their small map, so a
+     * matching pattern always reports both. The pair names the same recipe set: keep the small id and let target
+     * matching fall back through {@code getSmallRecipeMap}.
+     */
+    private static void collapseSmallLargePairs(Set<ResourceLocation> recipeTypeIds) {
+        Set<ResourceLocation> redundantIds = new LinkedHashSet<>();
+        for (ResourceLocation id : recipeTypeIds) {
+            GTRecipeType smallType = GTRegistries.RECIPE_TYPES.get(id);
+            if (smallType == null) {
+                continue;
+            }
+            for (ResourceLocation otherId : recipeTypeIds) {
+                if (otherId.equals(id)) {
+                    continue;
+                }
+                GTRecipeType otherType = GTRegistries.RECIPE_TYPES.get(otherId);
+                if (otherType != null && otherType.getSmallRecipeMap() == smallType) {
+                    redundantIds.add(otherId);
+                }
+            }
+        }
+        if (!redundantIds.isEmpty()) {
+            GTLCore.LOGGER.debug("{} resolver collapsed small/large recipe type pairs, dropped {}", LOG_PREFIX, redundantIds);
+            recipeTypeIds.removeAll(redundantIds);
+        }
     }
 
     private record PatternSignature(Object2LongOpenHashMap<AEItemKey> inputItems,
