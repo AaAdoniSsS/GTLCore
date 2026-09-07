@@ -57,7 +57,8 @@
     "mc.AbstractContainerScreenAccessor",
     "mc.BufferBuilderAccessor",
     "mc.GuiGraphicsMixin",
-    "meRequester.NumberFieldMixin"
+    "meRequester.NumberFieldMixin",
+    "configuration.ConfigValueLocalizationMixin"
   ],
   "mixins": [
     "adastra.ModUtilsMixin",
