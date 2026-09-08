@@ -1,5 +1,7 @@
 package org.gtlcore.gtlcore.api.gui;
 
+import org.gtlcore.gtlcore.api.gui.preview.LazyPreviewRuntime;
+import org.gtlcore.gtlcore.api.gui.preview.PersistentStructureCache;
 import org.gtlcore.gtlcore.api.machine.multiblock.IModularMachineHost;
 import org.gtlcore.gtlcore.utils.datastructure.ModuleRenderInfo;
 
@@ -293,7 +295,9 @@ public class PatternPreviewWidget extends WidgetGroup {
         var controllerBase = pattern.controllerBase;
         if (isFormed) {
             this.layer = -1;
-            loadControllerFormed(pattern.blockMap.keySet(), controllerBase);
+            if (!LazyPreviewRuntime.replayRemembered(controllerBase)) {
+                GTCEu.LOGGER.warn("No valid cached formed preview for {}", controllerBase.self().getDefinition());
+            }
         } else {
             sceneWidget.setRenderedCore(pattern.blockMap.keySet(), null);
             controllerBase.onStructureInvalid();
@@ -422,7 +426,7 @@ public class PatternPreviewWidget extends WidgetGroup {
             }
 
             // Form the host pattern FIRST
-            loadControllerFormed(blockMap.keySet(), controllerBase);
+            loadCachedControllerFormed(blockMap.keySet(), controllerBase);
             Map<BlockPos, TraceabilityPredicate> hostPredicates = controllerBase
                     .getMultiblockState()
                     .getMatchContext()
@@ -471,7 +475,39 @@ public class PatternPreviewWidget extends WidgetGroup {
         return controllerBase == null ? null : new MBPattern(blockMap, moduleOnlyBlocks, parts, predicateMap, controllerBase);
     }
 
-    private void loadControllerFormed(Collection<BlockPos> positions, IMultiController controllerBase) {
+    private void loadCachedControllerFormed(Collection<BlockPos> positions, IMultiController controller) {
+        long operationStart = LazyPreviewRuntime.beginHostCacheOperation();
+        try {
+            String identity = LazyPreviewRuntime.hostCacheIdentity(controller);
+            byte[] fingerprint = null;
+            try {
+                long start = System.nanoTime();
+                fingerprint = PersistentStructureCache.definitionFingerprint(positions, controller, identity);
+                LazyPreviewRuntime.recordHostFingerprintNanos(System.nanoTime() - start);
+                LazyPreviewRuntime.rememberCacheRef(controller, identity, fingerprint);
+                if (PersistentStructureCache.tryReplay(controller, identity, fingerprint) ||
+                        PersistentStructureCache.tryPromoteAnyLegacyCertificate(controller, identity, fingerprint)) {
+                    LazyPreviewRuntime.hostHit(identity);
+                    return;
+                }
+            } catch (Throwable throwable) {
+                fingerprint = null;
+                LazyPreviewRuntime.rememberCacheRef(controller, identity, null);
+                GTCEu.LOGGER.warn("Preview cache unavailable for {}; using the structure matcher", identity, throwable);
+            }
+
+            long start = System.nanoTime();
+            BlockPattern pattern = loadControllerFormed(positions, controller);
+            if (controller.isFormed() && pattern != null) {
+                PersistentStructureCache.write(controller, pattern, identity, fingerprint);
+            }
+            LazyPreviewRuntime.hostMiss(identity, (System.nanoTime() - start) / 1_000_000L);
+        } finally {
+            LazyPreviewRuntime.endHostCacheOperation(operationStart);
+        }
+    }
+
+    private BlockPattern loadControllerFormed(Collection<BlockPos> positions, IMultiController controllerBase) {
         BlockPattern pattern = controllerBase.getPattern();
 
         if (pattern != null && pattern.checkPatternAt(controllerBase.getMultiblockState(), true)) {
@@ -487,25 +523,37 @@ public class PatternPreviewWidget extends WidgetGroup {
             }
             sceneWidget.setRenderedCore(positions, null);
         }
+        return pattern;
     }
 
     private static void loadModuleFormed(IMultiController moduleController) {
-        BlockPattern modulePattern = moduleController.getPattern();
-        BlockState controllerState = LEVEL.getBlockState(moduleController.self().getPos());
+        long operationStart = LazyPreviewRuntime.beginModuleCacheOperation();
+        try {
+            String identity = LazyPreviewRuntime.moduleCacheIdentity(moduleController);
+            long matcherStart = System.nanoTime();
+            try {
+                BlockPattern modulePattern = moduleController.getPattern();
+                BlockState controllerState = LEVEL.getBlockState(moduleController.self().getPos());
 
-        Direction controllerFacing = Direction.NORTH;
-        Direction controllerUp = Direction.UP;
+                Direction controllerFacing = Direction.NORTH;
+                Direction controllerUp = Direction.UP;
 
-        if (controllerState.getBlock() instanceof MetaMachineBlock machineBlock) {
-            controllerFacing = machineBlock.getFrontFacing(controllerState);
-            if (controllerState.hasProperty(IMachineBlock.UPWARDS_FACING_PROPERTY)) {
-                controllerUp = controllerState.getValue(IMachineBlock.UPWARDS_FACING_PROPERTY);
+                if (controllerState.getBlock() instanceof MetaMachineBlock machineBlock) {
+                    controllerFacing = machineBlock.getFrontFacing(controllerState);
+                    if (controllerState.hasProperty(IMachineBlock.UPWARDS_FACING_PROPERTY)) {
+                        controllerUp = controllerState.getValue(IMachineBlock.UPWARDS_FACING_PROPERTY);
+                    }
+                }
+
+                if (modulePattern != null && modulePattern.checkPatternAt(moduleController.getMultiblockState(),
+                        moduleController.self().getPos(), controllerFacing, controllerUp, false, true)) {
+                    moduleController.onStructureFormed();
+                }
+            } finally {
+                LazyPreviewRuntime.moduleDirect(identity, System.nanoTime() - matcherStart);
             }
-        }
-
-        if (modulePattern != null && modulePattern.checkPatternAt(moduleController.getMultiblockState(),
-                moduleController.self().getPos(), controllerFacing, controllerUp, false, true)) {
-            moduleController.onStructureFormed();
+        } finally {
+            LazyPreviewRuntime.endModuleCacheOperation(operationStart);
         }
     }
 
