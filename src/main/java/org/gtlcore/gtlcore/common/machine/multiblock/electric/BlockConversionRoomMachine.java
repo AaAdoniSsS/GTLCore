@@ -1,6 +1,5 @@
 package org.gtlcore.gtlcore.common.machine.multiblock.electric;
 
-import org.gtlcore.gtlcore.api.machine.trait.IBatchMachine;
 import org.gtlcore.gtlcore.common.data.GTLItems;
 import org.gtlcore.gtlcore.common.machine.multiblock.part.BlockBusPartMachine;
 import org.gtlcore.gtlcore.utils.Registries;
@@ -25,7 +24,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
 
-public class BlockConversionRoomMachine extends StorageMachine implements IBatchMachine {
+public class BlockConversionRoomMachine extends StorageMachine {
 
     private static final List<int[]> poses1 = new ArrayList<>();
     private static final List<int[]> poses2 = new ArrayList<>();
@@ -145,23 +144,5 @@ public class BlockConversionRoomMachine extends StorageMachine implements IBatch
     public void addDisplayText(@NotNull List<Component> textList) {
         super.addDisplayText(textList);
         textList.add(Component.translatable("gtceu.machine.block_conversion_room.am", getConversionCount()));
-    }
-
-    @Override
-    public boolean isBatchEnabled() {
-        return false;
-    }
-
-    @Override
-    public void setBatchEnabled(boolean enabled) {}
-
-    @Override
-    public boolean supportsBatchProcessing() {
-        return false;
-    }
-
-    @Override
-    public boolean canConfigureBatchProcessing() {
-        return false;
     }
 }

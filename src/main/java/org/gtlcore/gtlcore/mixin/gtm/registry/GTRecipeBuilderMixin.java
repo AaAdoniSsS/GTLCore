@@ -64,7 +64,8 @@ public abstract class GTRecipeBuilderMixin {
                 recipeType == HYPER_REACTOR_RECIPES ||
                 recipeType == ADVANCED_HYPER_REACTOR_RECIPES ||
                 recipeType == DOOR_OF_CREATE_RECIPES ||
-                recipeType == BLOCK_CONVERSION_RECIPES) {
+                recipeType == BLOCK_CONVERSION_RECIPES ||
+                recipeType == WEATHER_CONTROL_RECIPES) {
             return Math.abs(duration);
         }
         return (int) Math.min(Integer.MAX_VALUE, Math.max(1, Math.abs(duration * ConfigHolder.INSTANCE.durationMultiplier)));

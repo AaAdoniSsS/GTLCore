@@ -118,12 +118,14 @@ public abstract class WorkableElectricMultiblockMachineMixin extends WorkableMul
 
     @Override
     public boolean supportsBatchProcessing() {
-        return gtlcore$hasBaseBatchSupport() && !BatchProcessing.isCrossRecipeParallel(this);
+        return !BatchProcessing.isBatchDisabledDefinition(this) && gtlcore$hasBaseBatchSupport() &&
+                !BatchProcessing.isCrossRecipeParallel(this);
     }
 
     @Override
     public boolean canConfigureBatchProcessing() {
-        return gtlcore$hasBaseBatchSupport() && BatchProcessing.canConfigureBatchProcessing(this);
+        return !BatchProcessing.isBatchDisabledDefinition(this) && gtlcore$hasBaseBatchSupport() &&
+                BatchProcessing.canConfigureBatchProcessing(this);
     }
 
     @Unique

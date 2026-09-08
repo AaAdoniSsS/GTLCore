@@ -26,6 +26,7 @@ import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.gtlcore.gtlcore.api.recipe.BatchProcessingDecisionLogger.Eligibility.*;
 import static org.gtlcore.gtlcore.api.recipe.BatchProcessingDecisionLogger.Outcome.BATCH_NOT_TRIGGERED;
@@ -47,6 +48,20 @@ public final class BatchProcessing {
     };
 
     private BatchProcessing() {}
+
+    private static final Set<String> DISABLED_DEFINITION_IDS = Set.of(
+            "gtceu:block_conversion_room",
+            "gtceu:large_block_conversion_room",
+            "gtceu:slaughterhouse",
+            "gtceu:space_elevator",
+            "gtceu:weather_control",
+            "gtceu:door_of_create",
+            "gtceu:create_aggregation");
+
+    public static boolean isBatchDisabledDefinition(MetaMachine machine) {
+        var definition = machine.getDefinition();
+        return definition != null && DISABLED_DEFINITION_IDS.contains(definition.getId().toString());
+    }
 
     public static boolean isEnabled(MetaMachine machine) {
         return machine instanceof IBatchMachine batchMachine && batchMachine.supportsBatchProcessing() &&
