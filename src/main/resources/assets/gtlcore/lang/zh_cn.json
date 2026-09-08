@@ -152,7 +152,7 @@
   "config.gtlcore.option.batchProcessingEnabledByDefault.comment": "新放置的机器在支持时是否默认启用批处理",
   "config.gtlcore.option.batchProcessingTimeLimitTicks.comment": "单个配方批次的最大处理时间（tick）",
   "config.gtlcore.option.blackBlockList.comment": "连锁黑名单，支持通配符*",
-  "config.gtlcore.option.durationMultiplier.comment": "仅修改 GT 机器；不受影响：屠宰场、太空电梯、大型硅岩反应堆、超能反应堆、进阶超能反应堆、戴森球控制系统、人造恒星、创造聚合仪、创造之门、大型蒸汽锅炉、蒸汽锅炉、原始虚空矿机",
+  "config.gtlcore.option.durationMultiplier.comment": "仅修改 GT 机器；不受影响的机器：屠宰场、太空电梯、大型硅岩反应堆、超能反应堆、进阶超能反应堆、戴森球控制系统、人造恒星、创造聚合仪、创造之门、大型蒸汽锅炉、蒸汽锅炉、方块转换室、大型方块转换室、原始虚空矿机",
   "config.gtlcore.option.enableAe2CraftingDispatchPerformanceLogging.comment": "是否将原生 AE2 CPU 与超限演算阵列的慢发配写入独立日志；关闭时不执行性能计时",
   "config.gtlcore.option.enableAe2ManualCraftingInventoryLock.comment": "测试功能：玩家进入手动合成结算界面后，会锁定该合成方案使用的 ME 库存，直到取消、关闭界面或订单提交",
   "config.gtlcore.option.enableAe2ManualCraftingInventoryLockLogging.comment": "测试功能：将手动合成库存锁的申请、冲突、提取限制、提交和释放效果写入独立日志\n日志文件：logs/gtlcore/ae2-manual-crafting-inventory-lock-*.log",

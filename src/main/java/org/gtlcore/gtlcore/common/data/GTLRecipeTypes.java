@@ -365,7 +365,7 @@ public class GTLRecipeTypes {
             .setProgressBar(GuiTextures.PROGRESS_BAR_ARROW, LEFT_TO_RIGHT)
             .setSound(GTSoundEntries.MINER);
 
-    public static final GTRecipeType BLOCK_CONVERSIONRECIPES = register("block_conversion", MULTIBLOCK)
+    public static final GTRecipeType BLOCK_CONVERSION_RECIPES = register("block_conversion", MULTIBLOCK)
             .setEUIO(IO.IN)
             .setMaxIOSize(1, 0, 0, 0)
             .setProgressBar(GuiTextures.PROGRESS_BAR_ARROW, LEFT_TO_RIGHT)

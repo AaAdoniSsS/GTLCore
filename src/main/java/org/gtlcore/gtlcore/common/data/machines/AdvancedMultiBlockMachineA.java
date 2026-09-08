@@ -413,7 +413,7 @@ public class AdvancedMultiBlockMachineA {
             .rotationState(RotationState.NONE)
             .allowExtendedFacing(false)
             .allowFlip(false)
-            .recipeType(GTLRecipeTypes.BLOCK_CONVERSIONRECIPES)
+            .recipeType(GTLRecipeTypes.BLOCK_CONVERSION_RECIPES)
             .tooltips(Component.translatable("gtceu.machine.block_conversion_room.tooltip.0"))
             .tooltips(Component.translatable("gtceu.machine.block_conversion_room.tooltip.1"))
             .tooltips(Component.translatable("gtceu.machine.available_recipe_map_1.tooltip",
@@ -439,7 +439,7 @@ public class AdvancedMultiBlockMachineA {
             .rotationState(RotationState.NONE)
             .allowExtendedFacing(false)
             .allowFlip(false)
-            .recipeType(GTLRecipeTypes.BLOCK_CONVERSIONRECIPES)
+            .recipeType(GTLRecipeTypes.BLOCK_CONVERSION_RECIPES)
             .tooltips(Component.translatable("gtceu.machine.block_conversion_room.tooltip.0"))
             .tooltips(Component.translatable("gtceu.machine.large_block_conversion_room.tooltip.1"))
             .tooltips(Component.translatable("gtceu.machine.large_block_conversion_room.tooltip.2"))

@@ -1,5 +1,6 @@
 package org.gtlcore.gtlcore.common.machine.multiblock.electric;
 
+import org.gtlcore.gtlcore.api.machine.trait.IBatchMachine;
 import org.gtlcore.gtlcore.config.ConfigHolder;
 import org.gtlcore.gtlcore.utils.MachineIO;
 import org.gtlcore.gtlcore.utils.Registries;
@@ -42,7 +43,7 @@ import javax.annotation.ParametersAreNonnullByDefault;
 
 @ParametersAreNonnullByDefault
 @MethodsReturnNonnullByDefault
-public class SlaughterhouseMachine extends WorkableElectricMultiblockMachine {
+public class SlaughterhouseMachine extends WorkableElectricMultiblockMachine implements IBatchMachine {
 
     protected static final ManagedFieldHolder MANAGED_FIELD_HOLDER = new ManagedFieldHolder(
             SlaughterhouseMachine.class, WorkableElectricMultiblockMachine.MANAGED_FIELD_HOLDER);
@@ -143,5 +144,23 @@ public class SlaughterhouseMachine extends WorkableElectricMultiblockMachine {
                 this.isSpawn = !this.isSpawn;
             }
         }
+    }
+
+    @Override
+    public boolean isBatchEnabled() {
+        return false;
+    }
+
+    @Override
+    public void setBatchEnabled(boolean enabled) {}
+
+    @Override
+    public boolean supportsBatchProcessing() {
+        return false;
+    }
+
+    @Override
+    public boolean canConfigureBatchProcessing() {
+        return false;
     }
 }
