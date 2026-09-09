@@ -29,14 +29,15 @@ import org.jetbrains.annotations.NotNull;
 
 import java.lang.ref.WeakReference;
 import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 
 public class MEExtendedAsyncOutputPartMachine extends MEExtendedOutputPartMachineBase {
 
     private final AEAccumulator accumulator = new AEAccumulator();
     private final WeakReference<AEAccumulator> accRef = new WeakReference<>(accumulator);
-    private final AtomicReference<Object2LongOpenHashMap<AEKey>> pendingData = new AtomicReference<>();
+    private final Queue<Object2LongOpenHashMap<AEKey>> pendingQueue = new ConcurrentLinkedQueue<>();
     private final AtomicBoolean drainRequested = new AtomicBoolean(false);
 
     public MEExtendedAsyncOutputPartMachine(IMachineBlockEntity holder) {
@@ -44,18 +45,26 @@ public class MEExtendedAsyncOutputPartMachine extends MEExtendedOutputPartMachin
     }
 
     private void requestAsyncDrain() {
-        if (pendingData.get() == null && drainRequested.compareAndSet(false, true)) {
-            AEWriteService.INSTANCE.prepareDrainedData(accRef, pendingData, drainRequested);
+        if (drainRequested.compareAndSet(false, true)) {
+            AEWriteService.INSTANCE.prepareDrainedData(accRef, pendingQueue, drainRequested);
         }
     }
 
     private boolean mergeFromPendingData() {
-        Object2LongOpenHashMap<AEKey> data = pendingData.getAndSet(null);
-        if (data != null && !data.isEmpty()) {
+        boolean merged = false;
+        Object2LongOpenHashMap<AEKey> data;
+        while ((data = pendingQueue.poll()) != null) {
+            if (data.isEmpty()) continue;
             data.object2LongEntrySet().fastForEach(e -> buffer.mergeLong(e.getKey(), e.getLongValue(), NumberUtils::saturatedAdd));
-            return true;
+            merged = true;
         }
-        return false;
+        return merged;
+    }
+
+    @Override
+    protected void flushAsyncQueue() {
+        AEWriteService.INSTANCE.flushBlocking(accRef, pendingQueue, drainRequested, AEWriteService.FLUSH_TIMEOUT);
+        mergeFromPendingData();
     }
 
     @Override
@@ -146,7 +155,7 @@ public class MEExtendedAsyncOutputPartMachine extends MEExtendedOutputPartMachin
         public TickRateModulation tickingRequest(IGridNode node, int ticksSinceLastCall) {
             final boolean isActive = getMainNode().isActive();
             final boolean dataMerged = mergeFromPendingData();
-            final boolean hasPendingWork = pendingData.get() != null || !accumulator.isEmpty();
+            final boolean hasPendingWork = !pendingQueue.isEmpty() || !accumulator.isEmpty();
 
             if (hasPendingWork) {
                 requestAsyncDrain();
@@ -190,6 +199,14 @@ public class MEExtendedAsyncOutputPartMachine extends MEExtendedOutputPartMachin
         @Override
         public MEExtendedAsyncOutputPartMachine getMachine() {
             return (MEExtendedAsyncOutputPartMachine) machine;
+        }
+
+        @Override
+        public void notifySelfIO() {
+            super.notifySelfIO();
+            if (getMainNode().isActive()) {
+                getMainNode().ifPresent((grid, node) -> grid.getTickManager().alertDevice(node));
+            }
         }
     }
 }
