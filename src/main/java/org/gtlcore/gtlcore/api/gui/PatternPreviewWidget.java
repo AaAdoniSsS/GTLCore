@@ -1,8 +1,8 @@
 package org.gtlcore.gtlcore.api.gui;
 
-import org.gtlcore.gtlcore.api.gui.preview.LazyPreviewRuntime;
-import org.gtlcore.gtlcore.api.gui.preview.PersistentStructureCache;
+import org.gtlcore.gtlcore.api.gui.preview.PreviewBuildTiming;
 import org.gtlcore.gtlcore.api.machine.multiblock.IModularMachineHost;
+import org.gtlcore.gtlcore.api.pattern.PreviewMatcherTiming;
 import org.gtlcore.gtlcore.utils.datastructure.ModuleRenderInfo;
 
 import com.gregtechceu.gtceu.GTCEu;
@@ -295,9 +295,7 @@ public class PatternPreviewWidget extends WidgetGroup {
         var controllerBase = pattern.controllerBase;
         if (isFormed) {
             this.layer = -1;
-            if (!LazyPreviewRuntime.replayRemembered(controllerBase)) {
-                GTCEu.LOGGER.warn("No valid cached formed preview for {}", controllerBase.self().getDefinition());
-            }
+            loadControllerFormed(pattern.blockMap.keySet(), controllerBase);
         } else {
             sceneWidget.setRenderedCore(pattern.blockMap.keySet(), null);
             controllerBase.onStructureInvalid();
@@ -426,7 +424,7 @@ public class PatternPreviewWidget extends WidgetGroup {
             }
 
             // Form the host pattern FIRST
-            loadCachedControllerFormed(blockMap.keySet(), controllerBase);
+            loadControllerFormed(blockMap.keySet(), controllerBase);
             Map<BlockPos, TraceabilityPredicate> hostPredicates = controllerBase
                     .getMultiblockState()
                     .getMatchContext()
@@ -475,85 +473,60 @@ public class PatternPreviewWidget extends WidgetGroup {
         return controllerBase == null ? null : new MBPattern(blockMap, moduleOnlyBlocks, parts, predicateMap, controllerBase);
     }
 
-    private void loadCachedControllerFormed(Collection<BlockPos> positions, IMultiController controller) {
-        long operationStart = LazyPreviewRuntime.beginHostCacheOperation();
-        try {
-            String identity = LazyPreviewRuntime.hostCacheIdentity(controller);
-            byte[] fingerprint = null;
-            try {
-                long start = System.nanoTime();
-                fingerprint = PersistentStructureCache.definitionFingerprint(positions, controller, identity);
-                LazyPreviewRuntime.recordHostFingerprintNanos(System.nanoTime() - start);
-                LazyPreviewRuntime.rememberCacheRef(controller, identity, fingerprint);
-                if (PersistentStructureCache.tryReplay(controller, identity, fingerprint) ||
-                        PersistentStructureCache.tryPromoteAnyLegacyCertificate(controller, identity, fingerprint)) {
-                    LazyPreviewRuntime.hostHit(identity);
-                    return;
+    private void loadControllerFormed(Collection<BlockPos> positions, IMultiController controllerBase) {
+        try (var operation = PreviewBuildTiming.begin(false)) {
+            BlockPattern pattern = controllerBase.getPattern();
+            if (pattern != null) {
+                boolean matched;
+                var state = controllerBase.getMultiblockState();
+                var timing = PreviewMatcherTiming.begin(PreviewBuildTiming.identity(controllerBase, false), state);
+                try (timing) {
+                    matched = pattern.checkPatternAt(state, true);
+                    timing.result(matched);
+                } finally {
+                    PreviewBuildTiming.recordMatcher(timing.elapsedNanos());
                 }
-            } catch (Throwable throwable) {
-                fingerprint = null;
-                LazyPreviewRuntime.rememberCacheRef(controller, identity, null);
-                GTCEu.LOGGER.warn("Preview cache unavailable for {}; using the structure matcher", identity, throwable);
+                if (matched) PreviewBuildTiming.formController(controllerBase);
             }
 
-            long start = System.nanoTime();
-            BlockPattern pattern = loadControllerFormed(positions, controller);
-            if (controller.isFormed() && pattern != null) {
-                PersistentStructureCache.write(controller, pattern, identity, fingerprint);
+            if (controllerBase.isFormed()) {
+                LongSet modelDisabled = controllerBase.getMultiblockState().getMatchContext().getOrDefault("renderMask",
+                        LongSets.EMPTY_SET);
+                if (!modelDisabled.isEmpty()) {
+                    positions = new HashSet<>(positions);
+                    positions.removeIf(pos -> modelDisabled.contains(pos.asLong()));
+                }
+                sceneWidget.setRenderedCore(positions, null);
             }
-            LazyPreviewRuntime.hostMiss(identity, (System.nanoTime() - start) / 1_000_000L);
-        } finally {
-            LazyPreviewRuntime.endHostCacheOperation(operationStart);
         }
-    }
-
-    private BlockPattern loadControllerFormed(Collection<BlockPos> positions, IMultiController controllerBase) {
-        BlockPattern pattern = controllerBase.getPattern();
-
-        if (pattern != null && pattern.checkPatternAt(controllerBase.getMultiblockState(), true)) {
-            controllerBase.onStructureFormed();
-        }
-
-        if (controllerBase.isFormed()) {
-            LongSet modelDisabled = controllerBase.getMultiblockState().getMatchContext().getOrDefault("renderMask",
-                    LongSets.EMPTY_SET);
-            if (!modelDisabled.isEmpty()) {
-                positions = new HashSet<>(positions);
-                positions.removeIf(pos -> modelDisabled.contains(pos.asLong()));
-            }
-            sceneWidget.setRenderedCore(positions, null);
-        }
-        return pattern;
     }
 
     private static void loadModuleFormed(IMultiController moduleController) {
-        long operationStart = LazyPreviewRuntime.beginModuleCacheOperation();
-        try {
-            String identity = LazyPreviewRuntime.moduleCacheIdentity(moduleController);
-            long matcherStart = System.nanoTime();
-            try {
-                BlockPattern modulePattern = moduleController.getPattern();
-                BlockState controllerState = LEVEL.getBlockState(moduleController.self().getPos());
-
-                Direction controllerFacing = Direction.NORTH;
-                Direction controllerUp = Direction.UP;
-
-                if (controllerState.getBlock() instanceof MetaMachineBlock machineBlock) {
-                    controllerFacing = machineBlock.getFrontFacing(controllerState);
-                    if (controllerState.hasProperty(IMachineBlock.UPWARDS_FACING_PROPERTY)) {
-                        controllerUp = controllerState.getValue(IMachineBlock.UPWARDS_FACING_PROPERTY);
-                    }
+        try (var operation = PreviewBuildTiming.begin(true)) {
+            BlockPattern modulePattern = moduleController.getPattern();
+            BlockState controllerState = LEVEL.getBlockState(moduleController.self().getPos());
+            Direction controllerFacing = Direction.NORTH;
+            Direction controllerUp = Direction.UP;
+            if (controllerState.getBlock() instanceof MetaMachineBlock machineBlock) {
+                controllerFacing = machineBlock.getFrontFacing(controllerState);
+                if (controllerState.hasProperty(IMachineBlock.UPWARDS_FACING_PROPERTY)) {
+                    controllerUp = controllerState.getValue(IMachineBlock.UPWARDS_FACING_PROPERTY);
                 }
-
-                if (modulePattern != null && modulePattern.checkPatternAt(moduleController.getMultiblockState(),
-                        moduleController.self().getPos(), controllerFacing, controllerUp, false, true)) {
-                    moduleController.onStructureFormed();
-                }
-            } finally {
-                LazyPreviewRuntime.moduleDirect(identity, System.nanoTime() - matcherStart);
             }
-        } finally {
-            LazyPreviewRuntime.endModuleCacheOperation(operationStart);
+
+            if (modulePattern != null) {
+                boolean matched;
+                var state = moduleController.getMultiblockState();
+                var timing = PreviewMatcherTiming.begin(PreviewBuildTiming.identity(moduleController, true), state);
+                try (timing) {
+                    matched = modulePattern.checkPatternAt(state,
+                            moduleController.self().getPos(), controllerFacing, controllerUp, false, true);
+                    timing.result(matched);
+                } finally {
+                    PreviewBuildTiming.recordMatcher(timing.elapsedNanos());
+                }
+                if (matched) PreviewBuildTiming.formController(moduleController);
+            }
         }
     }
 
