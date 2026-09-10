@@ -1,6 +1,9 @@
 package org.gtlcore.gtlcore.mixin.gtm.api.pattern;
 
 import org.gtlcore.gtlcore.api.pattern.AdvancedBlockPattern;
+import org.gtlcore.gtlcore.api.pattern.FixedPatternLayout;
+import org.gtlcore.gtlcore.api.pattern.PatternLayoutSearch;
+import org.gtlcore.gtlcore.api.pattern.PreviewMatcherTiming;
 import org.gtlcore.gtlcore.mixin.gtm.api.machine.IMultiblockStateInvoker;
 
 import com.gregtechceu.gtceu.api.block.ActiveBlock;
@@ -69,13 +72,40 @@ public abstract class BlockPatternMixin {
      */
     @Overwrite(remap = false)
     public boolean checkPatternAt(MultiblockState worldState, BlockPos centerPos, Direction frontFacing, Direction upwardsFacing, boolean isFlipped, boolean savePredicate) {
+        int[] fixedRepetitions = PreviewMatcherTiming.useFixedLayout(worldState) ?
+                FixedPatternLayout.repetitions(this.aisleRepetitions) : null;
+        if (fixedRepetitions != null && fixedRepetitions.length != this.fingerLength) fixedRepetitions = null;
+        boolean incremental = fixedRepetitions == null && PreviewMatcherTiming.useIncrementalSearch(worldState) &&
+                PatternLayoutSearch.supports(this.aisleRepetitions, this.fingerLength);
         int[] matchedRepetitions = new int[this.fingerLength];
         int minStartZ = -this.centerOffset[4];
         int maxStartZ = -this.centerOffset[3];
         for (int startZ = minStartZ; startZ <= maxStartZ; startZ++) {
             Arrays.fill(matchedRepetitions, 0);
-            if (gtlcore$matchAisles(worldState, centerPos, frontFacing, upwardsFacing, isFlipped, savePredicate,
-                    startZ, 0, startZ, matchedRepetitions)) {
+            if (incremental) PreviewMatcherTiming.incrementalAttempt();
+            else PreviewMatcherTiming.attempt(fixedRepetitions != null);
+            boolean matched;
+            if (fixedRepetitions != null) {
+                ((IMultiblockStateInvoker) worldState).cleanState();
+                System.arraycopy(fixedRepetitions, 0, matchedRepetitions, 0, this.fingerLength);
+                matched = FixedPatternLayout.match(fixedRepetitions, startZ,
+                        (aisle, z) -> gtlcore$matchSlice(worldState, centerPos, frontFacing, upwardsFacing,
+                                isFlipped, savePredicate, aisle, z)) &&
+                        gtlcore$hasRequiredGlobalCounts(worldState);
+            } else if (incremental) {
+                matched = PatternLayoutSearch.match(this.aisleRepetitions, startZ, matchedRepetitions,
+                        new PatternLayoutSearch.Checks(
+                                ((IMultiblockStateInvoker) worldState)::cleanState,
+                                (aisle, z) -> gtlcore$matchSlice(worldState, centerPos, frontFacing, upwardsFacing,
+                                        isFlipped, savePredicate, aisle, z),
+                                () -> gtlcore$hasRequiredGlobalCounts(worldState),
+                                () -> worldState.error == MultiblockState.UNLOAD_ERROR,
+                                PreviewMatcherTiming::replay, PreviewMatcherTiming::replayedSlice));
+            } else {
+                matched = gtlcore$matchAisles(worldState, centerPos, frontFacing, upwardsFacing, isFlipped,
+                        savePredicate, startZ, 0, startZ, matchedRepetitions);
+            }
+            if (matched) {
                 worldState.setError(null);
                 worldState.setNeededFlip(isFlipped);
                 PatternMatchContext matchContext = worldState.getMatchContext();
@@ -132,10 +162,12 @@ public abstract class BlockPatternMixin {
     private boolean gtlcore$replayLayout(MultiblockState worldState, BlockPos centerPos, Direction frontFacing,
                                          Direction upwardsFacing, boolean isFlipped, boolean savePredicate, int startZ,
                                          int lastAisle, int[] repetitions) {
+        PreviewMatcherTiming.replay();
         ((IMultiblockStateInvoker) worldState).cleanState();
         int z = startZ;
         for (int aisle = 0; aisle <= lastAisle; aisle++) {
             for (int repeat = 0; repeat < repetitions[aisle]; repeat++, z++) {
+                PreviewMatcherTiming.replayedSlice();
                 if (!gtlcore$matchSlice(worldState, centerPos, frontFacing, upwardsFacing, isFlipped, savePredicate,
                         aisle, z)) {
                     return false;
@@ -149,6 +181,7 @@ public abstract class BlockPatternMixin {
     private boolean gtlcore$matchSlice(MultiblockState worldState, BlockPos centerPos, Direction frontFacing,
                                        Direction upwardsFacing, boolean isFlipped, boolean savePredicate, int aisle,
                                        int z) {
+        PreviewMatcherTiming.slice();
         Map<SimplePredicate, Integer> layerCount = worldState.getLayerCount();
         layerCount.clear();
         PatternMatchContext matchContext = worldState.getMatchContext();
