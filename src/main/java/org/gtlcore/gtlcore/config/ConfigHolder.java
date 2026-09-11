@@ -30,6 +30,7 @@ public class ConfigHolder {
     @Configurable
     public boolean disableDrift = true;
     @Configurable
+    @Configurable.Comment("config.gtlcore.option.enableSkyBlokeMode.comment")
     public boolean enableSkyBlokeMode = false;
     @Configurable
     @Configurable.Range(min = 1)
