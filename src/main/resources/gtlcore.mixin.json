@@ -141,6 +141,7 @@
     "gtm.MultiblockInfoDisplayMixin",
     "gtm.MultiblockInfoEmiRecipeMixin",
     "gtm.OverclockingLogicMixin",
+    "gtm.MultiblockStructureProviderMixin",
     "gtm.RecipeLogicProviderMixin",
     "gtm.RecipeOutputProviderMixin",
     "gtm.RockBreakerConditionMixin",

@@ -1,5 +1,7 @@
 package org.gtlcore.gtlcore.mixin.gtm.api.machine;
 
+import org.gtlcore.gtlcore.api.pattern.WorldPatternTiming;
+
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
 import com.gregtechceu.gtceu.api.machine.MetaMachine;
 import com.gregtechceu.gtceu.api.machine.feature.multiblock.IMultiController;
@@ -33,6 +35,39 @@ public abstract class MultiblockControllerMachineMixin extends MetaMachine imple
 
     public MultiblockControllerMachineMixin(IMachineBlockEntity holder) {
         super(holder);
+    }
+
+    // Diagnostic copies of the GTCEu 1.4.4 interface defaults. Keep lock/check/unlock order unchanged.
+    @Override
+    public boolean checkPatternWithLock() {
+        try (var timing = WorldPatternTiming.beginCheck(this, "lock")) {
+            Lock lock = getPatternLock();
+            long lockStart = timing == null ? 0L : System.nanoTime();
+            lock.lock();
+            if (timing != null) timing.lockResult(lockStart, true);
+            boolean matched = checkPattern();
+            lock.unlock();
+            if (timing != null) timing.result(matched);
+            return matched;
+        }
+    }
+
+    @Override
+    public boolean checkPatternWithTryLock() {
+        try (var timing = WorldPatternTiming.beginCheck(this, "try_lock")) {
+            Lock lock = getPatternLock();
+            long lockStart = timing == null ? 0L : System.nanoTime();
+            boolean acquired = lock.tryLock();
+            if (timing != null) timing.lockResult(lockStart, acquired);
+            if (acquired) {
+                boolean matched = checkPattern();
+                lock.unlock();
+                if (timing != null) timing.result(matched);
+                return matched;
+            }
+            if (timing != null) timing.result(false);
+            return false;
+        }
     }
 
     /**
