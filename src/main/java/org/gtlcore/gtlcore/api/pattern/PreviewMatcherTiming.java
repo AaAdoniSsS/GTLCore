@@ -4,7 +4,7 @@ import com.gregtechceu.gtceu.GTCEu;
 
 import java.util.Locale;
 
-/** Explicit preview scope: real-world structure checks keep the existing search path. */
+/** Explicit preview scope: incremental search remains isolated from real-world structure checks. */
 public final class PreviewMatcherTiming implements AutoCloseable {
 
     private static final ThreadLocal<PreviewMatcherTiming> ACTIVE = new ThreadLocal<>();
