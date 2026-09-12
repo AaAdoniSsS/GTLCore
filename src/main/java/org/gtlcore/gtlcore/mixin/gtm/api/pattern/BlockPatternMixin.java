@@ -4,6 +4,8 @@ import org.gtlcore.gtlcore.api.pattern.AdvancedBlockPattern;
 import org.gtlcore.gtlcore.api.pattern.FixedPatternLayout;
 import org.gtlcore.gtlcore.api.pattern.PatternLayoutSearch;
 import org.gtlcore.gtlcore.api.pattern.PreviewMatcherTiming;
+import org.gtlcore.gtlcore.api.pattern.WorldPatternMatcher;
+import org.gtlcore.gtlcore.api.pattern.WorldPatternTiming;
 import org.gtlcore.gtlcore.mixin.gtm.api.machine.IMultiblockStateInvoker;
 
 import com.gregtechceu.gtceu.api.block.ActiveBlock;
@@ -72,8 +74,19 @@ public abstract class BlockPatternMixin {
      */
     @Overwrite(remap = false)
     public boolean checkPatternAt(MultiblockState worldState, BlockPos centerPos, Direction frontFacing, Direction upwardsFacing, boolean isFlipped, boolean savePredicate) {
-        int[] fixedRepetitions = PreviewMatcherTiming.useFixedLayout(worldState) ?
-                FixedPatternLayout.repetitions(this.aisleRepetitions) : null;
+        try (var timing = WorldPatternTiming.beginMatcher(worldState, frontFacing, isFlipped)) {
+            boolean matched = gtlcore$checkPatternAt(worldState, centerPos, frontFacing, upwardsFacing, isFlipped, savePredicate);
+            if (timing != null) timing.result(matched);
+            return matched;
+        }
+    }
+
+    @Unique
+    private boolean gtlcore$checkPatternAt(MultiblockState worldState, BlockPos centerPos, Direction frontFacing,
+                                           Direction upwardsFacing, boolean isFlipped, boolean savePredicate) {
+        int[] fixedRepetitions = (PreviewMatcherTiming.useFixedLayout(worldState) ||
+                WorldPatternMatcher.useFixedLayout(worldState)) ?
+                        FixedPatternLayout.repetitions(this.aisleRepetitions) : null;
         if (fixedRepetitions != null && fixedRepetitions.length != this.fingerLength) fixedRepetitions = null;
         boolean incremental = fixedRepetitions == null && PreviewMatcherTiming.useIncrementalSearch(worldState) &&
                 PatternLayoutSearch.supports(this.aisleRepetitions, this.fingerLength);
@@ -82,6 +95,7 @@ public abstract class BlockPatternMixin {
         int maxStartZ = -this.centerOffset[3];
         for (int startZ = minStartZ; startZ <= maxStartZ; startZ++) {
             Arrays.fill(matchedRepetitions, 0);
+            WorldPatternTiming.attempt(worldState, fixedRepetitions != null ? "fixed_linear" : incremental ? "incremental" : "legacy_replay");
             if (incremental) PreviewMatcherTiming.incrementalAttempt();
             else PreviewMatcherTiming.attempt(fixedRepetitions != null);
             boolean matched;
@@ -163,11 +177,13 @@ public abstract class BlockPatternMixin {
                                          Direction upwardsFacing, boolean isFlipped, boolean savePredicate, int startZ,
                                          int lastAisle, int[] repetitions) {
         PreviewMatcherTiming.replay();
+        WorldPatternTiming.replay(worldState);
         ((IMultiblockStateInvoker) worldState).cleanState();
         int z = startZ;
         for (int aisle = 0; aisle <= lastAisle; aisle++) {
             for (int repeat = 0; repeat < repetitions[aisle]; repeat++, z++) {
                 PreviewMatcherTiming.replayedSlice();
+                WorldPatternTiming.replayedSlice(worldState);
                 if (!gtlcore$matchSlice(worldState, centerPos, frontFacing, upwardsFacing, isFlipped, savePredicate,
                         aisle, z)) {
                     return false;
@@ -182,6 +198,7 @@ public abstract class BlockPatternMixin {
                                        Direction upwardsFacing, boolean isFlipped, boolean savePredicate, int aisle,
                                        int z) {
         PreviewMatcherTiming.slice();
+        WorldPatternTiming.slice(worldState);
         Map<SimplePredicate, Integer> layerCount = worldState.getLayerCount();
         layerCount.clear();
         PatternMatchContext matchContext = worldState.getMatchContext();
