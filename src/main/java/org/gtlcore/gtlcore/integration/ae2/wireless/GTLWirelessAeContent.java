@@ -72,6 +72,10 @@ public final class GTLWirelessAeContent {
             "me_pattern_relay",
             () -> new PatternRelayItem(new Item.Properties()));
 
+    public static final RegistryObject<WirelessNetworkBindingToolItem> WIRELESS_NETWORK_BINDING_TOOL = ITEMS.register(
+            "wireless_network_binding_tool",
+            WirelessNetworkBindingToolItem::new);
+
     public static final RegistryObject<PartItem<METhroughputMonitorPart>> THROUGHPUT_MONITOR = ITEMS.register(
             "throughput_monitor",
             () -> new PartItem<>(
@@ -244,6 +248,7 @@ public final class GTLWirelessAeContent {
         if (CreativeModeTabs.FUNCTIONAL_BLOCKS.equals(event.getTabKey()) || GTLCreativeModeTabs.GTL_CORE.getKey().equals(event.getTabKey())) {
             event.accept(WIRELESS_NETWORK_CORE_ITEM);
             event.accept(WIRELESS_NETWORK_BOOKMARK_ITEM);
+            event.accept(WIRELESS_NETWORK_BINDING_TOOL);
             event.accept(PATTERN_RELAY);
             event.accept(THROUGHPUT_MONITOR);
             event.accept(THROUGHPUT_MONITOR_CONFIGURATOR);

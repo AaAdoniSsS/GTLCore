@@ -8,6 +8,9 @@ import org.gtlcore.gtlcore.integration.ae2.wireless.MeInventoryAmountPackets;
 import org.gtlcore.gtlcore.integration.ae2.wireless.WirelessAePackets;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+
+import java.util.function.Consumer;
 
 public final class WirelessAeClientPacketHandler {
 
@@ -31,46 +34,42 @@ public final class WirelessAeClientPacketHandler {
 
     public static void handleThroughputMonitorTerminal(
                                                        WirelessAePackets.SyncThroughputMonitorTerminalPacket packet) {
-        if (Minecraft.getInstance().player != null &&
-                Minecraft.getInstance().player.containerMenu instanceof ThroughputMonitorTerminalMenu menu &&
-                menu.containerId == packet.containerId()) {
-            menu.setEntries(packet.entries());
-        }
+        withOpenMenu(packet.containerId(), ThroughputMonitorTerminalMenu.class,
+                menu -> menu.setEntries(packet.entries()));
     }
 
     public static void handleThroughputMonitorSources(
                                                       WirelessAePackets.SyncThroughputMonitorSourcesPacket packet) {
-        if (Minecraft.getInstance().player != null &&
-                Minecraft.getInstance().player.containerMenu instanceof ThroughputMonitorTerminalMenu menu &&
-                menu.containerId == packet.containerId()) {
-            menu.setSourceEntries(packet.key(), packet.sources());
-        }
+        withOpenMenu(packet.containerId(), ThroughputMonitorTerminalMenu.class,
+                menu -> menu.setSourceEntries(packet.key(), packet.sources()));
     }
 
     public static void handleEmitterManagerTerminal(
                                                     WirelessAePackets.SyncEmitterManagerTerminalPacket packet) {
-        if (Minecraft.getInstance().player != null &&
-                Minecraft.getInstance().player.containerMenu instanceof EmitterManagerTerminalMenu menu &&
-                menu.containerId == packet.containerId()) {
-            menu.setEntries(packet.entries());
-        }
+        withOpenMenu(packet.containerId(), EmitterManagerTerminalMenu.class,
+                menu -> menu.setEntries(packet.entries()));
     }
 
     public static void handleMEChamberManagerEntries(
                                                      WirelessAePackets.SyncMEChamberManagerEntriesPacket packet) {
-        if (Minecraft.getInstance().player != null &&
-                Minecraft.getInstance().player.containerMenu instanceof MEChamberManagerTerminalMenu menu &&
-                menu.containerId == packet.containerId()) {
-            menu.setEntries(packet.entries());
-        }
+        withOpenMenu(packet.containerId(), MEChamberManagerTerminalMenu.class,
+                menu -> menu.setEntries(packet.entries()));
     }
 
     public static void handleMEChamberManagerContents(
                                                       WirelessAePackets.SyncMEChamberManagerContentsPacket packet) {
-        if (Minecraft.getInstance().player != null &&
-                Minecraft.getInstance().player.containerMenu instanceof MEChamberManagerTerminalMenu menu &&
-                menu.containerId == packet.containerId()) {
-            menu.setSelectedContents(packet.address(), packet.contents(), packet.details());
+        withOpenMenu(packet.containerId(), MEChamberManagerTerminalMenu.class,
+                menu -> menu.setSelectedContents(packet.address(), packet.contents(), packet.details()));
+    }
+
+    private static <M extends AbstractContainerMenu> void withOpenMenu(
+                                                                       int containerId, Class<M> menuType, Consumer<M> action) {
+        if (Minecraft.getInstance().player == null) {
+            return;
+        }
+        AbstractContainerMenu menu = Minecraft.getInstance().player.containerMenu;
+        if (menu.containerId == containerId && menuType.isInstance(menu)) {
+            action.accept(menuType.cast(menu));
         }
     }
 }

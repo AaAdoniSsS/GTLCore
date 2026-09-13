@@ -881,6 +881,13 @@ public class MachineRecipe {
                 .inputItems(EMITTER_EV, 4)
                 .outputItems(WIRELESS_NETWORK_BOOKMARK)
                 .duration(400).EUt(VA[EV]).save(provider);
+
+        ASSEMBLER_RECIPES.recipeBuilder("wireless_network_binding_tool")
+                .inputItems(WIRELESS_TOOL.asItem())
+                .inputItems(CIRCUIT.getIngredient(EV))
+                .inputItems(EMITTER_EV)
+                .outputItems(org.gtlcore.gtlcore.integration.ae2.wireless.GTLWirelessAeContent.WIRELESS_NETWORK_BINDING_TOOL.get())
+                .duration(200).EUt(VA[EV]).save(provider);
     }
 
     private static void space_probe(Material material, int grade, int amount, int circuit, Consumer<FinishedRecipe> provider) {

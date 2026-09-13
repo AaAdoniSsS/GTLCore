@@ -4,6 +4,8 @@ import org.gtlcore.gtlcore.integration.ae2.MeInventoryAmountService;
 
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.fml.DistExecutor;
 import net.minecraftforge.network.NetworkDirection;
 import net.minecraftforge.network.NetworkEvent;
 import net.minecraftforge.network.PacketDistributor;
@@ -96,15 +98,10 @@ public final class MeInventoryAmountPackets {
 
         private static void handle(Response packet, Supplier<NetworkEvent.Context> contextSupplier) {
             NetworkEvent.Context context = contextSupplier.get();
-            context.enqueueWork(() -> {
-                try {
-                    Class.forName("org.gtlcore.gtlcore.client.ae2.wireless.WirelessAeClientPacketHandler")
-                            .getMethod("handleMeInventoryAmount", Response.class)
-                            .invoke(null, packet);
-                } catch (ReflectiveOperationException | RuntimeException ignored) {
-                    // Client-only handler is not present on dedicated servers.
-                }
-            });
+            context.enqueueWork(() -> DistExecutor.unsafeRunWhenOn(
+                    Dist.CLIENT,
+                    () -> () -> org.gtlcore.gtlcore.client.ae2.wireless.WirelessAeClientPacketHandler
+                            .handleMeInventoryAmount(packet)));
             context.setPacketHandled(true);
         }
     }

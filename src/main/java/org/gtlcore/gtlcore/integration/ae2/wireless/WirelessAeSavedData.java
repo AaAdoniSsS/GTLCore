@@ -1,5 +1,7 @@
 package org.gtlcore.gtlcore.integration.ae2.wireless;
 
+import org.gtlcore.gtlcore.GTLCore;
+
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
@@ -24,6 +26,8 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -46,8 +50,11 @@ public class WirelessAeSavedData extends SavedData {
     private static final String TAG_Y = "y";
     private static final String TAG_Z = "z";
     private static final String TAG_SIDE = "side";
+    private static final String TAG_MEMBER_REVISION = "member_revision";
 
     private final Map<UUID, NetworkRecord> networks = new HashMap<>();
+    private final Map<MemberKey, UUID> memberNetworks = new HashMap<>();
+    private long memberRevision;
     private UUID legacyFavoriteNetwork;
 
     public static WirelessAeSavedData get(MinecraftServer server) {
@@ -77,25 +84,58 @@ public class WirelessAeSavedData extends SavedData {
                 record.owner = networkTag.getUUID(TAG_OWNER);
             }
             record.name = networkTag.getString(TAG_NAME);
+            record.memberRevision = networkTag.getLong(TAG_MEMBER_REVISION);
 
             ListTag membersTag = networkTag.getList(TAG_MEMBERS, Tag.TAG_COMPOUND);
             for (int j = 0; j < membersTag.size(); j++) {
                 MemberKey member = readMemberKey(membersTag.getCompound(j));
                 if (member != null) {
                     record.members.add(member);
+                } else {
+                    data.setDirty();
                 }
             }
         }
+        // Invalid records must not win ownership over valid networks during duplicate repair.
+        if (data.networks.values().removeIf(record -> record.core == null)) {
+            data.setDirty();
+        }
+        data.rebuildMemberIndex();
         if (data.legacyFavoriteNetwork != null && !data.networks.containsKey(data.legacyFavoriteNetwork)) {
             data.legacyFavoriteNetwork = null;
+            data.setDirty();
         }
         return data;
+    }
+
+    /** Rebuild derived state; deterministic UUID order resolves ambiguous legacy memberships. */
+    private void rebuildMemberIndex() {
+        this.memberNetworks.clear();
+        int conflicts = 0;
+        List<UUID> frequencies = new ArrayList<>(this.networks.keySet());
+        frequencies.sort(Comparator.naturalOrder());
+        for (UUID frequency : frequencies) {
+            var members = this.networks.get(frequency).members.iterator();
+            while (members.hasNext()) {
+                MemberKey member = members.next();
+                if (this.memberNetworks.putIfAbsent(member, frequency) != null) {
+                    members.remove();
+                    conflicts++;
+                }
+            }
+        }
+        if (conflicts > 0) {
+            setDirty();
+            GTLCore.LOGGER.warn("Repaired {} duplicate wireless ME memberships using UUID order", conflicts);
+        }
     }
 
     @Override
     public @NotNull CompoundTag save(@NotNull CompoundTag tag) {
         if (this.legacyFavoriteNetwork != null && this.networks.containsKey(this.legacyFavoriteNetwork)) {
             tag.putUUID(TAG_FAVORITE_NETWORK, this.legacyFavoriteNetwork);
+        } else {
+            tag.remove(TAG_FAVORITE_NETWORK);
         }
 
         ListTag networksTag = new ListTag();
@@ -112,6 +152,7 @@ public class WirelessAeSavedData extends SavedData {
                 networkTag.putUUID(TAG_OWNER, record.owner);
             }
             networkTag.putString(TAG_NAME, record.name);
+            networkTag.putLong(TAG_MEMBER_REVISION, record.memberRevision);
 
             ListTag membersTag = new ListTag();
             for (MemberKey member : record.members) {
@@ -207,25 +248,34 @@ public class WirelessAeSavedData extends SavedData {
     }
 
     public UUID getMemberNetwork(MemberKey member) {
+        UUID exact = getExactMemberNetwork(member);
+        if (exact != null) return exact;
+        if (member.side() != null) {
+            return getExactMemberNetwork(new MemberKey(member.pos(), null));
+        }
+        // Position-only lookup preserves the legacy fallback, with deterministic conflict resolution.
+        UUID result = null;
         for (Map.Entry<UUID, NetworkRecord> entry : this.networks.entrySet()) {
-            if (entry.getValue().members.contains(member)) {
-                return entry.getKey();
+            for (MemberKey candidate : entry.getValue().members) {
+                if (candidate.pos().equals(member.pos()) &&
+                        (result == null || entry.getKey().compareTo(result) < 0)) {
+                    result = entry.getKey();
+                }
             }
         }
-        if (member.side() != null) {
-            MemberKey blockMember = new MemberKey(member.pos(), null);
-            for (Map.Entry<UUID, NetworkRecord> entry : this.networks.entrySet()) {
-                if (entry.getValue().members.contains(blockMember)) {
-                    return entry.getKey();
-                }
-            }
-        } else {
-            for (Map.Entry<UUID, NetworkRecord> entry : this.networks.entrySet()) {
-                for (MemberKey candidate : entry.getValue().members) {
-                    if (candidate.pos().equals(member.pos())) {
-                        return entry.getKey();
-                    }
-                }
+        return result;
+    }
+
+    public UUID getExactMemberNetwork(MemberKey member) {
+        UUID indexed = this.memberNetworks.get(member);
+        if (indexed != null && this.networks.containsKey(indexed) && this.networks.get(indexed).members.contains(member)) {
+            return indexed;
+        }
+        this.memberNetworks.remove(member);
+        for (Map.Entry<UUID, NetworkRecord> entry : this.networks.entrySet()) {
+            if (entry.getValue().members.contains(member)) {
+                this.memberNetworks.put(member, entry.getKey());
+                return entry.getKey();
             }
         }
         return null;
@@ -243,14 +293,84 @@ public class WirelessAeSavedData extends SavedData {
         return new HashSet<>(record.members);
     }
 
+    public int getMemberCount(UUID frequency) {
+        NetworkRecord record = this.networks.get(frequency);
+        return record == null ? 0 : record.members.size();
+    }
+
+    /** Server-thread, zero-copy cursor. Validate before resuming after a tick boundary. */
+    MemberScan openMemberScan(UUID frequency) {
+        NetworkRecord record = this.networks.get(frequency);
+        return record == null ? null : new MemberScan(record);
+    }
+
+    final class MemberScan {
+
+        private final NetworkRecord record;
+        private final long revision;
+        private final Iterator<MemberKey> iterator;
+        private int remaining;
+
+        private MemberScan(NetworkRecord record) {
+            this.record = record;
+            this.revision = record.memberRevision;
+            this.iterator = record.members.iterator();
+            this.remaining = record.members.size();
+        }
+
+        boolean isCurrent(UUID frequency) {
+            return networks.get(frequency) == record && record.memberRevision == revision;
+        }
+
+        MemberKey next() {
+            MemberKey member = iterator.next();
+            remaining--;
+            return member;
+        }
+
+        int remaining() {
+            return remaining;
+        }
+
+        long revision() {
+            return revision;
+        }
+    }
+
+    public long getMemberRevision() {
+        return memberRevision;
+    }
+
+    /** Membership revision scoped to one network; unrelated networks do not trigger a rescan. */
+    public long getMemberRevision(UUID frequency) {
+        NetworkRecord record = this.networks.get(frequency);
+        return record == null ? 0L : record.memberRevision;
+    }
+
+    /** Exact membership check, without copying or applying side fallback rules. */
+    public boolean containsMember(UUID frequency, MemberKey member) {
+        NetworkRecord record = this.networks.get(frequency);
+        return record != null && record.members.contains(member);
+    }
+
     public boolean addMember(UUID frequency, GlobalPos member) {
         return addMember(frequency, new MemberKey(member, null));
     }
 
     public boolean addMember(UUID frequency, MemberKey member) {
         NetworkRecord record = network(frequency);
+        UUID previous = getExactMemberNetwork(member);
+        if (previous != null && !previous.equals(frequency)) {
+            NetworkRecord old = this.networks.get(previous);
+            if (old != null) {
+                if (old.members.remove(member)) old.memberRevision++;
+            }
+        }
         boolean added = record.members.add(member);
-        if (added) {
+        this.memberNetworks.put(member, frequency);
+        if (added || previous != null && !previous.equals(frequency)) {
+            record.memberRevision++;
+            memberRevision++;
             setDirty();
         }
         return added;
@@ -267,6 +387,11 @@ public class WirelessAeSavedData extends SavedData {
         }
         boolean removed = record.members.remove(member);
         if (removed) {
+            this.memberNetworks.remove(member, frequency);
+        }
+        if (removed) {
+            record.memberRevision++;
+            memberRevision++;
             setDirty();
         }
         return removed;
@@ -281,15 +406,22 @@ public class WirelessAeSavedData extends SavedData {
         for (Map.Entry<UUID, NetworkRecord> entry : this.networks.entrySet()) {
             if (entry.getValue().members.remove(member)) {
                 removedFrom.add(entry.getKey());
+                this.memberNetworks.remove(member, entry.getKey());
             }
         }
         if (!removedFrom.isEmpty()) {
+            for (UUID frequency : removedFrom) {
+                NetworkRecord record = this.networks.get(frequency);
+                if (record != null) record.memberRevision++;
+            }
+            memberRevision++;
             setDirty();
         }
         return removedFrom;
     }
 
     public Set<UUID> removeMembersAt(GlobalPos member) {
+        this.memberNetworks.keySet().removeIf(key -> key.pos().equals(member));
         Set<UUID> removedFrom = new HashSet<>();
         for (Map.Entry<UUID, NetworkRecord> entry : this.networks.entrySet()) {
             boolean removed = entry.getValue().members.removeIf(candidate -> candidate.pos().equals(member));
@@ -298,6 +430,11 @@ public class WirelessAeSavedData extends SavedData {
             }
         }
         if (!removedFrom.isEmpty()) {
+            for (UUID frequency : removedFrom) {
+                NetworkRecord record = this.networks.get(frequency);
+                if (record != null) record.memberRevision++;
+            }
+            memberRevision++;
             setDirty();
         }
         return removedFrom;
@@ -313,6 +450,7 @@ public class WirelessAeSavedData extends SavedData {
             return false;
         });
         if (!removed.isEmpty()) {
+            this.memberNetworks.entrySet().removeIf(entry -> removed.contains(entry.getValue()));
             if (removed.contains(this.legacyFavoriteNetwork)) {
                 this.legacyFavoriteNetwork = null;
             }
@@ -322,6 +460,7 @@ public class WirelessAeSavedData extends SavedData {
     }
 
     public void removeNetwork(UUID frequency) {
+        this.memberNetworks.entrySet().removeIf(entry -> entry.getValue().equals(frequency));
         if (this.networks.remove(frequency) != null) {
             if (frequency.equals(this.legacyFavoriteNetwork)) {
                 this.legacyFavoriteNetwork = null;
@@ -349,6 +488,7 @@ public class WirelessAeSavedData extends SavedData {
             }
             return false;
         });
+        this.memberNetworks.entrySet().removeIf(entry -> removed.contains(entry.getValue()));
         if (!removed.isEmpty()) {
             if (removed.contains(this.legacyFavoriteNetwork)) {
                 this.legacyFavoriteNetwork = null;
@@ -466,6 +606,8 @@ public class WirelessAeSavedData extends SavedData {
         Direction side = null;
         if (tag.contains(TAG_SIDE)) {
             side = Direction.byName(tag.getString(TAG_SIDE));
+            // An invalid face must not silently become a whole-block binding.
+            if (side == null) return null;
         }
         return new MemberKey(pos, side);
     }
@@ -475,7 +617,9 @@ public class WirelessAeSavedData extends SavedData {
         private GlobalPos core;
         private UUID owner;
         private String name = "";
-        private final Set<MemberKey> members = new HashSet<>();
+        private long memberRevision;
+        // Linked iteration starts/resumes in O(1), including after a large network shrinks.
+        private final Set<MemberKey> members = new LinkedHashSet<>();
     }
 
     public record NetworkInfo(UUID frequency, String name, GlobalPos core) {}

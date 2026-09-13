@@ -186,5 +186,12 @@ public class ConfigHolder {
         @Configurable
         @Configurable.Comment("config.gtlcore.option.enableSpaceElevatorConnectionLogging.comment")
         public boolean enableSpaceElevatorConnectionLogging = false;
+        @Configurable
+        @Configurable.Comment("config.gtlcore.option.enableWirelessAeNetworkPerformanceLogging.comment")
+        public boolean enableWirelessAeNetworkPerformanceLogging = false;
+        @Configurable
+        @Configurable.Comment("config.gtlcore.option.wirelessAeNetworkPerformanceLogIntervalTicks.comment")
+        @Configurable.Range(min = 20)
+        public int wirelessAeNetworkPerformanceLogIntervalTicks = 1200;
     }
 }

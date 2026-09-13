@@ -487,14 +487,14 @@ public final class MEChamberManagerTerminalScreen extends AEBaseScreen<MEChamber
         if (configuratorOverlay.mouseScrolled(mouseX, mouseY, delta)) {
             return true;
         }
-        if (isInside(mouseX, mouseY, leftPos + MEChamberManagerTerminalLayout.DETAIL_PANEL_X,
+        if (WirelessTerminalScreenSupport.isInside(mouseX, mouseY, leftPos + MEChamberManagerTerminalLayout.DETAIL_PANEL_X,
                 topPos + MEChamberManagerTerminalLayout.DETAIL_PANEL_Y,
                 MEChamberManagerTerminalLayout.DETAIL_PANEL_WIDTH,
                 MEChamberManagerTerminalLayout.DETAIL_PANEL_HEIGHT)) {
             changeContentPage(-(int) Math.signum(delta));
             return true;
         }
-        if (isInside(mouseX, mouseY, leftPos + MEChamberManagerTerminalLayout.LIST_PANEL_X,
+        if (WirelessTerminalScreenSupport.isInside(mouseX, mouseY, leftPos + MEChamberManagerTerminalLayout.LIST_PANEL_X,
                 topPos + MEChamberManagerTerminalLayout.LIST_PANEL_Y,
                 MEChamberManagerTerminalLayout.LIST_PANEL_WIDTH,
                 MEChamberManagerTerminalLayout.LIST_PANEL_HEIGHT)) {
@@ -747,7 +747,7 @@ public final class MEChamberManagerTerminalScreen extends AEBaseScreen<MEChamber
 
     private boolean handleContentClick(double mouseX, double mouseY, int button) {
         ContentPage page = currentContentPage();
-        if ((button != 0 && button != 1) || !isInside(mouseX, mouseY,
+        if ((button != 0 && button != 1) || !WirelessTerminalScreenSupport.isInside(mouseX, mouseY,
                 leftPos + MEChamberManagerTerminalLayout.DETAIL_SLOT_X,
                 topPos + MEChamberManagerTerminalLayout.DETAIL_SLOT_Y,
                 page.columns() * MEChamberManagerTerminalLayout.SLOT_SIZE,
@@ -783,7 +783,7 @@ public final class MEChamberManagerTerminalScreen extends AEBaseScreen<MEChamber
     }
 
     private boolean handleScrollbarClick(double mouseX, double mouseY) {
-        if (isInside(mouseX, mouseY, leftPos + MEChamberManagerTerminalLayout.SCROLLBAR_X,
+        if (WirelessTerminalScreenSupport.isInside(mouseX, mouseY, leftPos + MEChamberManagerTerminalLayout.SCROLLBAR_X,
                 topPos + MEChamberManagerTerminalLayout.SCROLLBAR_Y, WirelessAeStyle.AE2_SCROLLBAR_WIDTH,
                 MEChamberManagerTerminalLayout.SCROLLBAR_HEIGHT)) {
             draggingListScrollbar = true;
@@ -927,7 +927,7 @@ public final class MEChamberManagerTerminalScreen extends AEBaseScreen<MEChamber
     }
 
     private @Nullable MEChamberManagerTerminalMenu.Entry entryAt(double mouseX, double mouseY) {
-        if (!isInside(mouseX, mouseY, leftPos + MEChamberManagerTerminalLayout.LIST_X,
+        if (!WirelessTerminalScreenSupport.isInside(mouseX, mouseY, leftPos + MEChamberManagerTerminalLayout.LIST_X,
                 topPos + MEChamberManagerTerminalLayout.LIST_Y, MEChamberManagerTerminalLayout.LIST_CONTENT_WIDTH,
                 MEChamberManagerTerminalLayout.VISIBLE_ROWS * MEChamberManagerTerminalLayout.LIST_ROW_HEIGHT)) {
             return null;
@@ -941,7 +941,7 @@ public final class MEChamberManagerTerminalScreen extends AEBaseScreen<MEChamber
 
     private void renderContentTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
         ContentPage page = currentContentPage();
-        if (!isInside(mouseX, mouseY, leftPos + MEChamberManagerTerminalLayout.DETAIL_SLOT_X,
+        if (!WirelessTerminalScreenSupport.isInside(mouseX, mouseY, leftPos + MEChamberManagerTerminalLayout.DETAIL_SLOT_X,
                 topPos + MEChamberManagerTerminalLayout.DETAIL_SLOT_Y,
                 page.columns() * MEChamberManagerTerminalLayout.SLOT_SIZE,
                 page.rows() * MEChamberManagerTerminalLayout.SLOT_SIZE)) {
@@ -1302,7 +1302,7 @@ public final class MEChamberManagerTerminalScreen extends AEBaseScreen<MEChamber
     }
 
     private int contentIndexAt(ContentPage page, double mouseX, double mouseY) {
-        if (!isInside(mouseX, mouseY,
+        if (!WirelessTerminalScreenSupport.isInside(mouseX, mouseY,
                 leftPos + MEChamberManagerTerminalLayout.DETAIL_SLOT_X,
                 topPos + MEChamberManagerTerminalLayout.DETAIL_SLOT_Y,
                 page.columns() * MEChamberManagerTerminalLayout.SLOT_SIZE,
@@ -1391,10 +1391,6 @@ public final class MEChamberManagerTerminalScreen extends AEBaseScreen<MEChamber
                 dimension,
                 System.currentTimeMillis() + HIGHLIGHT_DURATION_MILLIS,
                 new AABB(entry.address().pos()));
-    }
-
-    private static boolean isInside(double mouseX, double mouseY, int x, int y, int width, int height) {
-        return mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + height;
     }
 
     private static final class ChamberControlButton extends Button {

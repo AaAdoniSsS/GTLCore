@@ -27,6 +27,8 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.fml.DistExecutor;
 import net.minecraftforge.network.NetworkDirection;
 import net.minecraftforge.network.NetworkEvent;
 import net.minecraftforge.network.NetworkRegistry;
@@ -37,12 +39,15 @@ import appeng.api.stacks.AEKey;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.function.BiConsumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 public final class WirelessAePackets {
 
-    private static final String PROTOCOL_VERSION = "12";
+    private static final String PROTOCOL_VERSION = "14";
     private static int nextPacketId;
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
@@ -54,183 +59,113 @@ public final class WirelessAePackets {
     private WirelessAePackets() {}
 
     public static void register() {
-        CHANNEL.registerMessage(
-                nextPacketId++,
-                RenameNetworkPacket.class,
-                RenameNetworkPacket::encode,
-                RenameNetworkPacket::decode,
-                RenameNetworkPacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
-        CHANNEL.registerMessage(
-                nextPacketId++,
-                SetFavoriteNetworkPacket.class,
-                SetFavoriteNetworkPacket::encode,
-                SetFavoriteNetworkPacket::decode,
-                SetFavoriteNetworkPacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
-        CHANNEL.registerMessage(
-                nextPacketId++,
-                ConnectTargetPacket.class,
-                ConnectTargetPacket::encode,
-                ConnectTargetPacket::decode,
-                ConnectTargetPacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
-        CHANNEL.registerMessage(
-                nextPacketId++,
-                OpenTargetMenuPacket.class,
-                OpenTargetMenuPacket::encode,
-                OpenTargetMenuPacket::decode,
-                OpenTargetMenuPacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
-        CHANNEL.registerMessage(
-                nextPacketId++,
-                OpenNormalTargetMenuPacket.class,
-                OpenNormalTargetMenuPacket::encode,
-                OpenNormalTargetMenuPacket::decode,
-                OpenNormalTargetMenuPacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
-        CHANNEL.registerMessage(
-                nextPacketId++,
-                RequestTargetNetworksPacket.class,
-                RequestTargetNetworksPacket::encode,
-                RequestTargetNetworksPacket::decode,
-                RequestTargetNetworksPacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
-        CHANNEL.registerMessage(
-                nextPacketId++,
-                SyncTargetNetworksPacket.class,
-                SyncTargetNetworksPacket::encode,
-                SyncTargetNetworksPacket::decode,
-                SyncTargetNetworksPacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT));
-        CHANNEL.registerMessage(
-                nextPacketId++,
-                OpenPatternQuickUploadSelectionPacket.class,
-                OpenPatternQuickUploadSelectionPacket::encode,
-                OpenPatternQuickUploadSelectionPacket::decode,
-                OpenPatternQuickUploadSelectionPacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT));
-        CHANNEL.registerMessage(
-                nextPacketId++,
-                SelectPatternQuickUploadTargetPacket.class,
-                SelectPatternQuickUploadTargetPacket::encode,
-                SelectPatternQuickUploadTargetPacket::decode,
-                SelectPatternQuickUploadTargetPacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
-        CHANNEL.registerMessage(
-                nextPacketId++,
-                PatternQuickUploadDuplicatePacket.class,
-                PatternQuickUploadDuplicatePacket::encode,
-                PatternQuickUploadDuplicatePacket::decode,
-                PatternQuickUploadDuplicatePacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT));
-        CHANNEL.registerMessage(
-                nextPacketId++,
-                SyncThroughputMonitorTerminalPacket.class,
-                SyncThroughputMonitorTerminalPacket::encode,
-                SyncThroughputMonitorTerminalPacket::decode,
-                SyncThroughputMonitorTerminalPacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT));
-        CHANNEL.registerMessage(
-                nextPacketId++,
-                SetThroughputMonitorSourceTrackingPacket.class,
-                SetThroughputMonitorSourceTrackingPacket::encode,
-                SetThroughputMonitorSourceTrackingPacket::decode,
-                SetThroughputMonitorSourceTrackingPacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
-        CHANNEL.registerMessage(
-                nextPacketId++,
-                SetThroughputMonitorUpdateIntervalPacket.class,
-                SetThroughputMonitorUpdateIntervalPacket::encode,
-                SetThroughputMonitorUpdateIntervalPacket::decode,
-                SetThroughputMonitorUpdateIntervalPacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
-        CHANNEL.registerMessage(
-                nextPacketId++,
-                SyncThroughputMonitorSourcesPacket.class,
-                SyncThroughputMonitorSourcesPacket::encode,
-                SyncThroughputMonitorSourcesPacket::decode,
-                SyncThroughputMonitorSourcesPacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT));
-        CHANNEL.registerMessage(
-                nextPacketId++,
-                SyncEmitterManagerTerminalPacket.class,
-                SyncEmitterManagerTerminalPacket::encode,
-                SyncEmitterManagerTerminalPacket::decode,
-                SyncEmitterManagerTerminalPacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT));
-        CHANNEL.registerMessage(
-                nextPacketId++,
-                SetEmitterSettingPacket.class,
-                SetEmitterSettingPacket::encode,
-                SetEmitterSettingPacket::decode,
-                SetEmitterSettingPacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
-        CHANNEL.registerMessage(
-                nextPacketId++,
-                SetEmitterValuePacket.class,
-                SetEmitterValuePacket::encode,
-                SetEmitterValuePacket::decode,
-                SetEmitterValuePacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
-        CHANNEL.registerMessage(
-                nextPacketId++,
-                SelectEmitterPacket.class,
-                SelectEmitterPacket::encode,
-                SelectEmitterPacket::decode,
-                SelectEmitterPacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
-        CHANNEL.registerMessage(
-                nextPacketId++,
-                SyncMEChamberManagerEntriesPacket.class,
-                SyncMEChamberManagerEntriesPacket::encode,
-                SyncMEChamberManagerEntriesPacket::decode,
-                SyncMEChamberManagerEntriesPacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT));
-        CHANNEL.registerMessage(
-                nextPacketId++,
-                SelectMEChamberPacket.class,
-                SelectMEChamberPacket::encode,
-                SelectMEChamberPacket::decode,
-                SelectMEChamberPacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
-        CHANNEL.registerMessage(
-                nextPacketId++,
-                SetMEChamberSlotAmountPacket.class,
-                SetMEChamberSlotAmountPacket::encode,
-                SetMEChamberSlotAmountPacket::decode,
-                SetMEChamberSlotAmountPacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
-        CHANNEL.registerMessage(
-                nextPacketId++,
-                SetMEChamberSlotConfigPacket.class,
-                SetMEChamberSlotConfigPacket::encode,
-                SetMEChamberSlotConfigPacket::decode,
-                SetMEChamberSlotConfigPacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
-        CHANNEL.registerMessage(
-                nextPacketId++,
-                SetMEChamberControlPacket.class,
-                SetMEChamberControlPacket::encode,
-                SetMEChamberControlPacket::decode,
-                SetMEChamberControlPacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
-        CHANNEL.registerMessage(
-                nextPacketId++,
-                MEChamberConfiguratorActionPacket.class,
-                MEChamberConfiguratorActionPacket::encode,
-                MEChamberConfiguratorActionPacket::decode,
-                MEChamberConfiguratorActionPacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_SERVER));
-        CHANNEL.registerMessage(
-                nextPacketId++,
-                SyncMEChamberManagerContentsPacket.class,
-                SyncMEChamberManagerContentsPacket::encode,
-                SyncMEChamberManagerContentsPacket::decode,
-                SyncMEChamberManagerContentsPacket::handle,
-                java.util.Optional.of(NetworkDirection.PLAY_TO_CLIENT));
+        registerPacket(UnbindWithToolPacket.class, (packet, buffer) -> buffer.writeBlockPos(packet.pos()),
+                buffer -> new UnbindWithToolPacket(buffer.readBlockPos()), UnbindWithToolPacket::handle, NetworkDirection.PLAY_TO_SERVER);
+        registerPacket(ClearBindingToolPacket.class, (packet, buffer) -> {}, buffer -> new ClearBindingToolPacket(),
+                ClearBindingToolPacket::handle, NetworkDirection.PLAY_TO_SERVER);
+        registerPacket(RenameNetworkPacket.class, RenameNetworkPacket::encode, RenameNetworkPacket::decode,
+                RenameNetworkPacket::handle, NetworkDirection.PLAY_TO_SERVER);
+        registerPacket(SetFavoriteNetworkPacket.class, SetFavoriteNetworkPacket::encode, SetFavoriteNetworkPacket::decode,
+                SetFavoriteNetworkPacket::handle, NetworkDirection.PLAY_TO_SERVER);
+        registerPacket(ConnectTargetPacket.class, ConnectTargetPacket::encode, ConnectTargetPacket::decode,
+                ConnectTargetPacket::handle, NetworkDirection.PLAY_TO_SERVER);
+        registerPacket(OpenTargetMenuPacket.class, OpenTargetMenuPacket::encode, OpenTargetMenuPacket::decode,
+                OpenTargetMenuPacket::handle, NetworkDirection.PLAY_TO_SERVER);
+        registerPacket(OpenNormalTargetMenuPacket.class, OpenNormalTargetMenuPacket::encode,
+                OpenNormalTargetMenuPacket::decode, OpenNormalTargetMenuPacket::handle, NetworkDirection.PLAY_TO_SERVER);
+        registerPacket(RequestTargetNetworksPacket.class, RequestTargetNetworksPacket::encode,
+                RequestTargetNetworksPacket::decode, RequestTargetNetworksPacket::handle, NetworkDirection.PLAY_TO_SERVER);
+        registerPacket(SyncTargetNetworksPacket.class, SyncTargetNetworksPacket::encode, SyncTargetNetworksPacket::decode,
+                SyncTargetNetworksPacket::handle, NetworkDirection.PLAY_TO_CLIENT);
+        registerPacket(OpenPatternQuickUploadSelectionPacket.class, OpenPatternQuickUploadSelectionPacket::encode,
+                OpenPatternQuickUploadSelectionPacket::decode, OpenPatternQuickUploadSelectionPacket::handle,
+                NetworkDirection.PLAY_TO_CLIENT);
+        registerPacket(SelectPatternQuickUploadTargetPacket.class, SelectPatternQuickUploadTargetPacket::encode,
+                SelectPatternQuickUploadTargetPacket::decode, SelectPatternQuickUploadTargetPacket::handle,
+                NetworkDirection.PLAY_TO_SERVER);
+        registerPacket(PatternQuickUploadDuplicatePacket.class, PatternQuickUploadDuplicatePacket::encode,
+                PatternQuickUploadDuplicatePacket::decode, PatternQuickUploadDuplicatePacket::handle,
+                NetworkDirection.PLAY_TO_CLIENT);
+        registerPacket(SyncThroughputMonitorTerminalPacket.class, SyncThroughputMonitorTerminalPacket::encode,
+                SyncThroughputMonitorTerminalPacket::decode, SyncThroughputMonitorTerminalPacket::handle,
+                NetworkDirection.PLAY_TO_CLIENT);
+        registerPacket(SetThroughputMonitorSourceTrackingPacket.class, SetThroughputMonitorSourceTrackingPacket::encode,
+                SetThroughputMonitorSourceTrackingPacket::decode, SetThroughputMonitorSourceTrackingPacket::handle,
+                NetworkDirection.PLAY_TO_SERVER);
+        registerPacket(SetThroughputMonitorUpdateIntervalPacket.class, SetThroughputMonitorUpdateIntervalPacket::encode,
+                SetThroughputMonitorUpdateIntervalPacket::decode, SetThroughputMonitorUpdateIntervalPacket::handle,
+                NetworkDirection.PLAY_TO_SERVER);
+        registerPacket(SyncThroughputMonitorSourcesPacket.class, SyncThroughputMonitorSourcesPacket::encode,
+                SyncThroughputMonitorSourcesPacket::decode, SyncThroughputMonitorSourcesPacket::handle,
+                NetworkDirection.PLAY_TO_CLIENT);
+        registerPacket(SyncEmitterManagerTerminalPacket.class, SyncEmitterManagerTerminalPacket::encode,
+                SyncEmitterManagerTerminalPacket::decode, SyncEmitterManagerTerminalPacket::handle,
+                NetworkDirection.PLAY_TO_CLIENT);
+        registerPacket(SetEmitterSettingPacket.class, SetEmitterSettingPacket::encode, SetEmitterSettingPacket::decode,
+                SetEmitterSettingPacket::handle, NetworkDirection.PLAY_TO_SERVER);
+        registerPacket(SetEmitterValuePacket.class, SetEmitterValuePacket::encode, SetEmitterValuePacket::decode,
+                SetEmitterValuePacket::handle, NetworkDirection.PLAY_TO_SERVER);
+        registerPacket(SelectEmitterPacket.class, SelectEmitterPacket::encode, SelectEmitterPacket::decode,
+                SelectEmitterPacket::handle, NetworkDirection.PLAY_TO_SERVER);
+        registerPacket(SyncMEChamberManagerEntriesPacket.class, SyncMEChamberManagerEntriesPacket::encode,
+                SyncMEChamberManagerEntriesPacket::decode, SyncMEChamberManagerEntriesPacket::handle,
+                NetworkDirection.PLAY_TO_CLIENT);
+        registerPacket(SelectMEChamberPacket.class, SelectMEChamberPacket::encode, SelectMEChamberPacket::decode,
+                SelectMEChamberPacket::handle, NetworkDirection.PLAY_TO_SERVER);
+        registerPacket(SetMEChamberSlotAmountPacket.class, SetMEChamberSlotAmountPacket::encode,
+                SetMEChamberSlotAmountPacket::decode, SetMEChamberSlotAmountPacket::handle, NetworkDirection.PLAY_TO_SERVER);
+        registerPacket(SetMEChamberSlotConfigPacket.class, SetMEChamberSlotConfigPacket::encode,
+                SetMEChamberSlotConfigPacket::decode, SetMEChamberSlotConfigPacket::handle, NetworkDirection.PLAY_TO_SERVER);
+        registerPacket(SetMEChamberControlPacket.class, SetMEChamberControlPacket::encode,
+                SetMEChamberControlPacket::decode, SetMEChamberControlPacket::handle, NetworkDirection.PLAY_TO_SERVER);
+        registerPacket(MEChamberConfiguratorActionPacket.class, MEChamberConfiguratorActionPacket::encode,
+                MEChamberConfiguratorActionPacket::decode, MEChamberConfiguratorActionPacket::handle,
+                NetworkDirection.PLAY_TO_SERVER);
+        registerPacket(SyncMEChamberManagerContentsPacket.class, SyncMEChamberManagerContentsPacket::encode,
+                SyncMEChamberManagerContentsPacket::decode, SyncMEChamberManagerContentsPacket::handle,
+                NetworkDirection.PLAY_TO_CLIENT);
         MeInventoryAmountPackets.register(CHANNEL, () -> nextPacketId++);
         JeiWirelessTerminalOrderPackets.register(CHANNEL, () -> nextPacketId++);
+    }
+
+    public record ClearBindingToolPacket() {
+
+        private static void handle(ClearBindingToolPacket packet, Supplier<NetworkEvent.Context> contextSupplier) {
+            var context = contextSupplier.get();
+            context.enqueueWork(() -> {
+                ServerPlayer player = context.getSender();
+                if (player != null && !player.isSpectator()) {
+                    WirelessNetworkBindingToolItem.clearSavedNetwork(player);
+                }
+            });
+            context.setPacketHandled(true);
+        }
+    }
+
+    public record UnbindWithToolPacket(BlockPos pos) {
+
+        private static void handle(UnbindWithToolPacket packet, Supplier<NetworkEvent.Context> contextSupplier) {
+            var context = contextSupplier.get();
+            context.enqueueWork(() -> {
+                ServerPlayer player = context.getSender();
+                if (player != null && player.canReach(packet.pos(), 0)) {
+                    WirelessAeNetworkRuntime.unbindWithTool(player, packet.pos());
+                }
+            });
+            context.setPacketHandled(true);
+        }
+    }
+
+    private static <P> void registerPacket(Class<P> packetType, BiConsumer<P, FriendlyByteBuf> encoder,
+                                           Function<FriendlyByteBuf, P> decoder,
+                                           BiConsumer<P, Supplier<NetworkEvent.Context>> handler,
+                                           NetworkDirection direction) {
+        CHANNEL.registerMessage(nextPacketId++, packetType, encoder, decoder, handler, Optional.of(direction));
+    }
+
+    private static void dispatchClient(NetworkEvent.Context context, Runnable handler) {
+        context.enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> handler));
+        context.setPacketHandled(true);
     }
 
     public record RenameNetworkPacket(BlockPos corePos, String name) {
@@ -580,16 +515,8 @@ public final class WirelessAePackets {
 
         private static void handle(SyncTargetNetworksPacket packet, Supplier<NetworkEvent.Context> contextSupplier) {
             NetworkEvent.Context context = contextSupplier.get();
-            context.enqueueWork(() -> {
-                try {
-                    Class.forName("org.gtlcore.gtlcore.client.ae2.wireless.WirelessAeClientPacketHandler")
-                            .getMethod("handleTargetNetworks", SyncTargetNetworksPacket.class)
-                            .invoke(null, packet);
-                } catch (ReflectiveOperationException | RuntimeException ignored) {
-                    // Client-only handler is not present on dedicated servers.
-                }
-            });
-            context.setPacketHandled(true);
+            dispatchClient(context, () -> org.gtlcore.gtlcore.client.ae2.wireless.WirelessAeClientPacketHandler
+                    .handleTargetNetworks(packet));
         }
     }
 
@@ -610,16 +537,8 @@ public final class WirelessAePackets {
         private static void handle(OpenPatternQuickUploadSelectionPacket packet,
                                    Supplier<NetworkEvent.Context> contextSupplier) {
             NetworkEvent.Context context = contextSupplier.get();
-            context.enqueueWork(() -> {
-                try {
-                    Class.forName("org.gtlcore.gtlcore.client.ae2.wireless.WirelessAeClientPacketHandler")
-                            .getMethod("handlePatternQuickUploadSelection", OpenPatternQuickUploadSelectionPacket.class)
-                            .invoke(null, packet);
-                } catch (ReflectiveOperationException | RuntimeException ignored) {
-                    // Client-only handler is not present on dedicated servers.
-                }
-            });
-            context.setPacketHandled(true);
+            dispatchClient(context, () -> org.gtlcore.gtlcore.client.ae2.wireless.WirelessAeClientPacketHandler
+                    .handlePatternQuickUploadSelection(packet));
         }
     }
 
@@ -667,16 +586,8 @@ public final class WirelessAePackets {
         private static void handle(PatternQuickUploadDuplicatePacket packet,
                                    Supplier<NetworkEvent.Context> contextSupplier) {
             NetworkEvent.Context context = contextSupplier.get();
-            context.enqueueWork(() -> {
-                try {
-                    Class.forName("org.gtlcore.gtlcore.client.ae2.wireless.WirelessAeClientPacketHandler")
-                            .getMethod("handlePatternQuickUploadDuplicate", PatternQuickUploadDuplicatePacket.class)
-                            .invoke(null, packet);
-                } catch (ReflectiveOperationException | RuntimeException ignored) {
-                    // Client-only handler is not present on dedicated servers.
-                }
-            });
-            context.setPacketHandled(true);
+            dispatchClient(context, () -> org.gtlcore.gtlcore.client.ae2.wireless.WirelessAeClientPacketHandler
+                    .handlePatternQuickUploadDuplicate(packet));
         }
     }
 
@@ -698,16 +609,8 @@ public final class WirelessAePackets {
         private static void handle(SyncThroughputMonitorTerminalPacket packet,
                                    Supplier<NetworkEvent.Context> contextSupplier) {
             NetworkEvent.Context context = contextSupplier.get();
-            context.enqueueWork(() -> {
-                try {
-                    Class.forName("org.gtlcore.gtlcore.client.ae2.wireless.WirelessAeClientPacketHandler")
-                            .getMethod("handleThroughputMonitorTerminal", SyncThroughputMonitorTerminalPacket.class)
-                            .invoke(null, packet);
-                } catch (ReflectiveOperationException | RuntimeException ignored) {
-                    // Client-only handler is not present on dedicated servers.
-                }
-            });
-            context.setPacketHandled(true);
+            dispatchClient(context, () -> org.gtlcore.gtlcore.client.ae2.wireless.WirelessAeClientPacketHandler
+                    .handleThroughputMonitorTerminal(packet));
         }
     }
 
@@ -790,16 +693,8 @@ public final class WirelessAePackets {
         private static void handle(SyncThroughputMonitorSourcesPacket packet,
                                    Supplier<NetworkEvent.Context> contextSupplier) {
             NetworkEvent.Context context = contextSupplier.get();
-            context.enqueueWork(() -> {
-                try {
-                    Class.forName("org.gtlcore.gtlcore.client.ae2.wireless.WirelessAeClientPacketHandler")
-                            .getMethod("handleThroughputMonitorSources", SyncThroughputMonitorSourcesPacket.class)
-                            .invoke(null, packet);
-                } catch (ReflectiveOperationException | RuntimeException ignored) {
-                    // Client-only handler is not present on dedicated servers.
-                }
-            });
-            context.setPacketHandled(true);
+            dispatchClient(context, () -> org.gtlcore.gtlcore.client.ae2.wireless.WirelessAeClientPacketHandler
+                    .handleThroughputMonitorSources(packet));
         }
     }
 
@@ -821,16 +716,8 @@ public final class WirelessAePackets {
         private static void handle(SyncEmitterManagerTerminalPacket packet,
                                    Supplier<NetworkEvent.Context> contextSupplier) {
             NetworkEvent.Context context = contextSupplier.get();
-            context.enqueueWork(() -> {
-                try {
-                    Class.forName("org.gtlcore.gtlcore.client.ae2.wireless.WirelessAeClientPacketHandler")
-                            .getMethod("handleEmitterManagerTerminal", SyncEmitterManagerTerminalPacket.class)
-                            .invoke(null, packet);
-                } catch (ReflectiveOperationException | RuntimeException ignored) {
-                    // Client-only handler is not present on dedicated servers.
-                }
-            });
-            context.setPacketHandled(true);
+            dispatchClient(context, () -> org.gtlcore.gtlcore.client.ae2.wireless.WirelessAeClientPacketHandler
+                    .handleEmitterManagerTerminal(packet));
         }
     }
 
@@ -950,16 +837,8 @@ public final class WirelessAePackets {
         private static void handle(SyncMEChamberManagerEntriesPacket packet,
                                    Supplier<NetworkEvent.Context> contextSupplier) {
             NetworkEvent.Context context = contextSupplier.get();
-            context.enqueueWork(() -> {
-                try {
-                    Class.forName("org.gtlcore.gtlcore.client.ae2.wireless.WirelessAeClientPacketHandler")
-                            .getMethod("handleMEChamberManagerEntries", SyncMEChamberManagerEntriesPacket.class)
-                            .invoke(null, packet);
-                } catch (ReflectiveOperationException | RuntimeException ignored) {
-                    // Client-only handler is not present on dedicated servers.
-                }
-            });
-            context.setPacketHandled(true);
+            dispatchClient(context, () -> org.gtlcore.gtlcore.client.ae2.wireless.WirelessAeClientPacketHandler
+                    .handleMEChamberManagerEntries(packet));
         }
     }
 
@@ -1158,16 +1037,8 @@ public final class WirelessAePackets {
         private static void handle(SyncMEChamberManagerContentsPacket packet,
                                    Supplier<NetworkEvent.Context> contextSupplier) {
             NetworkEvent.Context context = contextSupplier.get();
-            context.enqueueWork(() -> {
-                try {
-                    Class.forName("org.gtlcore.gtlcore.client.ae2.wireless.WirelessAeClientPacketHandler")
-                            .getMethod("handleMEChamberManagerContents", SyncMEChamberManagerContentsPacket.class)
-                            .invoke(null, packet);
-                } catch (ReflectiveOperationException | RuntimeException ignored) {
-                    // Client-only handler is not present on dedicated servers.
-                }
-            });
-            context.setPacketHandled(true);
+            dispatchClient(context, () -> org.gtlcore.gtlcore.client.ae2.wireless.WirelessAeClientPacketHandler
+                    .handleMEChamberManagerContents(packet));
         }
     }
 

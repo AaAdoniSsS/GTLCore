@@ -34,6 +34,20 @@ import java.util.Objects;
 @Mod.EventBusSubscriber(modid = GTLCore.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class ForgeCommonEventListener {
 
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onBindingToolLeftClick(PlayerInteractEvent.LeftClickBlock event) {
+        if (!event.getEntity().isShiftKeyDown() ||
+                !(event.getEntity().getMainHandItem().getItem() instanceof org.gtlcore.gtlcore.integration.ae2.wireless.WirelessNetworkBindingToolItem) ||
+                !org.gtlcore.gtlcore.integration.ae2.wireless.WirelessAeNetworkRuntime.canOpenWirelessTargetMenu(event.getLevel(), event.getPos()))
+            return;
+        // Cancel on both sides, including creative mode, so unlinking cannot break the hatch.
+        event.setCanceled(true);
+        if (event.getLevel().isClientSide && event.getAction() == PlayerInteractEvent.LeftClickBlock.Action.START) {
+            org.gtlcore.gtlcore.integration.ae2.wireless.WirelessAePackets.CHANNEL.sendToServer(
+                    new org.gtlcore.gtlcore.integration.ae2.wireless.WirelessAePackets.UnbindWithToolPacket(event.getPos()));
+        }
+    }
+
     @SubscribeEvent
     public static void onPortalSpawnEvent(BlockEvent.PortalSpawnEvent event) {
         event.setCanceled(true);

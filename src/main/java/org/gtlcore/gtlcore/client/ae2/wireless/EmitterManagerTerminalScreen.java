@@ -577,12 +577,13 @@ public final class EmitterManagerTerminalScreen extends AEBaseScreen<EmitterMana
     }
 
     private boolean isInsideList(double mouseX, double mouseY) {
-        return mouseX >= this.leftPos + EmitterManagerTerminalLayout.LIST_PANEL_X &&
-                mouseX < this.leftPos + EmitterManagerTerminalLayout.LIST_PANEL_X +
-                        EmitterManagerTerminalLayout.LIST_PANEL_WIDTH &&
-                mouseY >= this.topPos + EmitterManagerTerminalLayout.LIST_PANEL_Y &&
-                mouseY < this.topPos + EmitterManagerTerminalLayout.LIST_PANEL_Y +
-                        EmitterManagerTerminalLayout.LIST_PANEL_HEIGHT;
+        return WirelessTerminalScreenSupport.isInside(
+                mouseX,
+                mouseY,
+                this.leftPos + EmitterManagerTerminalLayout.LIST_PANEL_X,
+                this.topPos + EmitterManagerTerminalLayout.LIST_PANEL_Y,
+                EmitterManagerTerminalLayout.LIST_PANEL_WIDTH,
+                EmitterManagerTerminalLayout.LIST_PANEL_HEIGHT);
     }
 
     private void renderEmitterTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
@@ -803,7 +804,7 @@ public final class EmitterManagerTerminalScreen extends AEBaseScreen<EmitterMana
         if (this.searchField == null) {
             return this.menu.getEntries();
         }
-        String query = this.searchField.getValue().trim().toLowerCase(Locale.ROOT);
+        String query = WirelessTerminalScreenSupport.normalizedQuery(this.searchField);
         if (query.isEmpty()) {
             return this.menu.getEntries();
         }

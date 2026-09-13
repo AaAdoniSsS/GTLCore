@@ -123,8 +123,15 @@ final class WirelessAeScreenHooks {
 
     static void register() {
         net.minecraftforge.common.MinecraftForge.EVENT_BUS.addListener(WirelessAeScreenHooks::onRightClickBlock);
+        net.minecraftforge.common.MinecraftForge.EVENT_BUS.addListener(WirelessAeScreenHooks::onLeftClickEmpty);
         net.minecraftforge.common.MinecraftForge.EVENT_BUS.addListener(WirelessAeScreenHooks::onScreenInit);
         net.minecraftforge.common.MinecraftForge.EVENT_BUS.addListener(WirelessAeScreenHooks::onScreenRenderPre);
+    }
+
+    private static void onLeftClickEmpty(PlayerInteractEvent.LeftClickEmpty event) {
+        if (event.getEntity().getMainHandItem().getItem() instanceof org.gtlcore.gtlcore.integration.ae2.wireless.WirelessNetworkBindingToolItem) {
+            WirelessAePackets.CHANNEL.sendToServer(new WirelessAePackets.ClearBindingToolPacket());
+        }
     }
 
     private static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {

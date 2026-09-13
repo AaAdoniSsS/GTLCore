@@ -67,6 +67,7 @@
     "ae2.AbstractLevelEmitterPartAccessor",
     "ae2.BasicCellInventoryMixin",
     "ae2.CableBusBlockMixin",
+    "ae2.GridNodeTopologyMixin",
     "ae2.ConfigMenuInventoryMixin",
     "ae2.CPUSelectionListMixin",
     "ae2.CreativeCellInventoryMixin",
