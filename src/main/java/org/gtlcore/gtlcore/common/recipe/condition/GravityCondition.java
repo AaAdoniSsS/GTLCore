@@ -100,12 +100,13 @@ public class GravityCondition extends RecipeCondition {
         // 检查是否开启空岛模式
         if (ConfigHolder.INSTANCE.enableSkyBlokeMode) {
             // 检查是否为主世界并且高度超过阈值
-            boolean isInOverworld = dimensionName.equals("minecraft:overworld"); // 确认主世界的标识符
+            boolean isInOverworld = dimensionName.equals("minecraft:overworld");
+            boolean isInVoid = dimensionName.equals("kubejs:void");
+            boolean isInFlat = dimensionName.equals("kubejs:flat");
             boolean exceedsHeightThreshold = machinePos.getY() >= heightThreshold;
+            boolean exceedsHeightThresholdA = machinePos.getY() >= 506;
             // 主世界的高度条件检查
-            if (isInOverworld && exceedsHeightThreshold && zero) {
-                return true;
-            }
+            return ((isInOverworld && exceedsHeightThreshold) || ((isInFlat || isInVoid) && exceedsHeightThresholdA)) && zero;
         }
         return false;
     }
