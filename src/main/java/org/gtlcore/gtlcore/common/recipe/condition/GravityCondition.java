@@ -104,7 +104,7 @@ public class GravityCondition extends RecipeCondition {
             boolean isInVoid = dimensionName.equals("kubejs:void");
             boolean isInFlat = dimensionName.equals("kubejs:flat");
             boolean exceedsHeightThreshold = machinePos.getY() >= heightThreshold;
-            boolean exceedsHeightThresholdA = machinePos.getY() >= 506;
+            boolean exceedsHeightThresholdA = machinePos.getY() >= 505;
             // 主世界的高度条件检查
             return ((isInOverworld && exceedsHeightThreshold) || ((isInFlat || isInVoid) && exceedsHeightThresholdA)) && zero;
         }
