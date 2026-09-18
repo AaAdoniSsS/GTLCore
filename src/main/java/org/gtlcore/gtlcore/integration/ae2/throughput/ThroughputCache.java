@@ -46,12 +46,8 @@ final class ThroughputCache {
 
         CacheEntry first = changes.peekFirst();
         if (first != null && first.timestamp == timestamp) {
-            changes.removeFirst();
-            changes.addFirst(
-                    new CacheEntry(
-                            first.inserted + inserted,
-                            first.extracted + extracted,
-                            timestamp));
+            first.inserted += inserted;
+            first.extracted += extracted;
             return;
         }
 
@@ -91,8 +87,8 @@ final class ThroughputCache {
         }
 
         long windowTicks = secondsToTicks(sampleWindowSeconds);
-        long firstTick = Math.max(startTick, currentTick - windowTicks);
-        long elapsedTicks = Math.max(1L, currentTick - firstTick);
+        long firstTick = Math.max(startTick, currentTick - windowTicks + 1);
+        long elapsedTicks = Math.max(1L, currentTick - firstTick + 1);
         double inserted = 0.0D;
         double extracted = 0.0D;
 
@@ -119,5 +115,16 @@ final class ThroughputCache {
         private static final ThroughputSample EMPTY = new ThroughputSample(0.0D, 0.0D);
     }
 
-    private record CacheEntry(double inserted, double extracted, long timestamp) {}
+    private static final class CacheEntry {
+
+        private double inserted;
+        private double extracted;
+        private final long timestamp;
+
+        private CacheEntry(double inserted, double extracted, long timestamp) {
+            this.inserted = inserted;
+            this.extracted = extracted;
+            this.timestamp = timestamp;
+        }
+    }
 }

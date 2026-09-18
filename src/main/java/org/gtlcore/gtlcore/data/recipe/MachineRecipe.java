@@ -50,12 +50,14 @@ import static com.gregtechceu.gtceu.data.recipe.CraftingComponent.*;
 import static com.gregtechceu.gtceu.data.recipe.misc.MetaTileEntityLoader.registerMachineRecipe;
 import static org.gtlcore.gtlcore.common.data.GTLBlocks.CRAFTING_STORAGE_MAX;
 import static org.gtlcore.gtlcore.common.data.GTLMachines.GTAEMachines.ME_EXTEND_PATTERN_BUFFER;
+import static org.gtlcore.gtlcore.common.data.GTLMachines.GTAEMachines.ME_FINAL_PATTERN_BUFFER;
 import static org.gtlcore.gtlcore.common.data.GTLMachines.TAG_FILTER_ME_STOCK_BUS_PART_MACHINE;
 import static org.gtlcore.gtlcore.common.data.GTLMaterials.*;
 import static org.gtlcore.gtlcore.common.data.GTLRecipeTypes.SPACE_COSMIC_PROBE_RECEIVERS_RECIPES;
 import static org.gtlcore.gtlcore.common.data.machines.AdditionalMultiBlockMachine.TRANSFINITE_COMPUTATION_ARRAY;
 import static org.gtlcore.gtlcore.integration.ae2.wireless.GTLWirelessAeContent.WIRELESS_NETWORK_BOOKMARK;
 import static org.gtlcore.gtlcore.integration.ae2.wireless.GTLWirelessAeContent.WIRELESS_NETWORK_CORE;
+import static org.gtlcore.gtlcore.integration.wildcard.WildcardPatternCompatImpl.ME_STOCKING_WILDCARD_PATTERN_BUFFER;
 import static org.gtlcore.gtlcore.integration.wildcard.WildcardPatternCompatImpl.ME_WILDCARD_PATTERN_BUFFER;
 import static org.gtlcore.gtlcore.utils.Registries.getItem;
 
@@ -841,6 +843,31 @@ public class MachineRecipe {
                     .EUt(GTValues.VA[GTValues.UHV])
                     .duration(600)
                     .stationResearch(b -> b.researchStack(ME_EXTEND_PATTERN_BUFFER.asStack())
+                            .dataStack(GTItems.TOOL_DATA_MODULE.asStack())
+                            .EUt(GTValues.VA[GTValues.UEV])
+                            .CWUt(256))
+                    .save(provider);
+
+            ASSEMBLY_LINE_RECIPES.recipeBuilder("me_stocking_wildcard_pattern_buffer")
+                    .inputItems(ME_FINAL_PATTERN_BUFFER)
+                    .inputItems(EMITTER_UHV, 4)
+                    .inputItems(CIRCUIT.getIngredient(UEV), 16)
+                    .inputItems(TAG_FILTER_ME_STOCK_BUS_PART_MACHINE, 4)
+                    .inputItems(getItem("kubejs:low_frequency_laser"), 8)
+                    .inputItems(getItem("kubejs:medium_frequency_laser"), 8)
+                    .inputItems(getItem("kubejs:high_frequency_laser"), 8)
+                    .inputItems(ORE_DICTIONARY_FILTER, 32)
+                    .inputItems(TAG_FLUID_FILTER, 32)
+                    .inputItems(plate, Kevlar, 8)
+                    .inputItems(plate, CarbonNanotubes, 8)
+                    .inputItems(wireFine, Enderite, 36)
+                    .inputFluids(GTLMaterials.MutatedLivingSolder.getFluid(576))
+                    .inputFluids(Lubricant.getFluid(500))
+                    .inputFluids(GTLMaterials.UuAmplifier.getFluid(576))
+                    .outputItems(ME_STOCKING_WILDCARD_PATTERN_BUFFER)
+                    .EUt(GTValues.VA[GTValues.UHV])
+                    .duration(600)
+                    .stationResearch(b -> b.researchStack(ME_FINAL_PATTERN_BUFFER.asStack())
                             .dataStack(GTItems.TOOL_DATA_MODULE.asStack())
                             .EUt(GTValues.VA[GTValues.UEV])
                             .CWUt(256))

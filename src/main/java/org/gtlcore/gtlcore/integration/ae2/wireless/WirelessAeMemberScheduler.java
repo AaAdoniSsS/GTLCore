@@ -137,7 +137,7 @@ final class WirelessAeMemberScheduler {
         deadlines.remove(entry);
         if (manual) {
             retrying.remove(entry);
-            if (entry.failures > 0) WirelessAeDiagnostics.count("retry_manual_reset");
+
             entry.failures = entry.backoff = 0;
             entry.firstFailure = -1;
         }
@@ -272,11 +272,11 @@ final class WirelessAeMemberScheduler {
             }
             if (invalidated >= 64) break;
         }
-        if (invalidated > 0) WirelessAeDiagnostics.add("topology_invalidations_promoted", invalidated);
+
         for (int i = 0; i < 32 && !deadlines.isEmpty() && deadlines.first().due <= tick &&
                 System.nanoTime() < deadline; i++) {
             Entry entry = deadlines.pollFirst();
-            if (entry.failures > 0) WirelessAeDiagnostics.count("retry_due_enqueued");
+
             ready(networks.get(entry.key.frequency()), entry);
         }
         int operations = 0;
@@ -291,7 +291,6 @@ final class WirelessAeMemberScheduler {
                 network.serviceTick = tick;
                 network.serviced = 0;
             }
-            long started = WirelessAeDiagnostics.start();
             while (network.serviced < 8 && operations < 32 && System.nanoTime() < deadline) {
                 if (!network.retired.isEmpty()) {
                     Map<WirelessAeSavedData.MemberKey, IGridConnection> map = network.retired.peekFirst();
@@ -299,48 +298,45 @@ final class WirelessAeMemberScheduler {
                     IGridConnection connection = entries.next().getValue();
                     entries.remove();
                     if (map.isEmpty()) network.retired.removeFirst();
-                    WirelessAeDiagnostics.run("connection_cleanup", () -> destroy.accept(connection));
-                    WirelessAeDiagnostics.count("stale_connections_removed");
+                    destroy.accept(connection);
+
                 } else if (!network.ready.isEmpty()) {
                     var entries = network.ready.entrySet().iterator();
                     Entry entry = entries.next().getValue();
                     entries.remove();
-                    WirelessAeDiagnostics.queueWait((int) Math.min(Integer.MAX_VALUE, tick - entry.queuedAt));
-                    WirelessAeDiagnostics.sample("network_work", frequency, entry.key.member(), entry.state.name());
+
                     State previous = entry.state;
                     entry.state = State.VALIDATING;
-                    if (entry.failures > 0) WirelessAeDiagnostics.count("retry_attempted");
+
                     Outcome outcome;
                     try {
                         outcome = processor.process(entry.key, previous);
                     } catch (RuntimeException error) {
-                        WirelessAeDiagnostics.failure("member_work", frequency, entry.key.member(), error);
+
                         outcome = new Outcome(State.RETRY_WAIT, "exception");
                     }
                     // Callbacks may unbind or replace an entry while AE2 updates its grid.
                     if (network.members.get(entry.key) == entry) finish(network, entry, outcome);
-                    WirelessAeDiagnostics.count("members_processed");
+
                 } else break;
                 operations++;
                 network.serviced++;
             }
-            WirelessAeDiagnostics.max("network_members_per_tick_max", network.serviced);
-            WirelessAeDiagnostics.end("network_maintenance", started);
+
             if (!network.ready.isEmpty() || !network.retired.isEmpty() || network.invalidationActive) {
-                if (network.serviced >= 8) WirelessAeDiagnostics.count("network_member_quota_hits");
+
                 runnable.putIfAbsent(frequency, network);
             }
             trim(frequency, network);
         }
-        if (!runnable.isEmpty() && (operations >= 32 || System.nanoTime() >= deadline))
-            WirelessAeDiagnostics.count("budget_exhaustions");
+        if (!runnable.isEmpty() && (operations >= 32 || System.nanoTime() >= deadline)) {}
     }
 
     private void finish(Network network, Entry entry, Outcome outcome) {
         State old = entry.state;
         entry.state = outcome.state();
         entry.reason = outcome.reason();
-        WirelessAeDiagnostics.count("state_" + entry.state);
+
         if (entry.state == State.CLEANUP) {
             retrying.remove(entry);
             network.members.remove(entry.key);
@@ -354,11 +350,10 @@ final class WirelessAeMemberScheduler {
             if (entry.firstFailure < 0) entry.firstFailure = tick;
             entry.failures = Math.min(Integer.MAX_VALUE - 1, entry.failures) + 1;
             entry.backoff = Math.min(400, entry.backoff == 0 ? 40 : entry.backoff * 2);
-            WirelessAeDiagnostics.count("retry_scheduled");
-            WirelessAeDiagnostics.sample("retry_failure", entry.key.frequency(), entry.key.member(), entry.reason);
+
         } else {
             retrying.remove(entry);
-            if (entry.failures > 0) WirelessAeDiagnostics.count("retry_recovered");
+
             entry.failures = entry.backoff = 0;
             entry.firstFailure = -1;
         }
@@ -376,34 +371,6 @@ final class WirelessAeMemberScheduler {
 
     int retryCount() {
         return retrying.size();
-    }
-
-    void diagnostics() {
-        if (!WirelessAeDiagnostics.enabled()) return;
-        int ready = 0;
-        int pendingInvalidation = 0;
-        long oldest = 0;
-        int streak = 0;
-        for (Network n : networks.values()) {
-            ready += n.ready.size();
-            if (n.invalidationActive) pendingInvalidation += Math.max(0, n.insertionOrder.size() - n.invalidationCursor);
-        }
-        int sampled = 0;
-        var samples = retrying.iterator();
-        while (sampled < 8 && samples.hasNext()) {
-            Entry e = samples.next();
-            sampled++;
-            oldest = Math.max(oldest, tick - e.firstFailure);
-            streak = Math.max(streak, e.failures);
-            WirelessAeDiagnostics.sample("retry_pending", e.key.frequency(), e.key.member(),
-                    "reason=" + e.reason + ",age=" + (tick - e.firstFailure) + ",failures=" + e.failures + ",due=" + e.due);
-        }
-        WirelessAeDiagnostics.gauge("retry_diagnostic_members_sampled", sampled);
-        WirelessAeDiagnostics.gauge("ready_members", ready);
-        WirelessAeDiagnostics.gauge("topology_invalidation_pending", pendingInvalidation);
-        WirelessAeDiagnostics.gauge("retry_sample_oldest_age_ticks", oldest);
-        WirelessAeDiagnostics.gauge("retry_sample_failure_streak_max", streak);
-        WirelessAeDiagnostics.gauge("scheduled_members", deadlines.size());
     }
 
     private void trim(UUID frequency, Network network) {

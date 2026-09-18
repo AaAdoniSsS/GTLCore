@@ -2,7 +2,6 @@ package org.gtlcore.gtlcore.api.machine;
 
 import org.gtlcore.gtlcore.common.machine.multiblock.electric.TransfiniteComputationArrayMachine;
 import org.gtlcore.gtlcore.config.ConfigHolder;
-import org.gtlcore.gtlcore.integration.ae2.crafting.transfinite.TransfiniteComputationArrayLifecycleLogger;
 
 import com.gregtechceu.gtceu.api.machine.MetaMachine;
 import com.gregtechceu.gtceu.integration.ae2.machine.feature.IGridConnectedMachine;
@@ -93,10 +92,7 @@ public final class MachineStartupTickBudget {
             }
             if (gameTime != Long.MIN_VALUE &&
                     (normalAdmitted > 0 || normalDeferred > 0 || aeAdmitted > 0 || aeDeferred > 0 || critical > 0)) {
-                TransfiniteComputationArrayLifecycleLogger.logMachineStartupBudget(
-                        level, gameTime, normalBudget, normalAdmitted, normalDeferred,
-                        aeBudget, aeAdmitted, aeDeferred, critical, timeBudgetNanos, elapsedNanos,
-                        normalTimeDeferred, aeTimeDeferred);
+
             }
             gameTime = currentGameTime;
             normalBudget = currentNormalBudget;

@@ -1,7 +1,9 @@
 package org.gtlcore.gtlcore.client.ae2;
 
+import java.math.BigInteger;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.function.Consumer;
 
@@ -27,8 +29,13 @@ final class MeInventoryAmountCache<K> {
     }
 
     OptionalLong getOrRequest(K key, long now, Consumer<K> requestSender) {
+        Optional<BigInteger> exact = getExactOrRequest(key, now, requestSender);
+        return exact.isPresent() ? OptionalLong.of(exact.get().min(BigInteger.valueOf(Long.MAX_VALUE)).longValue()) : OptionalLong.empty();
+    }
+
+    Optional<BigInteger> getExactOrRequest(K key, long now, Consumer<K> requestSender) {
         Entry result = results.get(key);
-        OptionalLong displayedAmount = displayedAmount(result);
+        Optional<BigInteger> displayedAmount = displayedAmount(result);
         if (result != null && now < result.expiresAt()) {
             return displayedAmount;
         }
@@ -48,9 +55,13 @@ final class MeInventoryAmountCache<K> {
     }
 
     void receive(K key, boolean available, long amount, long now) {
+        receive(key, available, BigInteger.valueOf(amount), now);
+    }
+
+    void receive(K key, boolean available, BigInteger amount, long now) {
         pending.remove(key);
         long lifetime = available ? availableLifetime : unavailableLifetime;
-        results.put(key, new Entry(available, Math.max(0, amount), now + lifetime));
+        results.put(key, new Entry(available, amount.max(BigInteger.ZERO), now + lifetime));
     }
 
     void clear() {
@@ -58,8 +69,8 @@ final class MeInventoryAmountCache<K> {
         pending.clear();
     }
 
-    private static OptionalLong displayedAmount(Entry result) {
-        return result != null && result.available() ? OptionalLong.of(result.amount()) : OptionalLong.empty();
+    private static Optional<BigInteger> displayedAmount(Entry result) {
+        return result != null && result.available() ? Optional.of(result.amount()) : Optional.empty();
     }
 
     private <V> Map<K, V> createBoundedMap() {
@@ -72,5 +83,5 @@ final class MeInventoryAmountCache<K> {
         };
     }
 
-    private record Entry(boolean available, long amount, long expiresAt) {}
+    private record Entry(boolean available, BigInteger amount, long expiresAt) {}
 }

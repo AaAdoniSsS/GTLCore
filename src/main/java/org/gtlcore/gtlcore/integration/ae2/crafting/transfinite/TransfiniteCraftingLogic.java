@@ -1,7 +1,6 @@
 package org.gtlcore.gtlcore.integration.ae2.crafting.transfinite;
 
 import org.gtlcore.gtlcore.integration.ae2.AEUtils;
-import org.gtlcore.gtlcore.integration.ae2.crafting.CraftingDispatchPerformanceLogger;
 import org.gtlcore.gtlcore.integration.ae2.crafting.CraftingDispatchReason;
 import org.gtlcore.gtlcore.integration.ae2.crafting.CraftingDispatchReasonState;
 import org.gtlcore.gtlcore.integration.ae2.crafting.CraftingPatternAutoExpand;
@@ -74,7 +73,6 @@ public final class TransfiniteCraftingLogic implements ICraftingJobSuspension, I
     private boolean batchingChanges;
     private boolean dirty;
     private long lastModifiedOnTick = TickHandler.instance().getCurrentTick();
-    private long lastPerformanceLogTick = Long.MIN_VALUE;
 
     TransfiniteCraftingLogic(TransfiniteCraftingCPU cpu) {
         this.cpu = cpu;
@@ -150,30 +148,14 @@ public final class TransfiniteCraftingLogic implements ICraftingJobSuspension, I
     public void tickCraftingLogic(IEnergyService energyService, CraftingService craftingService) {
         this.batchingChanges = true;
         try {
-            if (!CraftingDispatchPerformanceLogger.isEnabled()) {
-                tickCraftingLogicInternal(energyService, craftingService, null);
-                return;
-            }
-
-            long startedAt = System.nanoTime();
-            var metrics = new CraftingDispatchPerformanceLogger.Metrics();
-            long dispatched = tickCraftingLogicInternal(energyService, craftingService, metrics);
-            long currentTick = TickHandler.instance().getCurrentTick();
-            if (CraftingDispatchPerformanceLogger.logIfNeeded(
-                    "transfinite", this.cpu.getLevel(), this.cpu.getHost().getPos(), this.cpu.getId(),
-                    System.nanoTime() - startedAt, dispatched, this.cpu.getParallelism(), getTaskKindCount(),
-                    getWaitingKindCount(), this.inventory.list.size(), this.cpu.getHost().getActiveJobCount(),
-                    this.cantStoreItems, metrics, currentTick, this.lastPerformanceLogTick)) {
-                this.lastPerformanceLogTick = currentTick;
-            }
+            tickCraftingLogicInternal(energyService, craftingService);
         } finally {
             this.batchingChanges = false;
             flushDirty();
         }
     }
 
-    private long tickCraftingLogicInternal(IEnergyService energyService, CraftingService craftingService,
-                                           @Nullable CraftingDispatchPerformanceLogger.Metrics metrics) {
+    private long tickCraftingLogicInternal(IEnergyService energyService, CraftingService craftingService) {
         this.collectDispatchReasons = !this.listeners.isEmpty();
         this.workingDispatchReasons.clear();
 
@@ -211,7 +193,7 @@ public final class TransfiniteCraftingLogic implements ICraftingJobSuspension, I
             long remainingOperations = dispatchBudget;
             while (remainingOperations > 0) {
                 long pushed = executeCrafting(
-                        remainingOperations, craftingService, energyService, this.cpu.getLevel(), metrics);
+                        remainingOperations, craftingService, energyService, this.cpu.getLevel());
                 if (pushed <= 0) {
                     break;
                 }
@@ -241,13 +223,7 @@ public final class TransfiniteCraftingLogic implements ICraftingJobSuspension, I
         return this.job == null ? 0 : this.job.getWaitingFor().list.size();
     }
 
-    public long executeCrafting(long maxDispatches, CraftingService craftingService, IEnergyService energyService,
-                                Level level) {
-        return executeCrafting(maxDispatches, craftingService, energyService, level, null);
-    }
-
-    private long executeCrafting(long maxDispatches, CraftingService craftingService, IEnergyService energyService,
-                                 Level level, @Nullable CraftingDispatchPerformanceLogger.Metrics metrics) {
+    public long executeCrafting(long maxDispatches, CraftingService craftingService, IEnergyService energyService, Level level) {
         TransfiniteCraftingJob currentJob = this.job;
         if (currentJob == null || maxDispatches <= 0) {
             return 0;
@@ -272,9 +248,6 @@ public final class TransfiniteCraftingLogic implements ICraftingJobSuspension, I
             int taskReasonMask = 0;
 
             for (var provider : craftingService.getProviders(details)) {
-                if (metrics != null) {
-                    metrics.recordProviderVisit();
-                }
                 providerSeen = true;
                 if (provider.isBusy()) {
                     continue;
@@ -289,53 +262,30 @@ public final class TransfiniteCraftingLogic implements ICraftingJobSuspension, I
 
                 KeyCounter expectedOutputs = new KeyCounter();
                 KeyCounter expectedContainerItems = new KeyCounter();
-                long materialStartedAt = metrics == null ? 0 : System.nanoTime();
                 KeyCounter[] craftingContainer = processing ?
                         (autoExpand ? AEUtils.extractForProcessingPattern(
                                 details, this.inventory, expectedOutputs, operations) :
                                 AEUtils.extractForProcessingPattern(details, this.inventory, expectedOutputs)) :
                         AEUtils.extractForCraftPattern(
                                 details, this.inventory, level, expectedOutputs, expectedContainerItems);
-                if (metrics != null) {
-                    metrics.recordMaterialAttempt(System.nanoTime() - materialStartedAt,
-                            craftingContainer != null);
-                }
 
                 if (craftingContainer == null) {
                     taskReasonMask |= CraftingDispatchReason.WAITING_FOR_INPUTS.mask();
                     break;
                 }
-
-                long energyStartedAt = metrics == null ? 0 : System.nanoTime();
                 double patternPower = CraftingPatternPower.forCpu(
                         CraftingCpuHelper.calculatePatternPower(craftingContainer), autoExpand, operations);
                 boolean hasPower = energyService.extractAEPower(
                         patternPower, Actionable.SIMULATE, PowerMultiplier.CONFIG) >=
                         patternPower - POWER_EPSILON;
-                if (metrics != null) {
-                    metrics.recordEnergyWork(System.nanoTime() - energyStartedAt);
-                }
                 if (!hasPower) {
-                    long reinjectStartedAt = metrics == null ? 0 : System.nanoTime();
                     CraftingCpuHelper.reinjectPatternInputs(this.inventory, craftingContainer);
-                    if (metrics != null) {
-                        metrics.recordMaterialWork(System.nanoTime() - reinjectStartedAt);
-                    }
                     taskReasonMask |= CraftingDispatchReason.INSUFFICIENT_POWER.mask();
                     break;
                 }
-
-                long pushStartedAt = metrics == null ? 0 : System.nanoTime();
                 boolean pushed = provider.pushPattern(details, craftingContainer);
-                if (metrics != null) {
-                    metrics.recordPush(System.nanoTime() - pushStartedAt, pushed ? operations : 0);
-                }
                 if (!pushed) {
-                    long reinjectStartedAt = metrics == null ? 0 : System.nanoTime();
                     CraftingCpuHelper.reinjectPatternInputs(this.inventory, craftingContainer);
-                    if (metrics != null) {
-                        metrics.recordMaterialWork(System.nanoTime() - reinjectStartedAt);
-                    }
                     providerRejected = true;
                     continue;
                 }

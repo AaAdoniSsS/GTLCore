@@ -62,6 +62,11 @@ public final class WirelessAeClientPacketHandler {
                 menu -> menu.setSelectedContents(packet.address(), packet.contents(), packet.details()));
     }
 
+    public static void handleMEChamberSnapshot(WirelessAePackets.SyncMEChamberSnapshotPacket packet) {
+        withOpenMenu(packet.containerId(), MEChamberManagerTerminalMenu.class,
+                menu -> menu.receiveSnapshot(packet.contents(), packet.revision(), packet.totalBytes(), packet.offset(), packet.data()));
+    }
+
     private static <M extends AbstractContainerMenu> void withOpenMenu(
                                                                        int containerId, Class<M> menuType, Consumer<M> action) {
         if (Minecraft.getInstance().player == null) {

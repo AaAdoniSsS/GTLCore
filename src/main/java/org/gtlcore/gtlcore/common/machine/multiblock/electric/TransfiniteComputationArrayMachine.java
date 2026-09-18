@@ -1,7 +1,6 @@
 package org.gtlcore.gtlcore.common.machine.multiblock.electric;
 
 import org.gtlcore.gtlcore.common.machine.multiblock.part.ae.MECraftingCPUInterfacePartMachine;
-import org.gtlcore.gtlcore.integration.ae2.crafting.transfinite.TransfiniteComputationArrayLifecycleLogger;
 import org.gtlcore.gtlcore.integration.ae2.crafting.transfinite.TransfiniteCraftingCPU;
 import org.gtlcore.gtlcore.utils.NumberUtils;
 
@@ -143,45 +142,30 @@ public class TransfiniteComputationArrayMachine extends MultiblockControllerMach
             this.patternCheckQueued.set(false);
             return;
         }
-        boolean lifecycleLogging = TransfiniteComputationArrayLifecycleLogger.isEnabled();
-        long startedAtNanos = lifecycleLogging ? System.nanoTime() : 0L;
         long startedGameTime = serverLevel.getGameTime();
         boolean formedBefore = isFormed();
-        TransfiniteComputationArrayLifecycleLogger.logStructureCheckStarted(
-                serverLevel, getPos(), periodID, eager, formedBefore, startedGameTime, startedGameTime, 0L);
 
         if (isInValid()) {
-            TransfiniteComputationArrayLifecycleLogger.logStructureCheckAborted(
-                    serverLevel, getPos(), periodID, eager, "machine_invalid", 0L,
-                    System.nanoTime() - startedAtNanos);
+
             this.patternCheckQueued.set(false);
             return;
         }
         if (getLevel() != serverLevel) {
-            TransfiniteComputationArrayLifecycleLogger.logStructureCheckAborted(
-                    serverLevel, getPos(), periodID, eager, "level_changed", 0L,
-                    System.nanoTime() - startedAtNanos);
+
             this.patternCheckQueued.set(false);
             return;
         }
 
-        long checkStartedAtNanos = lifecycleLogging ? System.nanoTime() : 0L;
         final boolean matched;
         try {
             matched = checkPatternWithTryLock();
         } catch (RuntimeException | Error exception) {
-            TransfiniteComputationArrayLifecycleLogger.logStructureCheckFailure(
-                    serverLevel, getPos(), periodID, eager, 0L,
-                    System.nanoTime() - startedAtNanos, exception);
+
             this.patternCheckQueued.set(false);
             throw exception;
         }
-        long checkFinishedAtNanos = lifecycleLogging ? System.nanoTime() : 0L;
-        long checkNanos = checkFinishedAtNanos - checkStartedAtNanos;
         if (!matched) {
-            TransfiniteComputationArrayLifecycleLogger.logStructureCheck(
-                    serverLevel, getPos(), periodID, eager, formedBefore, false,
-                    0L, checkNanos, checkFinishedAtNanos - startedAtNanos);
+
             this.patternCheckQueued.set(false);
             return;
         }
@@ -189,34 +173,24 @@ public class TransfiniteComputationArrayMachine extends MultiblockControllerMach
         this.eagerCheckTicks.set(0);
         try {
             serverLevel.getServer().execute(() -> {
-                long formationStartedAtNanos = lifecycleLogging ? System.nanoTime() : 0L;
-                long queuedNanos = formationStartedAtNanos - checkFinishedAtNanos;
                 getPatternLock().lock();
                 try {
                     if (isInValid()) {
-                        TransfiniteComputationArrayLifecycleLogger.logStructureCheckAborted(
-                                serverLevel, getPos(), periodID, eager, "machine_invalid", queuedNanos,
-                                System.nanoTime() - startedAtNanos);
+
                         return;
                     }
                     if (getLevel() != serverLevel) {
-                        TransfiniteComputationArrayLifecycleLogger.logStructureCheckAborted(
-                                serverLevel, getPos(), periodID, eager, "level_changed", queuedNanos,
-                                System.nanoTime() - startedAtNanos);
+
                         return;
                     }
-                    TransfiniteComputationArrayLifecycleLogger.logStructureCheck(
-                            serverLevel, getPos(), periodID, eager, formedBefore, true,
-                            queuedNanos, checkNanos, System.nanoTime() - startedAtNanos);
+
                     setFlipped(getMultiblockState().isNeededFlip());
                     onStructureFormed();
                     var savedData = MultiblockWorldSavedData.getOrCreate(serverLevel);
                     savedData.addMapping(getMultiblockState());
                     savedData.removeAsyncLogic(this);
                 } catch (RuntimeException | Error exception) {
-                    TransfiniteComputationArrayLifecycleLogger.logStructureCheckFailure(
-                            serverLevel, getPos(), periodID, eager, queuedNanos,
-                            System.nanoTime() - startedAtNanos, exception);
+
                     throw exception;
                 } finally {
                     getPatternLock().unlock();
@@ -224,9 +198,7 @@ public class TransfiniteComputationArrayMachine extends MultiblockControllerMach
                 }
             });
         } catch (RuntimeException | Error exception) {
-            TransfiniteComputationArrayLifecycleLogger.logStructureCheckFailure(
-                    serverLevel, getPos(), periodID, eager, 0L,
-                    System.nanoTime() - startedAtNanos, exception);
+
             this.patternCheckQueued.set(false);
             throw exception;
         }
@@ -469,40 +441,20 @@ public class TransfiniteComputationArrayMachine extends MultiblockControllerMach
 
     @Override
     public void onStructureFormed() {
-        TransfiniteComputationArrayLifecycleLogger.logStructureFormationStarted(getLevel(), getPos());
-        boolean lifecycleLogging = TransfiniteComputationArrayLifecycleLogger.isEnabled();
-        long startedAtNanos = lifecycleLogging ? System.nanoTime() : 0L;
         try {
-            long superclassStartedAtNanos = lifecycleLogging ? System.nanoTime() : 0L;
             super.onStructureFormed();
-            long superclassFinishedAtNanos = lifecycleLogging ? System.nanoTime() : 0L;
 
-            long interfaceLookupStartedAtNanos = lifecycleLogging ? System.nanoTime() : 0L;
             var parts = getParts();
             this.networkInterface = parts.stream()
                     .filter(MECraftingCPUInterfacePartMachine.class::isInstance)
                     .map(MECraftingCPUInterfacePartMachine.class::cast)
                     .findFirst()
                     .orElse(null);
-            long interfaceLookupFinishedAtNanos = lifecycleLogging ? System.nanoTime() : 0L;
 
-            long notificationStartedAtNanos = lifecycleLogging ? System.nanoTime() : 0L;
             notifyCraftingCpuChange();
-            long finishedAtNanos = lifecycleLogging ? System.nanoTime() : 0L;
-            TransfiniteComputationArrayLifecycleLogger.logStructureFormed(
-                    getLevel(), getPos(), parts.size(),
-                    this.networkInterface == null ? null : this.networkInterface.getPos(),
-                    this.networkInterface != null && this.networkInterface.isOnline(),
-                    this.networkInterface != null && this.networkInterface.getMainNode().isOnline(),
-                    this.networkInterface != null && this.networkInterface.getMainNode().isPowered(),
-                    this.networkInterface != null && this.networkInterface.getMainNode().isActive(),
-                    this.networkInterface != null && this.networkInterface.getMainNode().getGrid() != null,
-                    superclassFinishedAtNanos - superclassStartedAtNanos,
-                    interfaceLookupFinishedAtNanos - interfaceLookupStartedAtNanos,
-                    finishedAtNanos - notificationStartedAtNanos, finishedAtNanos - startedAtNanos);
+
         } catch (RuntimeException | Error exception) {
-            TransfiniteComputationArrayLifecycleLogger.logStructureFormationFailure(
-                    getLevel(), getPos(), System.nanoTime() - startedAtNanos, exception);
+
             throw exception;
         }
     }
@@ -510,8 +462,6 @@ public class TransfiniteComputationArrayMachine extends MultiblockControllerMach
     @Override
     public void onStructureInvalid() {
         MECraftingCPUInterfacePartMachine previousInterface = this.networkInterface;
-        boolean lifecycleLogging = TransfiniteComputationArrayLifecycleLogger.isEnabled();
-        long startedAtNanos = lifecycleLogging ? System.nanoTime() : 0L;
         boolean previousInterfaceOnline = previousInterface != null && previousInterface.isOnline();
         boolean previousNodeActive = previousInterface != null && previousInterface.getMainNode().isActive();
         boolean previousGridPresent = previousInterface != null && previousInterface.getMainNode().getGrid() != null;
@@ -520,10 +470,6 @@ public class TransfiniteComputationArrayMachine extends MultiblockControllerMach
         if (previousInterface != null) {
             previousInterface.notifyCraftingCpuChange();
         }
-        TransfiniteComputationArrayLifecycleLogger.logStructureInvalidated(
-                getLevel(), getPos(), previousInterface == null ? null : previousInterface.getPos(),
-                previousInterfaceOnline, previousNodeActive, previousGridPresent,
-                System.nanoTime() - startedAtNanos);
     }
 
     private void notifyCraftingCpuChange() {

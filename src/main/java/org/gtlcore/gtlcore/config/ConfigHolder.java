@@ -14,8 +14,6 @@ public class ConfigHolder {
     public static final int DEFAULT_MACHINE_STARTUP_TICK_BUDGET_PER_LEVEL = 32;
     public static final int DEFAULT_MACHINE_STARTUP_AE_TICK_BUDGET_PER_LEVEL = 32;
     public static final int DEFAULT_MACHINE_STARTUP_TICK_TIME_BUDGET_MILLIS = 10;
-    public static final int DEFAULT_WORLD_LOAD_SLOW_CHUNK_STAGE_WARNING_MILLIS = 100;
-    public static final int DEFAULT_WORLD_LOAD_CHUNK_GENERATION_SUMMARY_INTERVAL = 256;
     public static final int DEFAULT_GTCEU_JEI_SLOW_RECIPE_TYPE_WARNING_MILLIS = 100;
     private static final Object LOCK = new Object();
 
@@ -146,52 +144,17 @@ public class ConfigHolder {
     public static class DebugLoggingOptions {
 
         @Configurable
+        @Configurable.Range(min = 1, max = 60000)
+        public int gtceuJeiSlowRecipeTypeWarningMillis = DEFAULT_GTCEU_JEI_SLOW_RECIPE_TYPE_WARNING_MILLIS;
+
+        @Configurable
         @Configurable.Comment("config.gtlcore.option.enableAe2ManualCraftingInventoryLockLogging.comment")
         public boolean enableAe2ManualCraftingInventoryLockLogging = false;
         @Configurable
         @Configurable.Comment("config.gtlcore.option.enableMaxFastCalculationLogging.comment")
         public boolean enableMaxFastCalculationLogging = false;
         @Configurable
-        @Configurable.Comment("config.gtlcore.option.enableAe2CraftingDispatchPerformanceLogging.comment")
-        public boolean enableAe2CraftingDispatchPerformanceLogging = false;
-        @Configurable
-        @Configurable.Comment("config.gtlcore.option.enableTransfiniteComputationArrayLifecycleLogging.comment")
-        public boolean enableTransfiniteComputationArrayLifecycleLogging = false;
-        @Configurable
-        @Configurable.Comment("config.gtlcore.option.enableWorldLoadPerformanceLogging.comment")
-        public boolean enableWorldLoadPerformanceLogging = false;
-        @Configurable
-        @Configurable.Comment("config.gtlcore.option.worldLoadSlowChunkStageWarningMillis.comment")
-        @Configurable.Range(min = 1, max = 60000)
-        public int worldLoadSlowChunkStageWarningMillis = DEFAULT_WORLD_LOAD_SLOW_CHUNK_STAGE_WARNING_MILLIS;
-        @Configurable
-        @Configurable.Comment("config.gtlcore.option.worldLoadChunkGenerationSummaryInterval.comment")
-        @Configurable.Range(min = 1, max = 1048576)
-        public int worldLoadChunkGenerationSummaryInterval = DEFAULT_WORLD_LOAD_CHUNK_GENERATION_SUMMARY_INTERVAL;
-        @Configurable
-        @Configurable.Comment("config.gtlcore.option.gtceuJeiSlowRecipeTypeWarningMillis.comment")
-        @Configurable.Range(min = 1, max = 60000)
-        public int gtceuJeiSlowRecipeTypeWarningMillis = DEFAULT_GTCEU_JEI_SLOW_RECIPE_TYPE_WARNING_MILLIS;
-        @Configurable
-        @Configurable.Comment("config.gtlcore.option.ae2CraftingDispatchPerformanceWarningMicros.comment")
-        @Configurable.Range(min = 1)
-        public int ae2CraftingDispatchPerformanceWarningMicros = 5000;
-        @Configurable
-        @Configurable.Comment("config.gtlcore.option.ae2CraftingDispatchPerformanceLogIntervalTicks.comment")
-        @Configurable.Range(min = 1)
-        public int ae2CraftingDispatchPerformanceLogIntervalTicks = 200;
-        @Configurable
         @Configurable.Comment("config.gtlcore.option.enableBatchProcessingLogging.comment")
         public boolean enableBatchProcessingLogging = false;
-        @Configurable
-        @Configurable.Comment("config.gtlcore.option.enableSpaceElevatorConnectionLogging.comment")
-        public boolean enableSpaceElevatorConnectionLogging = false;
-        @Configurable
-        @Configurable.Comment("config.gtlcore.option.enableWirelessAeNetworkPerformanceLogging.comment")
-        public boolean enableWirelessAeNetworkPerformanceLogging = false;
-        @Configurable
-        @Configurable.Comment("config.gtlcore.option.wirelessAeNetworkPerformanceLogIntervalTicks.comment")
-        @Configurable.Range(min = 20)
-        public int wirelessAeNetworkPerformanceLogIntervalTicks = 1200;
     }
 }

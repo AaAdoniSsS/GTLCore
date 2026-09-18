@@ -17,6 +17,9 @@ import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.AmountFormat;
 
+import java.math.BigInteger;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
 
@@ -36,6 +39,16 @@ public final class MeInventoryAmountClient {
 
     private MeInventoryAmountClient() {}
 
+    private static final Map<AEKey, TooltipText> TEXT = new LinkedHashMap<>(256, 0.75f, true) {
+
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<AEKey, TooltipText> eldest) {
+            return size() > MAX_CACHE_ENTRIES;
+        }
+    };
+
+    private record TooltipText(BigInteger amount, Component text) {}
+
     public static OptionalLong getAmount(AEKey key) {
         if (!(key instanceof AEItemKey || key instanceof AEFluidKey)) {
             return OptionalLong.empty();
@@ -48,14 +61,22 @@ public final class MeInventoryAmountClient {
     }
 
     public static Optional<Component> getTooltip(AEKey key) {
-        OptionalLong amount = getAmount(key);
+        ClientLevel level = Minecraft.getInstance().level;
+        if (level == null || !(key instanceof AEItemKey || key instanceof AEFluidKey)) return Optional.empty();
+        Optional<BigInteger> amount = CACHE.getExactOrRequest(key, level.getGameTime(), MeInventoryAmountPackets::sendRequest);
         if (amount.isEmpty()) {
             return Optional.empty();
         }
-        return Optional.of(Component.translatable(
+        TooltipText previous = TEXT.get(key);
+        if (previous != null && previous.amount().equals(amount.get())) return Optional.of(previous.text());
+        String formatted = amount.get().compareTo(BigInteger.valueOf(Long.MAX_VALUE)) <= 0 ?
+                key.formatAmount(amount.get().longValue(), AmountFormat.FULL) :
+                FastCellDisplayText.create(amount.get(), key.getAmountPerUnit(), key instanceof AEFluidKey ? "B" : "").full();
+        Component text = Component.translatable(
                 TOOLTIP_TRANSLATION_KEY,
-                key.formatAmount(amount.getAsLong(), AmountFormat.FULL))
-                .withStyle(ChatFormatting.DARK_AQUA));
+                formatted).withStyle(ChatFormatting.DARK_AQUA);
+        TEXT.put(key, new TooltipText(amount.get(), text));
+        return Optional.of(text);
     }
 
     public static void receive(MeInventoryAmountPackets.Response packet) {
@@ -67,6 +88,7 @@ public final class MeInventoryAmountClient {
 
     public static void clear() {
         CACHE.clear();
+        TEXT.clear();
     }
 
     @SubscribeEvent

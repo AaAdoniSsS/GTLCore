@@ -79,6 +79,13 @@ public final class MEChamberManagerTerminalScreen extends AEBaseScreen<MEChamber
             .thenComparingInt(entry -> entry.address().pos().getY())
             .thenComparingInt(entry -> entry.address().pos().getZ());
 
+    private List<MEChamberManagerTerminalMenu.Entry> cachedEntrySource;
+    private String cachedSearch;
+    private List<MEChamberManagerTerminalMenu.Entry> cachedVisibleEntries = List.of();
+    private List<MEChamberManagerTerminalMenu.SlotContent> cachedContentSource;
+    private MEChamberManagerTerminalMenu.ChamberDetails cachedPageDetails;
+    private List<ContentPage> cachedContentPages = List.of();
+
     private EditBox searchField;
     private EditBox amountField;
     private EditBox priorityField;
@@ -118,6 +125,8 @@ public final class MEChamberManagerTerminalScreen extends AEBaseScreen<MEChamber
 
     @Override
     protected void init() {
+        cachedEntrySource = null;
+        cachedContentSource = null;
         configuratorOverlay.close();
         super.init();
         searchField = new EditBox(
@@ -804,6 +813,9 @@ public final class MEChamberManagerTerminalScreen extends AEBaseScreen<MEChamber
 
     private List<MEChamberManagerTerminalMenu.Entry> visibleEntries() {
         String search = searchField == null ? "" : searchField.getValue().trim();
+        if (cachedEntrySource == menu.getEntries() && search.equals(cachedSearch)) return cachedVisibleEntries;
+        cachedEntrySource = menu.getEntries();
+        cachedSearch = search;
         List<MEChamberManagerTerminalMenu.Entry> entries = new ArrayList<>();
         for (MEChamberManagerTerminalMenu.Entry entry : menu.getEntries()) {
             if (search.isEmpty() || matches(entry, search)) {
@@ -811,10 +823,20 @@ public final class MEChamberManagerTerminalScreen extends AEBaseScreen<MEChamber
             }
         }
         entries.sort(ENTRY_ORDER);
-        return entries;
+        cachedVisibleEntries = List.copyOf(entries);
+        return cachedVisibleEntries;
     }
 
     private List<ContentPage> contentPages() {
+        if (cachedContentSource != menu.getSelectedContents() || !menu.getSelectedDetails().equals(cachedPageDetails)) {
+            cachedContentSource = menu.getSelectedContents();
+            cachedPageDetails = menu.getSelectedDetails();
+            cachedContentPages = List.copyOf(buildContentPages());
+        }
+        return cachedContentPages;
+    }
+
+    private List<ContentPage> buildContentPages() {
         List<ContentPage> pages = new ArrayList<>();
         MEChamberManagerTerminalMenu.ChamberDetails details = menu.getSelectedDetails();
         if (details.view() == MEChamberManagerTerminalMenu.ChamberView.EXTENDED_OUTPUT) {

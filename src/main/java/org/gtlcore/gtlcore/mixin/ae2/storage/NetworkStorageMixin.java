@@ -9,6 +9,8 @@ import appeng.api.networking.security.IActionSource;
 import appeng.api.stacks.AEKey;
 import appeng.api.storage.MEStorage;
 import appeng.me.storage.NetworkStorage;
+import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -17,7 +19,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -37,63 +38,55 @@ public abstract class NetworkStorageMixin implements ThroughputStorageView, Manu
     @Inject(method = "mount", at = @At("RETURN"), remap = false)
     private void gtlcore$bumpThroughputTopologyOnMount(int priority, MEStorage storage, CallbackInfo ci) {
         gtlcore$throughputTopologyVersion++;
+        ThroughputMonitorStorageTracker.onTopologyChanged((MEStorage) (Object) this);
     }
 
     @Inject(method = "unmount", at = @At("RETURN"), remap = false)
     private void gtlcore$bumpThroughputTopologyOnUnmount(MEStorage storage, CallbackInfo ci) {
         gtlcore$throughputTopologyVersion++;
+        ThroughputMonitorStorageTracker.onTopologyChanged((MEStorage) (Object) this);
     }
 
-    @Inject(method = "insert", at = @At("HEAD"), remap = false)
-    private void gtlcore$beginInsert(AEKey what, long amount, Actionable mode, IActionSource source, CallbackInfoReturnable<Long> cir) {
-        if (!ThroughputMonitorStorageTracker.isTrackingActive() &&
-                !ThroughputMonitorStorageTracker.hasPendingOperation()) {
-            return;
+    @WrapMethod(method = "insert", remap = false)
+    private long gtlcore$trackInsert(AEKey what, long amount, Actionable mode, IActionSource source,
+                                     Operation<Long> original) {
+        if (mode != Actionable.MODULATE || !ThroughputMonitorStorageTracker.isTrackingActive()) {
+            return original.call(what, amount, mode, source);
         }
         ThroughputMonitorStorageTracker.beginInsert((MEStorage) (Object) this, source);
-    }
-
-    @Inject(method = "insert", at = @At("RETURN"), remap = false)
-    private void gtlcore$recordInsert(AEKey what, long amount, Actionable mode, IActionSource source, CallbackInfoReturnable<Long> cir) {
-        if (!ThroughputMonitorStorageTracker.isTrackingActive() &&
-                !ThroughputMonitorStorageTracker.hasPendingOperation()) {
-            return;
+        long inserted;
+        try {
+            inserted = original.call(what, amount, mode, source);
+            ThroughputMonitorStorageTracker.endInsert((MEStorage) (Object) this, what, inserted, source);
+        } catch (RuntimeException | Error failure) {
+            ThroughputMonitorStorageTracker.abortOperation();
+            throw failure;
         }
-        long inserted = cir.getReturnValue();
-        ThroughputMonitorStorageTracker.endInsert(
-                (MEStorage) (Object) this,
-                what,
-                mode == Actionable.MODULATE ? inserted : 0L,
-                source);
+        return inserted;
     }
 
-    @Inject(method = "extract", at = @At("HEAD"), remap = false)
-    private void gtlcore$beginExtraction(AEKey what, long amount, Actionable mode, IActionSource source, CallbackInfoReturnable<Long> cir) {
-        if (!ThroughputMonitorStorageTracker.isTrackingActive() &&
-                !ThroughputMonitorStorageTracker.hasPendingOperation()) {
-            return;
+    @WrapMethod(method = "extract", remap = false)
+    private long gtlcore$trackExtraction(AEKey what, long amount, Actionable mode, IActionSource source,
+                                         Operation<Long> original) {
+        if (mode != Actionable.MODULATE || !ThroughputMonitorStorageTracker.isTrackingActive()) {
+            return original.call(what, amount, mode, source);
         }
         ThroughputMonitorStorageTracker.beginExtraction((MEStorage) (Object) this, source);
+        long extracted;
+        try {
+            extracted = original.call(what, amount, mode, source);
+            ThroughputMonitorStorageTracker.endExtraction((MEStorage) (Object) this, what, extracted, source);
+        } catch (RuntimeException | Error failure) {
+            ThroughputMonitorStorageTracker.abortOperation();
+            throw failure;
+        }
+        return extracted;
     }
 
     @ModifyVariable(method = "extract", at = @At("HEAD"), argsOnly = true, ordinal = 0, remap = false)
     private long gtlcore$limitExtractionToUnlockedInventory(long amount, AEKey what, long requested,
                                                             Actionable mode, IActionSource source) {
         return ManualCraftingInventoryLock.limitExtraction((MEStorage) (Object) this, what, amount, source);
-    }
-
-    @Inject(method = "extract", at = @At("RETURN"), remap = false)
-    private void gtlcore$recordExtraction(AEKey what, long amount, Actionable mode, IActionSource source, CallbackInfoReturnable<Long> cir) {
-        if (!ThroughputMonitorStorageTracker.isTrackingActive() &&
-                !ThroughputMonitorStorageTracker.hasPendingOperation()) {
-            return;
-        }
-        long extracted = cir.getReturnValue();
-        ThroughputMonitorStorageTracker.endExtraction(
-                (MEStorage) (Object) this,
-                what,
-                mode == Actionable.MODULATE ? extracted : 0L,
-                source);
     }
 
     @Override

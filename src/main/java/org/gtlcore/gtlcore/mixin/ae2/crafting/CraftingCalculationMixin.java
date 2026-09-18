@@ -198,7 +198,12 @@ public abstract class CraftingCalculationMixin implements ICraftingCalculation {
      */
     @Overwrite(remap = false)
     public boolean simulateFor(int micros) {
-        return !this.done;
+        // GTLCore advances the calculation asynchronously; the AE2 time-slice handshake
+        // is intentionally not used here. Read the completion flag under the same
+        // monitor used by finish(), so the server tick observes the worker's result.
+        synchronized (this.monitor) {
+            return !this.done;
+        }
     }
 
     @Inject(method = "handlePausing", at = @At("HEAD"), cancellable = true, remap = false)

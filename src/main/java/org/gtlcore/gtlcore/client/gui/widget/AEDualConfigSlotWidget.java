@@ -71,7 +71,7 @@ public class AEDualConfigSlotWidget extends Widget implements IGhostItemTarget, 
     }
 
     protected int getIndex() {
-        return (this.parentWidget.page - 1) * AEDualConfigWidget.CONFIG_SIZE + index;
+        return this.parentWidget.getSlotIndex(index);
     }
 
     @OnlyIn(Dist.CLIENT)
