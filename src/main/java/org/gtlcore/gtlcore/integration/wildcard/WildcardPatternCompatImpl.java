@@ -57,7 +57,7 @@ public class WildcardPatternCompatImpl {
         ME_STOCKING_WILDCARD_PATTERN_BUFFER = REGISTRATE
                 .machine("me_stocking_wildcard_pattern_buffer", holder -> new MEStockingWildcardPatternBufferPartMachine(holder, IO.BOTH))
                 .langValue("ME Stocking Wildcard Pattern Buffer")
-                .tier(GTValues.UEV)
+                .tier(GTValues.UIV)
                 .rotationState(RotationState.ALL)
                 .abilities(PartAbility.IMPORT_ITEMS, PartAbility.IMPORT_FLUIDS, PartAbility.EXPORT_ITEMS, PartAbility.EXPORT_FLUIDS)
                 .overlayTieredHullRenderer("me_pattern_buffer")

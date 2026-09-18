@@ -49,8 +49,7 @@ import static com.gregtechceu.gtceu.common.data.GTRecipeTypes.ASSEMBLY_LINE_RECI
 import static com.gregtechceu.gtceu.data.recipe.CraftingComponent.*;
 import static com.gregtechceu.gtceu.data.recipe.misc.MetaTileEntityLoader.registerMachineRecipe;
 import static org.gtlcore.gtlcore.common.data.GTLBlocks.CRAFTING_STORAGE_MAX;
-import static org.gtlcore.gtlcore.common.data.GTLMachines.GTAEMachines.ME_EXTEND_PATTERN_BUFFER;
-import static org.gtlcore.gtlcore.common.data.GTLMachines.GTAEMachines.ME_FINAL_PATTERN_BUFFER;
+import static org.gtlcore.gtlcore.common.data.GTLMachines.GTAEMachines.*;
 import static org.gtlcore.gtlcore.common.data.GTLMachines.TAG_FILTER_ME_STOCK_BUS_PART_MACHINE;
 import static org.gtlcore.gtlcore.common.data.GTLMaterials.*;
 import static org.gtlcore.gtlcore.common.data.GTLRecipeTypes.SPACE_COSMIC_PROBE_RECEIVERS_RECIPES;
@@ -849,28 +848,24 @@ public class MachineRecipe {
                     .save(provider);
 
             ASSEMBLY_LINE_RECIPES.recipeBuilder("me_stocking_wildcard_pattern_buffer")
-                    .inputItems(ME_FINAL_PATTERN_BUFFER)
-                    .inputItems(EMITTER_UHV, 4)
-                    .inputItems(CIRCUIT.getIngredient(UEV), 16)
-                    .inputItems(TAG_FILTER_ME_STOCK_BUS_PART_MACHINE, 4)
-                    .inputItems(getItem("kubejs:low_frequency_laser"), 8)
-                    .inputItems(getItem("kubejs:medium_frequency_laser"), 8)
-                    .inputItems(getItem("kubejs:high_frequency_laser"), 8)
-                    .inputItems(ORE_DICTIONARY_FILTER, 32)
-                    .inputItems(TAG_FLUID_FILTER, 32)
-                    .inputItems(plate, Kevlar, 8)
-                    .inputItems(plate, CarbonNanotubes, 8)
-                    .inputItems(wireFine, Enderite, 36)
-                    .inputFluids(GTLMaterials.MutatedLivingSolder.getFluid(576))
-                    .inputFluids(Lubricant.getFluid(500))
-                    .inputFluids(GTLMaterials.UuAmplifier.getFluid(576))
+                    .inputItems(HULL.getIngredient(UIV))
+                    .inputItems(ME_WILDCARD_PATTERN_BUFFER, 2)
+                    .inputItems(ME_STOCKING_PATTERN_BUFFER, 2)
+                    .inputItems(EMITTER_UEV, 16)
+                    .inputItems(CIRCUIT.getIngredient(UIV), 16)
+                    .inputItems(FullerenePolymerMatrixPulp, 8)
+                    .inputItems(getItem("kubejs:rydberg_spinorial_assembly"), 8)
+                    .inputItems(plate, EchoShard, 16)
+                    .inputFluids(SuperMutatedLivingSolder.getFluid(1440))
+                    .inputFluids(CaliforniumCyclopentadienide.getFluid(1500))
+                    .inputFluids(UuAmplifier.getFluid(576))
                     .outputItems(ME_STOCKING_WILDCARD_PATTERN_BUFFER)
-                    .EUt(GTValues.VA[GTValues.UHV])
+                    .EUt(GTValues.VA[GTValues.UEV])
                     .duration(600)
-                    .stationResearch(b -> b.researchStack(ME_FINAL_PATTERN_BUFFER.asStack())
+                    .stationResearch(b -> b.researchStack(ME_STOCKING_PATTERN_BUFFER.asStack())
                             .dataStack(GTItems.TOOL_DATA_MODULE.asStack())
                             .EUt(GTValues.VA[GTValues.UEV])
-                            .CWUt(256))
+                            .CWUt(320))
                     .save(provider);
         }
 
