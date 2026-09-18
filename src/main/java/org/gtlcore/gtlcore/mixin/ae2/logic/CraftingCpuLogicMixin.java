@@ -1,7 +1,6 @@
 package org.gtlcore.gtlcore.mixin.ae2.logic;
 
 import org.gtlcore.gtlcore.integration.ae2.AEUtils;
-import org.gtlcore.gtlcore.integration.ae2.crafting.CraftingDispatchPerformanceLogger;
 import org.gtlcore.gtlcore.integration.ae2.crafting.CraftingDispatchReason;
 import org.gtlcore.gtlcore.integration.ae2.crafting.CraftingDispatchReasonState;
 import org.gtlcore.gtlcore.integration.ae2.crafting.CraftingPatternAutoExpand;
@@ -86,15 +85,6 @@ public abstract class CraftingCpuLogicMixin implements ICraftingJobSuspension, I
     @Unique
     private boolean gtlcore$collectDispatchReasons;
 
-    @Unique
-    private CraftingDispatchPerformanceLogger.Metrics gtlcore$performanceMetrics;
-
-    @Unique
-    private long gtlcore$lastPerformanceLogTick = Long.MIN_VALUE;
-
-    @Unique
-    private int gtlcore$lastDispatchedCalls;
-
     @Inject(method = "<init>", at = @At("RETURN"), remap = false)
     private void gtlcore$initializeDispatchReasons(CraftingCPUCluster cluster, CallbackInfo ci) {
         this.gtlcore$workingDispatchReasons = new HashMap<>();
@@ -113,37 +103,7 @@ public abstract class CraftingCpuLogicMixin implements ICraftingJobSuspension, I
      */
     @Overwrite(remap = false)
     public void tickCraftingLogic(IEnergyService eg, CraftingService cc) {
-        if (!CraftingDispatchPerformanceLogger.isEnabled()) {
-            gtlcore$tickCraftingLogic(eg, cc);
-            return;
-        }
-
-        long performanceStartedAt = System.nanoTime();
-        this.gtlcore$performanceMetrics = new CraftingDispatchPerformanceLogger.Metrics();
-        this.gtlcore$lastDispatchedCalls = 0;
-        int initialTaskKinds = 0;
-        int initialWaitingKinds = 0;
-        Object jobId = null;
-        if (this.job != null) {
-            ExecutingCraftingJobAccessor initialJob = (ExecutingCraftingJobAccessor) this.job;
-            initialTaskKinds = initialJob.getTasks().size();
-            initialWaitingKinds = initialJob.getWaitingFor().list.size();
-            jobId = initialJob.getLink().getCraftingID();
-        }
-        try {
-            gtlcore$tickCraftingLogic(eg, cc);
-        } finally {
-            long currentTick = appeng.hooks.ticking.TickHandler.instance().getCurrentTick();
-            if (CraftingDispatchPerformanceLogger.logIfNeeded(
-                    "native", this.cluster.getLevel(), this.cluster.getBoundsMin(), jobId,
-                    System.nanoTime() - performanceStartedAt, this.gtlcore$lastDispatchedCalls,
-                    (long) this.cluster.getCoProcessors() + 1, initialTaskKinds, initialWaitingKinds,
-                    this.inventory.list.size(), -1, this.cantStoreItems, this.gtlcore$performanceMetrics,
-                    currentTick, this.gtlcore$lastPerformanceLogTick)) {
-                this.gtlcore$lastPerformanceLogTick = currentTick;
-            }
-            this.gtlcore$performanceMetrics = null;
-        }
+        gtlcore$tickCraftingLogic(eg, cc);
     }
 
     @Unique
@@ -199,7 +159,6 @@ public abstract class CraftingCpuLogicMixin implements ICraftingJobSuspension, I
         this.usedOps[2] = this.usedOps[1];
         this.usedOps[1] = this.usedOps[0];
         this.usedOps[0] = started - remainingOperations;
-        this.gtlcore$lastDispatchedCalls = this.usedOps[0];
         gtlcore$publishDispatchReasons();
     }
 
@@ -233,9 +192,6 @@ public abstract class CraftingCpuLogicMixin implements ICraftingJobSuspension, I
             int taskReasonMask = 0;
 
             for (var provider : craftingService.getProviders(details)) {
-                if (this.gtlcore$performanceMetrics != null) {
-                    this.gtlcore$performanceMetrics.recordProviderVisit();
-                }
                 providerSeen = true;
                 if (provider.isBusy()) {
                     continue;
@@ -246,42 +202,22 @@ public abstract class CraftingCpuLogicMixin implements ICraftingJobSuspension, I
                 final long operations = CraftingPatternAutoExpand.getOperations(isProcessing, provider, details,
                         taskProgress.getValue());
                 KeyCounter expectedOutputs = new KeyCounter(), expectedContainerItems = new KeyCounter();
-                long materialStartedAt = this.gtlcore$performanceMetrics == null ? 0 : System.nanoTime();
                 KeyCounter[] craftingContainer = isProcessing ? (autoExpand ? AEUtils.extractForProcessingPattern(details, inventory, expectedOutputs, operations) : AEUtils.extractForProcessingPattern(details, inventory, expectedOutputs)) : AEUtils.extractForCraftPattern(details, inventory, level, expectedOutputs, expectedContainerItems);
-                if (this.gtlcore$performanceMetrics != null) {
-                    this.gtlcore$performanceMetrics.recordMaterialAttempt(
-                            System.nanoTime() - materialStartedAt, craftingContainer != null);
-                }
 
                 if (craftingContainer == null) {
                     taskReasonMask |= CraftingDispatchReason.WAITING_FOR_INPUTS.mask();
                     break;
                 }
-
-                long energyStartedAt = this.gtlcore$performanceMetrics == null ? 0 : System.nanoTime();
                 var patternPower = CraftingPatternPower.forCpu(CraftingCpuHelper.calculatePatternPower(craftingContainer),
                         autoExpand, operations);
                 boolean hasPower = energyService.extractAEPower(
                         patternPower, Actionable.SIMULATE, PowerMultiplier.CONFIG) >= patternPower - 0.01;
-                if (this.gtlcore$performanceMetrics != null) {
-                    this.gtlcore$performanceMetrics.recordEnergyWork(System.nanoTime() - energyStartedAt);
-                }
                 if (!hasPower) {
-                    long reinjectStartedAt = this.gtlcore$performanceMetrics == null ? 0 : System.nanoTime();
                     CraftingCpuHelper.reinjectPatternInputs(inventory, craftingContainer);
-                    if (this.gtlcore$performanceMetrics != null) {
-                        this.gtlcore$performanceMetrics.recordMaterialWork(System.nanoTime() - reinjectStartedAt);
-                    }
                     taskReasonMask |= CraftingDispatchReason.INSUFFICIENT_POWER.mask();
                     break;
                 }
-
-                long pushStartedAt = this.gtlcore$performanceMetrics == null ? 0 : System.nanoTime();
                 boolean pushed = provider.pushPattern(details, craftingContainer);
-                if (this.gtlcore$performanceMetrics != null) {
-                    this.gtlcore$performanceMetrics.recordPush(
-                            System.nanoTime() - pushStartedAt, pushed ? (autoExpand ? operations : 1) : 0);
-                }
                 if (pushed) {
                     taskReasonMask = 0;
                     energyService.extractAEPower(patternPower, Actionable.MODULATE, PowerMultiplier.CONFIG);
@@ -328,11 +264,7 @@ public abstract class CraftingCpuLogicMixin implements ICraftingJobSuspension, I
                         break taskLoop;
                     }
                 } else {
-                    long reinjectStartedAt = this.gtlcore$performanceMetrics == null ? 0 : System.nanoTime();
                     CraftingCpuHelper.reinjectPatternInputs(inventory, craftingContainer);
-                    if (this.gtlcore$performanceMetrics != null) {
-                        this.gtlcore$performanceMetrics.recordMaterialWork(System.nanoTime() - reinjectStartedAt);
-                    }
                     providerRejected = true;
                 }
             }

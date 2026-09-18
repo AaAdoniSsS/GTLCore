@@ -28,6 +28,7 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.client.event.ScreenEvent;
+import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 
 import org.jetbrains.annotations.NotNull;
@@ -47,6 +48,8 @@ final class WirelessAeScreenHooks {
     private static final long RECENT_CLICK_MILLIS = 60000L;
     private static final long REQUEST_RETRY_MILLIS = 1000L;
     private static final long CLICK_REFRESH_DELAY_MILLIS = 250L;
+    private static final int UI_REFRESH_TICKS = 20;
+    private static int ticksUntilUiRefresh;
     private static final int FANCY_PAGE_WIDTH = 168;
     private static final int FANCY_PAGE_HEIGHT = 158;
     private static final int PANEL_MARGIN = 6;
@@ -125,7 +128,7 @@ final class WirelessAeScreenHooks {
         net.minecraftforge.common.MinecraftForge.EVENT_BUS.addListener(WirelessAeScreenHooks::onRightClickBlock);
         net.minecraftforge.common.MinecraftForge.EVENT_BUS.addListener(WirelessAeScreenHooks::onLeftClickEmpty);
         net.minecraftforge.common.MinecraftForge.EVENT_BUS.addListener(WirelessAeScreenHooks::onScreenInit);
-        net.minecraftforge.common.MinecraftForge.EVENT_BUS.addListener(WirelessAeScreenHooks::onScreenRenderPre);
+        net.minecraftforge.common.MinecraftForge.EVENT_BUS.addListener(WirelessAeScreenHooks::onClientTick);
     }
 
     private static void onLeftClickEmpty(PlayerInteractEvent.LeftClickEmpty event) {
@@ -147,10 +150,22 @@ final class WirelessAeScreenHooks {
 
     private static void onScreenInit(ScreenEvent.Init.Post event) {
         installWirelessUiForScreen(event.getScreen());
+        ticksUntilUiRefresh = UI_REFRESH_TICKS;
     }
 
-    private static void onScreenRenderPre(ScreenEvent.Render.Pre event) {
-        installWirelessUiForScreen(event.getScreen());
+    private static void onClientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) return;
+        Screen screen = Minecraft.getInstance().screen;
+        closeEmbeddedPanelIfScreenChanged(screen);
+        if (!(screen instanceof ModularUIGuiContainer)) {
+            ticksUntilUiRefresh = 0;
+            return;
+        }
+        // Retry delayed widgets/target synchronization and repair rebuilt tabs outside rendering.
+        if (--ticksUntilUiRefresh <= 0) {
+            ticksUntilUiRefresh = UI_REFRESH_TICKS;
+            installWirelessUiForScreen(screen);
+        }
     }
 
     private static void installWirelessUiForScreen(Screen screen) {
@@ -284,6 +299,7 @@ final class WirelessAeScreenHooks {
 
     private static void ensureFancyPageList(FancyMachineUIWidget fancy, WirelessAeFancyPageProvider provider) {
         List<IFancyUIProvider> pages = fancy.getAllPages();
+        if (hasOnlyCurrentProvider(pages, provider)) return;
         boolean hasProvider = false;
         List<IFancyUIProvider> updated = new ArrayList<>(pages.size() + 1);
         for (IFancyUIProvider page : pages) {
@@ -306,8 +322,21 @@ final class WirelessAeScreenHooks {
 
     private static void ensureWirelessSideTab(TabsWidget tabsWidget, WirelessAeFancyPageProvider provider) {
         List<IFancyUIProvider> subTabs = tabsWidget.getSubTabs();
+        if (hasOnlyCurrentProvider(subTabs, provider)) return;
         subTabs.removeIf(tab -> tab instanceof WirelessAeFancyPageProvider);
         subTabs.add(provider);
+    }
+
+    private static boolean hasOnlyCurrentProvider(List<IFancyUIProvider> pages,
+                                                  WirelessAeFancyPageProvider provider) {
+        boolean found = false;
+        for (IFancyUIProvider page : pages) {
+            if (page instanceof WirelessAeFancyPageProvider) {
+                if (page != provider || found) return false;
+                found = true;
+            }
+        }
+        return found;
     }
 
     private static boolean isEmbeddedPanelActive(Screen screen, BlockPos targetPos) {
@@ -345,6 +374,13 @@ final class WirelessAeScreenHooks {
     }
 
     private static void closeEmbeddedPanelIfScreenChanged(Screen screen) {
+        if (cachedScreen != screen) {
+            cachedScreen = null;
+            cachedTargetPos = null;
+            cachedPositionScreen = null;
+            cachedPositionMenu = null;
+            cachedStaticTargetPositions = List.of();
+        }
         if (embeddedScreen != null && embeddedScreen != screen) {
             closeEmbeddedPanel();
         }

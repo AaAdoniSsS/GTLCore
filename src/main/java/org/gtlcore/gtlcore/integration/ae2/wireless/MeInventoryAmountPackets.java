@@ -13,6 +13,7 @@ import net.minecraftforge.network.simple.SimpleChannel;
 
 import appeng.api.stacks.AEKey;
 
+import java.math.BigInteger;
 import java.util.Optional;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
@@ -75,24 +76,24 @@ public final class MeInventoryAmountPackets {
         }
     }
 
-    public record Response(AEKey key, boolean available, long amount) {
+    public record Response(AEKey key, boolean available, BigInteger amount) {
 
         public Response {
-            amount = available ? Math.max(0, amount) : 0;
+            amount = available ? amount.max(BigInteger.ZERO) : BigInteger.ZERO;
         }
 
         private static void encode(Response packet, FriendlyByteBuf buffer) {
             WirelessAeKeyPacketCodec.write(buffer, packet.key);
             buffer.writeBoolean(packet.available);
             if (packet.available) {
-                buffer.writeVarLong(packet.amount);
+                buffer.writeByteArray(packet.amount.toByteArray());
             }
         }
 
         private static Response decode(FriendlyByteBuf buffer) {
             AEKey key = WirelessAeKeyPacketCodec.read(buffer);
             boolean available = buffer.readBoolean();
-            long amount = available ? buffer.readVarLong() : 0;
+            BigInteger amount = available ? new BigInteger(buffer.readByteArray(32)) : BigInteger.ZERO;
             return new Response(key, available, amount);
         }
 

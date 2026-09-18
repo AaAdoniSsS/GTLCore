@@ -5,7 +5,6 @@ import org.gtlcore.gtlcore.api.machine.multiblock.IModularMachineModule;
 import org.gtlcore.gtlcore.api.recipe.RecipeResult;
 import org.gtlcore.gtlcore.client.gui.widget.IExtendedClickData;
 import org.gtlcore.gtlcore.common.data.GTLBlocks;
-import org.gtlcore.gtlcore.integration.machine.SpaceElevatorConnectionLogger;
 import org.gtlcore.gtlcore.utils.MachineUtil;
 import org.gtlcore.gtlcore.utils.datastructure.ModuleRenderInfo;
 
@@ -228,19 +227,17 @@ public class SpaceElevatorMachine extends TierCasingMachine
         }
         BlockPos powerCore = getPowerCore(getPos(), level);
         BlockPos[] positions = getModuleScanPositions();
-        SpaceElevatorConnectionLogger.logScan(level, "host", getPos(), trigger, powerCore, null, positions);
+
         for (BlockPos pos : positions) {
             MetaMachine machine = MetaMachine.getMachine(level, pos);
             boolean formed = machine instanceof IModularMachineModule<?, ?> module && module.isFormed();
             boolean valid = isValidModule(machine);
-            SpaceElevatorConnectionLogger.logCandidate(
-                    level, "host", getPos(), pos, machineType(machine), formed,
-                    valid ? "accepted" : candidateRejection(machine, formed));
+
             if (valid) {
                 @SuppressWarnings("unchecked")
                 IModularMachineModule<SpaceElevatorMachine, ?> module = (IModularMachineModule<SpaceElevatorMachine, ?>) machine;
                 module.connectToHost(this);
-                SpaceElevatorConnectionLogger.logConnection(level, machine.getPos(), getPos(), trigger, false);
+
             }
         }
     }

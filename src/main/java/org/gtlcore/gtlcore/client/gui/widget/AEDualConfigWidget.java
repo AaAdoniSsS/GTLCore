@@ -43,30 +43,40 @@ public class AEDualConfigWidget extends WidgetGroup {
     protected int page;
     protected final int MAX_PAGE;
     private final int offset;
+    private final int pageSize;
+    private final int rows;
 
     private static final int UPDATE_ID = 1001;
 
     public AEDualConfigWidget(int x, int y, ExportOnlyAEItemList aeItem, ExportOnlyAEFluidList aeFluid, IntConsumer pageSetter, int page) {
-        this(x, y, aeItem, aeFluid, pageSetter, page, false);
+        this(x, y, aeItem, aeFluid, pageSetter, page, false, 2);
     }
 
     public AEDualConfigWidget(int x, int y, ExportOnlyAEItemList aeItem, ExportOnlyAEFluidList aeFluid,
                               IntConsumer pageSetter, int page, boolean amountEditingEnabled) {
-        super(new Position(x, y), new Size(CONFIG_SIZE / 2 * 18, 18 * 4 + 2 + 19));
+        this(x, y, aeItem, aeFluid, pageSetter, page, amountEditingEnabled, 2);
+    }
+
+    public AEDualConfigWidget(int x, int y, ExportOnlyAEItemList aeItem, ExportOnlyAEFluidList aeFluid,
+                              IntConsumer pageSetter, int page, boolean amountEditingEnabled, int rows) {
+        super(new Position(x, y), new Size(8 * 18, Math.max(1, rows) * 38 + 17));
         this.aeItem = aeItem;
         this.aeFluid = aeFluid;
         this.pageSetter = pageSetter;
         this.amountEditingEnabled = amountEditingEnabled;
+        this.rows = Math.max(1, rows);
+        this.pageSize = this.rows * 8;
         this.offset = aeItem.getSize();
-        this.page = page;
-        this.MAX_PAGE = Math.max(1, offset / CONFIG_SIZE);
+        this.MAX_PAGE = Math.max(1, offset / pageSize);
+        this.page = Math.max(1, Math.min(page, MAX_PAGE));
         this.config = marge();
         init();
-        this.pageUpWidget = new ButtonWidget(3, 77, 16, 16,
+        int navigationY = this.rows * 38 + 1;
+        this.pageUpWidget = new ButtonWidget(3, navigationY, 16, 16,
                 GuiTextures.BUTTON_LEFT, this::pageUp);
-        this.pageDownWidget = new ButtonWidget(125, 77, 16, 16,
+        this.pageDownWidget = new ButtonWidget(125, navigationY, 16, 16,
                 GuiTextures.BUTTON_RIGHT, this::pageDown);
-        this.addWidget(new LabelWidget(66, 82, () -> this.page + " / " + MAX_PAGE));
+        this.addWidget(new LabelWidget(66, navigationY + 5, () -> this.page + " / " + MAX_PAGE));
         this.addWidget(this.pageUpWidget);
         this.addWidget(this.pageDownWidget);
         this.amountSetWidget = new AEDualAmountSetWidget(31, -50, this);
@@ -77,18 +87,24 @@ public class AEDualConfigWidget extends WidgetGroup {
 
     protected void pageUp(ClickData data) {
         if (page < 2) return;
+        disableAmount();
         page--;
         pageSetter.accept(page);
     }
 
     protected void pageDown(ClickData data) {
         if (page >= MAX_PAGE) return;
+        disableAmount();
         page++;
         pageSetter.accept(page);
     }
 
     protected boolean isAutoPull() {
         return aeFluid.isAutoPull() || aeItem.isAutoPull();
+    }
+
+    public int getSlotIndex(int visibleIndex) {
+        return (page - 1) * pageSize + visibleIndex;
     }
 
     private IConfigurableSlot[] marge() {
@@ -109,7 +125,7 @@ public class AEDualConfigWidget extends WidgetGroup {
             this.displayList[index] = index < half ? new ExportOnlyAEItemSlot() : new ExportOnlyAEFluidSlot();
             this.cached[index] = index < half ? new ExportOnlyAEItemSlot() : new ExportOnlyAEFluidSlot();
             line = index / 8;
-            if (line >= 2) continue;
+            if (line >= rows) continue;
             this.addWidget(new AEDualConfigSlotWidget((index - line * 8) * 18, line * (18 * 2 + 2), this, index));
         }
     }

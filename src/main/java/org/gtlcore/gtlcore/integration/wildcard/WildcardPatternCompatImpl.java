@@ -28,6 +28,7 @@ import static com.gregtechceu.gtceu.common.registry.GTRegistration.REGISTRATE;
 public class WildcardPatternCompatImpl {
 
     public static MachineDefinition ME_WILDCARD_PATTERN_BUFFER;
+    public static MachineDefinition ME_STOCKING_WILDCARD_PATTERN_BUFFER;
 
     static void init() {
         // Initialization logic if needed
@@ -45,6 +46,27 @@ public class WildcardPatternCompatImpl {
                 .tooltips(
                         Component.translatable("block.gtceu.pattern_buffer.desc.0"),
                         Component.translatable("gtceu.machine.me_wildcard_pattern_buffer.desc.0"),
+                        Component.translatable("tooltip.gtlcore.wireless_bookmark.quick_connect"),
+                        Component.translatable("gtceu.machine.me_pattern_buffer.desc.3"),
+                        Component.translatable("gtceu.machine.me_pattern_buffer.desc.5"),
+                        Component.translatable("block.gtceu.pattern_buffer.desc.2"),
+                        Component.translatable("gtceu.universal.enabled"))
+                .tooltipBuilder(GTLMachines.GTL_ADD)
+                .register();
+
+        ME_STOCKING_WILDCARD_PATTERN_BUFFER = REGISTRATE
+                .machine("me_stocking_wildcard_pattern_buffer", holder -> new MEStockingWildcardPatternBufferPartMachine(holder, IO.BOTH))
+                .langValue("ME Stocking Wildcard Pattern Buffer")
+                .tier(GTValues.UEV)
+                .rotationState(RotationState.ALL)
+                .abilities(PartAbility.IMPORT_ITEMS, PartAbility.IMPORT_FLUIDS, PartAbility.EXPORT_ITEMS, PartAbility.EXPORT_FLUIDS)
+                .overlayTieredHullRenderer("me_pattern_buffer")
+                .tooltips(
+                        Component.translatable("block.gtceu.pattern_buffer.desc.0"),
+                        Component.translatable("gtceu.machine.me_wildcard_pattern_buffer.desc.0"),
+                        Component.translatable("gtlcore.machine.me_stocking_pattern_buffer.desc.0"),
+                        Component.translatable("gtlcore.machine.me_stocking_pattern_buffer.desc.1"),
+                        Component.translatable("tooltip.gtlcore.wireless_bookmark.quick_connect"),
                         Component.translatable("gtceu.machine.me_pattern_buffer.desc.3"),
                         Component.translatable("gtceu.machine.me_pattern_buffer.desc.5"),
                         Component.translatable("block.gtceu.pattern_buffer.desc.2"),
@@ -55,6 +77,10 @@ public class WildcardPatternCompatImpl {
 
     public static MachineDefinition getWildcardPatternBufferDefinition() {
         return ME_WILDCARD_PATTERN_BUFFER;
+    }
+
+    public static MachineDefinition getStockingWildcardPatternBufferDefinition() {
+        return ME_STOCKING_WILDCARD_PATTERN_BUFFER;
     }
 
     /**

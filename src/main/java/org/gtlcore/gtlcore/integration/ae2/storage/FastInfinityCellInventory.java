@@ -24,7 +24,7 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import java.util.Objects;
 import java.util.UUID;
 
-public class FastInfinityCellInventory implements StorageCell {
+public class FastInfinityCellInventory implements StorageCell, PreciseStorageAmount {
 
     private final ISaveProvider container;
     private double storedItemCount;
@@ -174,6 +174,17 @@ public class FastInfinityCellInventory implements StorageCell {
             this.loadCellItems();
         }
         return this.storedMap;
+    }
+
+    /** A snapshot for terminal display; never expose the mutable storage counter. */
+    public Int128 getDisplayAmount(AEKey key) {
+        Int128 amount = getCellItems().get(key);
+        return amount == null ? Int128.ZERO() : amount.copy();
+    }
+
+    @Override
+    public java.math.BigInteger getExactStoredAmount(AEKey key) {
+        return getDisplayAmount(key).toBigInteger();
     }
 
     @Override

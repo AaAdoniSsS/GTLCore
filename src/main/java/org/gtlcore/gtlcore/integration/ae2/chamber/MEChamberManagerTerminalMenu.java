@@ -9,7 +9,6 @@ import org.gtlcore.gtlcore.common.machine.multiblock.part.ae.MEExtendedOutputPar
 import org.gtlcore.gtlcore.common.machine.multiblock.part.ae.MEExtendedOutputPartMachineBase;
 import org.gtlcore.gtlcore.common.machine.multiblock.part.ae.MEOutputFilterHandler;
 import org.gtlcore.gtlcore.integration.ae2.wireless.GTLWirelessAeContent;
-import org.gtlcore.gtlcore.integration.ae2.wireless.WirelessAePackets;
 import org.gtlcore.gtlcore.mixin.gtm.ae.machine.MEOutputBusPartMachineAccessor;
 import org.gtlcore.gtlcore.mixin.gtm.ae.machine.MEOutputHatchPartMachineAccessor;
 import org.gtlcore.gtlcore.mixin.gtmt.MEOutputPartMachineAccessor;
@@ -48,7 +47,6 @@ import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.network.NetworkHooks;
-import net.minecraftforge.network.PacketDistributor;
 
 import appeng.api.networking.IGrid;
 import appeng.api.networking.IGridNode;
@@ -57,7 +55,6 @@ import appeng.api.stacks.AEFluidKey;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
-import appeng.api.util.DimensionalBlockPos;
 import appeng.menu.AEBaseMenu;
 import appeng.menu.SlotSemantics;
 import appeng.menu.locator.MenuLocator;
@@ -73,12 +70,13 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 
 /** Server-authoritative index of GT ME chambers reachable from this terminal's AE grid. */
 public final class MEChamberManagerTerminalMenu extends AEBaseMenu {
 
-    public static final int MAX_SYNC_ENTRIES = 1_024;
-    public static final int MAX_SYNC_SLOT_COUNT = 65_536;
+    public static final int MAX_SYNC_ENTRIES = 1_048_576;
+    public static final int MAX_SYNC_SLOT_COUNT = 1_048_576;
     private static final int SYNC_INTERVAL_TICKS = 20;
     private static final double MAX_INTERACTION_DISTANCE_SQUARED = 64.0D;
     private static final double BLOCK_CENTER_OFFSET = 0.5D;
@@ -97,6 +95,27 @@ public final class MEChamberManagerTerminalMenu extends AEBaseMenu {
     private List<SlotContent> selectedContents = List.of();
     private ChamberDetails selectedDetails = ChamberDetails.EMPTY;
     private int ticksUntilSync;
+    private boolean initialEntriesSync = true;
+    private boolean syncFailed;
+    private long snapshotRevision;
+    private Address sentAddress;
+    private List<SlotContent> sentContents;
+    private ChamberDetails sentDetails;
+    private final ChamberSnapshotTransfer.Receiver entryReceiver = new ChamberSnapshotTransfer.Receiver();
+    private final ChamberSnapshotTransfer.Receiver contentReceiver = new ChamberSnapshotTransfer.Receiver();
+
+    public void receiveSnapshot(boolean contents, long revision, int total, int offset, byte[] data) {
+        (contents ? contentReceiver : entryReceiver).accept(revision, total, offset, data, buffer -> {
+            if (contents) {
+                Address address = buffer.readBoolean() ? Address.read(buffer) : null;
+                List<SlotContent> slots = readContents(buffer);
+                ChamberDetails details = readDetails(buffer);
+                setSelectedContents(address, slots, details);
+            } else {
+                setEntries(readEntries(buffer));
+            }
+        });
+    }
 
     public static MEChamberManagerTerminalMenu createWiredClientMenu(int containerId, Inventory inventory,
                                                                      FriendlyByteBuf data) {
@@ -244,11 +263,18 @@ public final class MEChamberManagerTerminalMenu extends AEBaseMenu {
         }
         MetaMachine chamber = findAccessibleChamber(player, address);
         if (chamber == null) {
+            selectedAddress = null;
+            selectedContents = List.of();
+            selectedDetails = ChamberDetails.EMPTY;
+            sentContents = null;
+            sendSelectedContents(player);
             return;
         }
         selectedAddress = address;
         selectedContents = collectContents(chamber);
         selectedDetails = snapshotDetails(chamber);
+        // The client clears its detail panel for every selection, including reselecting the same row.
+        sentContents = null;
         sendSelectedContents(player);
     }
 
@@ -390,10 +416,17 @@ public final class MEChamberManagerTerminalMenu extends AEBaseMenu {
         }
         ticksUntilSync = SYNC_INTERVAL_TICKS;
         if (menuPlayer instanceof ServerPlayer serverPlayer && serverPlayer.containerMenu == this) {
-            entries = collectEntries();
-            WirelessAePackets.CHANNEL.send(
-                    PacketDistributor.PLAYER.with(() -> serverPlayer),
-                    new WirelessAePackets.SyncMEChamberManagerEntriesPacket(containerId, entries));
+            if (syncFailed) return;
+            List<Entry> currentEntries = collectEntries();
+            if (initialEntriesSync || !entriesEqual(entries, currentEntries)) {
+                if (!ChamberSnapshotTransfer.send(serverPlayer, containerId, false, ++snapshotRevision,
+                        buffer -> writeEntries(buffer, currentEntries))) {
+                    syncFailed = true;
+                    return;
+                }
+                initialEntriesSync = false;
+                entries = currentEntries;
+            }
             if (selectedAddress != null) {
                 MetaMachine chamber = findAccessibleChamber(serverPlayer, selectedAddress);
                 if (chamber == null) {
@@ -425,10 +458,21 @@ public final class MEChamberManagerTerminalMenu extends AEBaseMenu {
     }
 
     private void sendSelectedContents(ServerPlayer player) {
-        WirelessAePackets.CHANNEL.send(
-                PacketDistributor.PLAYER.with(() -> player),
-                new WirelessAePackets.SyncMEChamberManagerContentsPacket(
-                        containerId, selectedAddress, selectedContents, selectedDetails));
+        if (syncFailed || Objects.equals(sentAddress, selectedAddress) &&
+                Objects.equals(sentContents, selectedContents) && Objects.equals(sentDetails, selectedDetails))
+            return;
+        if (ChamberSnapshotTransfer.send(player, containerId, true, ++snapshotRevision, buffer -> {
+            buffer.writeBoolean(selectedAddress != null);
+            if (selectedAddress != null) selectedAddress.write(buffer);
+            writeContents(buffer, selectedContents);
+            writeDetails(buffer, selectedDetails);
+        })) {
+            sentAddress = selectedAddress;
+            sentContents = selectedContents;
+            sentDetails = selectedDetails;
+        } else {
+            syncFailed = true;
+        }
     }
 
     private void updateSelectedChamber(ServerPlayer player, Address address, MetaMachine chamber) {
@@ -440,18 +484,33 @@ public final class MEChamberManagerTerminalMenu extends AEBaseMenu {
         sendSelectedContents(player);
     }
 
+    private static boolean entriesEqual(List<Entry> left, List<Entry> right) {
+        if (left == right) return true;
+        if (left.size() != right.size()) return false;
+        for (int i = 0; i < left.size(); i++) {
+            Entry a = left.get(i);
+            Entry b = right.get(i);
+            if (!a.address().equals(b.address()) || !ItemStack.matches(a.icon(), b.icon()) ||
+                    !a.name().equals(b.name()) || !Objects.equals(a.controllerName(), b.controllerName()) ||
+                    !Objects.equals(a.controllerPos(), b.controllerPos()))
+                return false;
+        }
+        return true;
+    }
+
     private List<Entry> collectEntries() {
         IGrid grid = getGrid();
         if (grid == null) {
             return List.of();
         }
+        return ChamberDirectoryCache.get(grid, () -> collectEntries(grid));
+    }
+
+    private static List<Entry> collectEntries(IGrid grid) {
         List<Entry> result = new ArrayList<>();
         for (IGridNode node : grid.getNodes()) {
             if (node.getOwner() instanceof MetaMachine machine && isMEChamber(machine)) {
                 result.add(snapshot(machine));
-                if (result.size() >= MAX_SYNC_ENTRIES) {
-                    break;
-                }
             }
         }
         result.sort(ENTRY_ORDER);
@@ -485,10 +544,9 @@ public final class MEChamberManagerTerminalMenu extends AEBaseMenu {
     }
 
     private boolean hasEditPermission(MetaMachine machine, Player player) {
-        DimensionalBlockPos location = terminal == null ?
-                new DimensionalBlockPos(machine.getLevel(), machine.getPos()) :
-                terminal.getHost().getLocation();
-        return Platform.hasPermissions(location, player);
+        if (terminal != null && !Platform.hasPermissions(terminal.getHost().getLocation(), player)) return false;
+        return machine.getLevel() instanceof net.minecraft.server.level.ServerLevel targetLevel &&
+                targetLevel.mayInteract(player, machine.getPos());
     }
 
     private static boolean isMEChamber(MetaMachine machine) {
@@ -498,10 +556,11 @@ public final class MEChamberManagerTerminalMenu extends AEBaseMenu {
 
     private static Entry snapshot(MetaMachine machine) {
         ControllerInfo controller = controllerInfo(machine);
+        ItemStack icon = machine.getDefinition().asStack();
         return new Entry(
                 Address.of(machine),
-                machine.getDefinition().asStack(),
-                machine.getDefinition().asStack().getHoverName(),
+                icon,
+                icon.getHoverName(),
                 controller.name(),
                 controller.pos());
     }
@@ -831,6 +890,7 @@ public final class MEChamberManagerTerminalMenu extends AEBaseMenu {
     }
 
     public static void writeEntries(FriendlyByteBuf buffer, List<Entry> entries) {
+        if (entries.size() > MAX_SYNC_ENTRIES) throw new IllegalArgumentException("Too many chamber entries");
         buffer.writeVarInt(entries.size());
         for (Entry entry : entries) {
             entry.address().write(buffer);
@@ -862,6 +922,7 @@ public final class MEChamberManagerTerminalMenu extends AEBaseMenu {
     }
 
     public static void writeContents(FriendlyByteBuf buffer, List<SlotContent> contents) {
+        if (contents.size() > MAX_SYNC_SLOT_COUNT) throw new IllegalArgumentException("Too many chamber slots");
         buffer.writeVarInt(contents.size());
         for (SlotContent content : contents) {
             buffer.writeVarInt(content.slot());

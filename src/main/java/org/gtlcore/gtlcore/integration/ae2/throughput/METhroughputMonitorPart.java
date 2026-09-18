@@ -95,6 +95,13 @@ public class METhroughputMonitorPart extends StorageMonitorPart implements IGrid
         getMainNode().addService(IGridTickable.class, this);
     }
 
+    @Override
+    public void removeFromWorld() {
+        unregisterStorageTracker();
+        resetState();
+        super.removeFromWorld();
+    }
+
     public MutableComponent getThroughputText() {
         AEKey displayed = getDisplayed();
         if (displayed == null) {

@@ -3,7 +3,6 @@ package org.gtlcore.gtlcore.common.machine.multiblock.electric;
 import org.gtlcore.gtlcore.api.machine.multiblock.IModularMachineModule;
 import org.gtlcore.gtlcore.common.data.GTLBlocks;
 import org.gtlcore.gtlcore.common.data.GTLRecipeModifiers;
-import org.gtlcore.gtlcore.integration.machine.SpaceElevatorConnectionLogger;
 import org.gtlcore.gtlcore.utils.MachineUtil;
 
 import com.gregtechceu.gtceu.api.GTValues;
@@ -146,8 +145,7 @@ public class SpaceElevatorModuleMachine extends WorkableElectricMultiblockMachin
         BlockPos previousHostPosition = getHostPosition();
         IModularMachineModule.super.removeFromHost(host);
         if (previousHostPosition != null) {
-            SpaceElevatorConnectionLogger.logDisconnection(
-                    getLevel(), getPos(), previousHostPosition, "module_or_host_lifecycle");
+
         }
     }
 
@@ -189,8 +187,7 @@ public class SpaceElevatorModuleMachine extends WorkableElectricMultiblockMachin
             boolean repairedRegistration = !liveHost.getModuleSet().contains(this);
             if (getHost() != liveHost || repairedRegistration) {
                 connectToHost(liveHost);
-                SpaceElevatorConnectionLogger.logConnection(
-                        serverLevel, getPos(), liveHost.getPos(), trigger, repairedRegistration);
+
             }
             return;
         }
@@ -201,20 +198,16 @@ public class SpaceElevatorModuleMachine extends WorkableElectricMultiblockMachin
 
         BlockPos powerCore = findPowerCore(serverLevel);
         BlockPos[] candidates = getHostPositions(powerCore);
-        SpaceElevatorConnectionLogger.logScan(
-                serverLevel, "module", getPos(), trigger, powerCore, savedHostPosition, candidates);
+
         for (BlockPos candidatePos : candidates) {
             MetaMachine machine = MetaMachine.getMachine(serverLevel, candidatePos);
             boolean formed = machine instanceof SpaceElevatorMachine elevator && elevator.isFormed();
             boolean valid = isValidHost(machine);
-            SpaceElevatorConnectionLogger.logCandidate(
-                    serverLevel, "module", getPos(), candidatePos, machineType(machine), formed,
-                    valid ? "accepted" : hostCandidateRejection(machine, formed));
+
             if (valid) {
                 SpaceElevatorMachine candidateHost = (SpaceElevatorMachine) machine;
                 connectToHost(candidateHost);
-                SpaceElevatorConnectionLogger.logConnection(
-                        serverLevel, getPos(), candidateHost.getPos(), trigger, false);
+
                 return;
             }
         }

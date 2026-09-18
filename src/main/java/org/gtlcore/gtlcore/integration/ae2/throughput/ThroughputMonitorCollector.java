@@ -21,14 +21,12 @@ final class ThroughputMonitorCollector implements ThroughputMonitorStorageTracke
     private final Map<AEKey, KeyStats> statsByKey = new HashMap<>();
     private MEStorage trackedStorage;
     private long trackedStorageTopologyVersion = Long.MIN_VALUE;
+    private long lastPruneTick = Long.MIN_VALUE;
 
     void attach(MEStorage storage) {
-        if (storage == null || storage == trackedStorage) {
-            return;
-        }
-
+        if (storage == trackedStorage) return;
         close();
-        statsByKey.clear();
+        if (storage == null) return;
         trackedStorage = storage;
         ThroughputMonitorStorageTracker.registerAll(storage, this);
         refreshVisibleStorageLinks();
@@ -36,6 +34,8 @@ final class ThroughputMonitorCollector implements ThroughputMonitorStorageTracke
 
     void close() {
         ThroughputMonitorStorageTracker.unregisterAll(this);
+        statsByKey.clear();
+        lastPruneTick = Long.MIN_VALUE;
         trackedStorage = null;
         trackedStorageTopologyVersion = Long.MIN_VALUE;
     }
@@ -81,6 +81,7 @@ final class ThroughputMonitorCollector implements ThroughputMonitorStorageTracke
             if (statsByKey.size() >= MAX_TRACKED_KEYS) {
                 pruneInactive(tick);
                 if (statsByKey.size() >= MAX_TRACKED_KEYS) {
+                    ThroughputMonitorStorageTracker.recordDroppedKey();
                     return;
                 }
             }
@@ -102,6 +103,8 @@ final class ThroughputMonitorCollector implements ThroughputMonitorStorageTracke
             if (sourceStats != null) {
                 sourceStats.cache.recordChange(amountDelta, tick);
                 sourceStats.lastTick = tick;
+            } else {
+                ThroughputMonitorStorageTracker.recordDroppedSource();
             }
         }
     }
@@ -118,9 +121,10 @@ final class ThroughputMonitorCollector implements ThroughputMonitorStorageTracke
     }
 
     private void pruneInactive(long currentTick) {
-        if (currentTick <= 0L) {
+        if (currentTick <= 0L || lastPruneTick == currentTick) {
             return;
         }
+        lastPruneTick = currentTick;
         for (Iterator<Map.Entry<AEKey, KeyStats>> iterator = statsByKey.entrySet().iterator(); iterator.hasNext();) {
             if (currentTick - iterator.next().getValue().lastTick > ACTIVE_RETENTION_TICKS) {
                 iterator.remove();
@@ -129,23 +133,25 @@ final class ThroughputMonitorCollector implements ThroughputMonitorStorageTracke
     }
 
     private static void pruneInactiveSources(KeyStats keyStats, long currentTick) {
-        if (currentTick <= 0L) {
+        if (currentTick <= 0L || keyStats.lastSourcePruneTick == currentTick) {
             return;
         }
+        keyStats.lastSourcePruneTick = currentTick;
         keyStats.bySource.entrySet().removeIf(
                 entry -> currentTick - entry.getValue().lastTick > ACTIVE_RETENTION_TICKS);
     }
 
     private static final class KeyStats {
 
-        private final ThroughputCache total = new ThroughputCache();
+        private final ThroughputCache total = new ThroughputCache((int) ACTIVE_RETENTION_TICKS);
         private final Map<ThroughputMonitorStorageTracker.SourceLocation, SourceStats> bySource = new HashMap<>();
+        private long lastSourcePruneTick = Long.MIN_VALUE;
         private long lastTick;
     }
 
     private static final class SourceStats {
 
-        private final ThroughputCache cache = new ThroughputCache();
+        private final ThroughputCache cache = new ThroughputCache((int) ACTIVE_RETENTION_TICKS);
         private long lastTick;
     }
 

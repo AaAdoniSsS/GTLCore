@@ -65,6 +65,7 @@ public class ThroughputMonitorTerminalMenu extends AEBaseMenu {
     private final boolean universalTerminal;
     private final Player menuPlayer;
     private final List<Slot> viewCellSlots = new ArrayList<>();
+    private final @Nullable WTMenuHost wirelessHost;
     private final Set<AEKey> trackedSourceKeys = new HashSet<>();
     private final Map<AEKey, List<SourceEntry>> clientSources = new HashMap<>();
     private List<Entry> entries;
@@ -105,6 +106,7 @@ public class ThroughputMonitorTerminalMenu extends AEBaseMenu {
                                           @Nullable MenuLocator locator, boolean returningFromSubmenu) {
         super(menuType, containerId, inventory, terminal == null ? wirelessHost : terminal);
         this.terminal = terminal;
+        this.wirelessHost = wirelessHost;
         this.wirelessCollector = createWirelessCollector(inventory.player, wirelessHost);
         this.universalTerminal = wirelessHost != null && wirelessHost.getItemStack().getItem() instanceof ItemWUT;
         this.menuPlayer = inventory.player;
@@ -448,7 +450,9 @@ public class ThroughputMonitorTerminalMenu extends AEBaseMenu {
         if (terminal != null) {
             return terminal.getSnapshots();
         }
-        return wirelessCollector == null ? List.of() : wirelessCollector.getSnapshots();
+        if (wirelessCollector == null || wirelessHost == null) return List.of();
+        wirelessCollector.attach(wirelessHost.getInventory());
+        return wirelessCollector.getSnapshots();
     }
 
     private static @Nullable ThroughputMonitorCollector createWirelessCollector(Player player,

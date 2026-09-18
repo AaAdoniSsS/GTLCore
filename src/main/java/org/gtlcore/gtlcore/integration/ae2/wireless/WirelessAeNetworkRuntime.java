@@ -82,6 +82,8 @@ public final class WirelessAeNetworkRuntime {
     private static int tickCounter;
     private static boolean tickCacheActive;
     private static boolean schedulerExecuting;
+    /** Coalesces bursts of AE2 edge callbacks into one maintenance invalidation. */
+    private static boolean topologyInvalidationPending;
 
     private static final class ScanProgress {
 
@@ -209,6 +211,7 @@ public final class WirelessAeNetworkRuntime {
         FULL_SCAN_REQUESTS.clear();
         FULL_SCAN_PROGRESS.clear();
         MEMBER_SCHEDULER.clear();
+        topologyInvalidationPending = false;
         TOPOLOGY_SNAPSHOTS.clear();
         COMPONENT_SNAPSHOTS.clear();
         maintenanceTick = 0;
@@ -217,8 +220,6 @@ public final class WirelessAeNetworkRuntime {
         tickCounter = 0;
         tickMembersProcessed = 0;
         tickMaintenanceStarted = 0;
-        WirelessAeDiagnostics.reset();
-        WirelessAeDiagnostics.resetFailures();
     }
 
     public static void onBlockBreak(BlockEvent.BreakEvent event) {
@@ -243,19 +244,15 @@ public final class WirelessAeNetworkRuntime {
             return;
         }
 
-        if (!WirelessAeDiagnostics.enabled()) WirelessAeDiagnostics.reset();
-        long diagnosticTickStarted = WirelessAeDiagnostics.start();
         tickCounter++;
         maintenanceTick++;
         beginTickCaches();
         try {
-            WirelessAeDiagnostics.run("pending_favorite_binds", () -> processPendingFavoriteBinds(event.getServer()));
-            WirelessAeDiagnostics.run("scan_scheduling", () -> scheduleMaintenance(event.getServer()));
-            WirelessAeDiagnostics.run("budgeted_maintenance", () -> maintainNetworks(event.getServer()));
-            if (WirelessAeDiagnostics.enabled()) {
-                WirelessAeDiagnostics.finishTick(diagnosticTickStarted, MAX_MAINTENANCE_NANOS_PER_TICK,
-                        tickCounter, MEMBER_SCHEDULER, CONNECTIONS.size());
-            }
+            applyPendingTopologyInvalidation();
+            processPendingFavoriteBinds(event.getServer());
+            scheduleMaintenance(event.getServer());
+            maintainNetworks(event.getServer());
+
         } finally {
             endTickCaches();
         }
@@ -278,12 +275,17 @@ public final class WirelessAeNetworkRuntime {
         }
     }
 
+    private static void applyPendingTopologyInvalidation() {
+        if (!topologyInvalidationPending) return;
+        topologyInvalidationPending = false;
+        MEMBER_SCHEDULER.invalidateAllNetworks();
+    }
+
     private static void maintainNetworks(MinecraftServer server) {
         tickMaintenanceStarted = System.nanoTime();
         tickMembersProcessed = 0;
         MEMBER_SCHEDULER.beginTick(maintenanceTick);
-        WirelessAeDiagnostics.run("full_scan_expansion",
-                () -> expandFullScans(server, tickMaintenanceStarted + MAX_SCAN_NANOS_PER_TICK));
+        expandFullScans(server, tickMaintenanceStarted + MAX_SCAN_NANOS_PER_TICK);
         MEMBER_SCHEDULER.run(tickMaintenanceStarted + MAX_MAINTENANCE_NANOS_PER_TICK,
                 (key, previous) -> processScheduledMember(server, key, previous),
                 WirelessAeNetworkRuntime::destroyQuietly);
@@ -321,11 +323,12 @@ public final class WirelessAeNetworkRuntime {
     }
 
     public static void invalidateTopology() {
+        if (topologyInvalidationPending) return;
+        topologyInvalidationPending = true;
         TICK_WIRED_COMPONENTS.clear();
         TICK_IN_WORLD_CONNECTION_CACHE.clear();
         COMPONENT_SNAPSHOTS.clear();
         TOPOLOGY_SNAPSHOTS.clear();
-        MEMBER_SCHEDULER.invalidateAllNetworks();
     }
 
     public static void requestReconnect(UUID frequency) {
@@ -333,7 +336,7 @@ public final class WirelessAeNetworkRuntime {
             TICK_WIRED_COMPONENTS.clear();
             TICK_CORE_CACHE.remove(frequency);
             TICK_BRIDGE_NODE_CACHE.remove(frequency);
-            WirelessAeDiagnostics.count("reconnect_requests");
+
             REQUESTED_RECONNECTS.add(frequency);
         }
     }
@@ -355,19 +358,19 @@ public final class WirelessAeNetworkRuntime {
             if (data.getCore(frequency) == null) {
                 FULL_SCAN_PROGRESS.remove(frequency);
                 LAST_EXPANDED_REVISION.remove(frequency);
-                WirelessAeDiagnostics.count("full_scan_cancelled");
+
                 continue;
             }
             ScanProgress progress = FULL_SCAN_PROGRESS.get(frequency);
             if (progress == null) {
                 progress = new ScanProgress(data.openMemberScan(frequency), maintenanceTick);
                 FULL_SCAN_PROGRESS.put(frequency, progress);
-                WirelessAeDiagnostics.count("full_scan_started");
+
             } else if (!progress.cursor.isCurrent(frequency)) {
                 // Membership changed between ticks. Never resume an invalid collection iterator.
                 progress.cursor = data.openMemberScan(frequency);
                 progress.rescanRequested = false;
-                WirelessAeDiagnostics.count("full_scan_revision_restarts");
+
             }
             int networkExpanded = 0;
             while (progress.cursor.remaining() > 0 && networkExpanded < MAX_SCAN_MEMBERS_PER_NETWORK &&
@@ -376,14 +379,11 @@ public final class WirelessAeNetworkRuntime {
                 expanded++;
                 networkExpanded++;
             }
-            WirelessAeDiagnostics.max("full_scan_network_members_per_tick_max", networkExpanded);
-            WirelessAeDiagnostics.max("full_scan_age_ticks_max", maintenanceTick - progress.startedTick + 1);
+
             if (progress.cursor.remaining() == 0) {
                 LAST_EXPANDED_REVISION.put(frequency, progress.cursor.revision());
                 FULL_SCAN_PROGRESS.remove(frequency);
-                WirelessAeDiagnostics.count("full_scan_completed");
-                WirelessAeDiagnostics.sample("full_scan_completed", frequency, null,
-                        "elapsed_ticks=" + (maintenanceTick - progress.startedTick + 1));
+
                 if (progress.rescanRequested) {
                     LAST_EXPANDED_REVISION.remove(frequency);
                     FULL_SCAN_REQUESTS.add(frequency);
@@ -393,13 +393,9 @@ public final class WirelessAeNetworkRuntime {
                 FULL_SCAN_REQUESTS.add(frequency);
             }
         }
-        WirelessAeDiagnostics.add("full_scan_members_enqueued", expanded);
-        WirelessAeDiagnostics.max("full_scan_members_per_tick_max", expanded);
-        WirelessAeDiagnostics.max("full_scan_networks_per_tick_max", visited);
-        WirelessAeDiagnostics.gauge("full_scan_pending_networks", FULL_SCAN_REQUESTS.size());
+
         if (!FULL_SCAN_REQUESTS.isEmpty()) {
-            WirelessAeDiagnostics.count("full_scan_deferred_ticks");
-            if (System.nanoTime() >= deadline) WirelessAeDiagnostics.count("full_scan_time_budget_hits");
+
         }
     }
 
@@ -919,22 +915,19 @@ public final class WirelessAeNetworkRuntime {
                                                   WirelessAeSavedData.MemberKey member,
                                                   IGridNode bridgeNode,
                                                   Map<WirelessAeSavedData.MemberKey, IGridConnection> frequencyConnections) {
-        long memberStarted = WirelessAeDiagnostics.start();
         try {
             ConnectionResult result = connectMemberMeasured(frequency, corePos, member, bridgeNode, frequencyConnections);
             if (result == ConnectionResult.CONNECTED || result == ConnectionResult.ALREADY_CONNECTED) {
                 clearMemberRetry(member);
             }
-            WirelessAeDiagnostics.count("result_" + result);
+
             return result;
         } catch (RuntimeException error) {
-            WirelessAeDiagnostics.failure("member_maintenance", frequency, member, error);
+
             forgetWiredConnectionCheck(member);
             destroyQuietly(frequencyConnections.remove(member));
             scheduleMemberRetry(frequency, member);
             return ConnectionResult.FAILED;
-        } finally {
-            WirelessAeDiagnostics.member(memberStarted, frequency, member);
         }
     }
 
@@ -944,8 +937,7 @@ public final class WirelessAeNetworkRuntime {
         MinecraftServer server = bridgeNode.getLevel().getServer();
         ServerLevel targetLevel = server.getLevel(member.pos().dimension());
         if (targetLevel == null || !targetLevel.hasChunkAt(member.blockPos())) {
-            WirelessAeDiagnostics.count("target_unloaded");
-            WirelessAeDiagnostics.count(targetLevel == null ? "target_dimension_unavailable" : "target_chunk_unloaded");
+
             TICK_TARGET_NODE_CACHE.remove(member);
             forgetWiredConnectionCheck(member);
             destroyQuietly(frequencyConnections.remove(member));
@@ -953,7 +945,7 @@ public final class WirelessAeNetworkRuntime {
             return ConnectionResult.TARGET_MISSING;
         }
         if (!isWirelessMeTarget(targetLevel, member.blockPos())) {
-            WirelessAeDiagnostics.count("target_invalid");
+
             forgetWiredConnectionCheck(member);
             destroyQuietly(frequencyConnections.remove(member));
             scheduleMemberRetry(frequency, member);
@@ -962,7 +954,7 @@ public final class WirelessAeNetworkRuntime {
 
         IGridNode targetNode = findTargetNode(server, member);
         if (targetNode == null) {
-            WirelessAeDiagnostics.count("target_node_not_ready");
+
             forgetWiredConnectionCheck(member);
             destroyQuietly(frequencyConnections.remove(member));
             scheduleMemberRetry(frequency, member);
@@ -976,7 +968,7 @@ public final class WirelessAeNetworkRuntime {
         }
 
         if (currentConnectionMatches) {
-            if (WirelessAeDiagnostics.measure("wired_topology", () -> findWiredNetworkFrequency(server, member, false)) != null) {
+            if (findWiredNetworkFrequency(server, member, false) != null) {
                 forgetWiredConnectionCheck(member);
                 destroyQuietly(currentConnection);
                 frequencyConnections.remove(member);
@@ -998,7 +990,7 @@ public final class WirelessAeNetworkRuntime {
             return ConnectionResult.ALREADY_CONNECTED;
         }
 
-        if (WirelessAeDiagnostics.measure("wired_topology", () -> findWiredNetworkFrequency(server, member, true)) != null) {
+        if (findWiredNetworkFrequency(server, member, true) != null) {
             forgetWiredConnectionCheck(member);
             destroyQuietly(currentConnection);
             frequencyConnections.remove(member);
@@ -1011,22 +1003,20 @@ public final class WirelessAeNetworkRuntime {
 
         try {
             try {
-                frequencyConnections.put(member, WirelessAeDiagnostics.measure("connection_create", () -> GridHelper.createConnection(bridgeNode, targetNode)));
+                frequencyConnections.put(member, GridHelper.createConnection(bridgeNode, targetNode));
             } finally {
                 TICK_WIRED_COMPONENTS.clear();
                 TICK_IN_WORLD_CONNECTION_CACHE.clear();
             }
             return ConnectionResult.CONNECTED;
         } catch (RuntimeException error) {
-            WirelessAeDiagnostics.count("target_connection_failed");
-            WirelessAeDiagnostics.failure("connection_create", frequency, member, error);
+
             scheduleMemberRetry(frequency, member);
             return ConnectionResult.FAILED;
         }
     }
 
     private static void scheduleMemberRetry(UUID frequency, WirelessAeSavedData.MemberKey member) {
-        WirelessAeDiagnostics.count("retry_scheduled");
         if (schedulerExecuting) return;
         MEMBER_SCHEDULER.enqueue(frequency, member, WirelessAeMemberScheduler.Kind.RETRY_DUE);
     }
@@ -1615,17 +1605,17 @@ public final class WirelessAeNetworkRuntime {
         WirelessAeTopologySnapshot snapshot = tickCacheActive ? COMPONENT_SNAPSHOTS.get(targetNode) : null;
         if (snapshot != null) {
             if (snapshot.contains(coreNode)) {
-                WirelessAeDiagnostics.count("topology_snapshot_hits");
+
                 return true;
             }
             if (snapshot.complete()) {
-                WirelessAeDiagnostics.count("topology_snapshot_negative_hits");
+
                 return false;
             }
         }
         Set<IGridNode> component = tickCacheActive ? TICK_WIRED_COMPONENTS.get(targetNode) : null;
         if (component != null) {
-            WirelessAeDiagnostics.count("wired_component_hits");
+
             return component.contains(coreNode);
         }
 
@@ -1640,11 +1630,11 @@ public final class WirelessAeNetworkRuntime {
         while (!pending.isEmpty()) {
             if (visited.size() >= MAX_WIRED_NODES_PER_SEARCH) {
                 complete = false;
-                WirelessAeDiagnostics.count("wired_search_capped");
+
                 break;
             }
             IGridNode node = pending.removeFirst();
-            WirelessAeDiagnostics.count("wired_nodes_visited");
+
             Iterable<IGridConnection> connections;
             try {
                 connections = node.getConnections();
@@ -1678,8 +1668,7 @@ public final class WirelessAeNetworkRuntime {
             WirelessAeTopologySnapshot stored = COMPONENT_SNAPSHOTS.computeIfAbsent(targetNode,
                     ignored -> new WirelessAeTopologySnapshot());
             stored.replace(visited);
-            WirelessAeDiagnostics.count("wired_component_builds");
-            WirelessAeDiagnostics.count("topology_snapshot_builds");
+
         }
         return false;
     }
@@ -1708,17 +1697,16 @@ public final class WirelessAeNetworkRuntime {
             return;
         }
 
-        long started = WirelessAeDiagnostics.start();
         try {
             connection.destroy();
-            WirelessAeDiagnostics.count("connection_destroyed");
+
         } catch (RuntimeException ignored) {
-            WirelessAeDiagnostics.count("connection_destroy_failed");
+
             // AE2 may already have destroyed the connection while unloading a node.
         } finally {
             TICK_WIRED_COMPONENTS.clear();
             TICK_IN_WORLD_CONNECTION_CACHE.clear();
-            WirelessAeDiagnostics.end("connection_destroy", started);
+
         }
     }
 }

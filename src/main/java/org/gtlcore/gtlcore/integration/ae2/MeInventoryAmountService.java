@@ -1,5 +1,7 @@
 package org.gtlcore.gtlcore.integration.ae2;
 
+import org.gtlcore.gtlcore.integration.ae2.storage.PreciseInventoryDisplayService;
+
 import net.minecraft.server.level.ServerPlayer;
 
 import appeng.api.config.Actionable;
@@ -9,6 +11,9 @@ import appeng.api.stacks.AEFluidKey;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import org.jetbrains.annotations.Nullable;
+
+import java.math.BigInteger;
+import java.util.List;
 
 public final class MeInventoryAmountService {
 
@@ -26,24 +31,29 @@ public final class MeInventoryAmountService {
         try {
             long amount = grid.getStorageService().getInventory()
                     .extract(key, Long.MAX_VALUE, Actionable.SIMULATE, source);
-            return Result.available(amount);
+            BigInteger exact = BigInteger.valueOf(amount);
+            if (amount == Long.MAX_VALUE) {
+                exact = PreciseInventoryDisplayService.query(grid.getStorageService().getInventory(), List.of(key), source)
+                        .getOrDefault(key, exact);
+            }
+            return new Result(true, exact);
         } catch (RuntimeException ignored) {
             return Result.unavailable();
         }
     }
 
-    public record Result(boolean available, long amount) {
+    public record Result(boolean available, BigInteger amount) {
 
         public Result {
-            amount = available ? Math.max(0, amount) : 0;
+            amount = available ? amount.max(BigInteger.ZERO) : BigInteger.ZERO;
         }
 
         public static Result unavailable() {
-            return new Result(false, 0);
+            return new Result(false, BigInteger.ZERO);
         }
 
         public static Result available(long amount) {
-            return new Result(true, amount);
+            return new Result(true, BigInteger.valueOf(amount));
         }
     }
 }

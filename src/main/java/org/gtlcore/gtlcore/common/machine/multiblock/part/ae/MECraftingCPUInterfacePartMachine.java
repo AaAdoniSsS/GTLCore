@@ -1,7 +1,6 @@
 package org.gtlcore.gtlcore.common.machine.multiblock.part.ae;
 
 import org.gtlcore.gtlcore.common.machine.multiblock.electric.TransfiniteComputationArrayMachine;
-import org.gtlcore.gtlcore.integration.ae2.crafting.transfinite.TransfiniteComputationArrayLifecycleLogger;
 
 import com.gregtechceu.gtceu.api.capability.recipe.IO;
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
@@ -206,24 +205,11 @@ public final class MECraftingCPUInterfacePartMachine extends MEIOPartMachine {
         var controllerPositions = getTransfiniteControllers().stream()
                 .map(TransfiniteComputationArrayMachine::getPos)
                 .toList();
-        TransfiniteComputationArrayLifecycleLogger.logNetworkCheckStarted(
-                getLevel(), getPos(), controllerPositions, reason, this.isOnline,
-                getMainNode().isOnline(), getMainNode().isPowered(),
-                getMainNode().isActive(), getMainNode().getGrid() != null);
-        boolean lifecycleLogging = TransfiniteComputationArrayLifecycleLogger.isEnabled();
-        long startedAtNanos = lifecycleLogging ? System.nanoTime() : 0L;
+
         boolean onlineBefore = this.isOnline;
         super.onMainNodeStateChanged(reason);
-        long superclassFinishedAtNanos = lifecycleLogging ? System.nanoTime() : 0L;
         updateSubscription();
         notifyCraftingCpuChange();
-        long finishedAtNanos = lifecycleLogging ? System.nanoTime() : 0L;
-        TransfiniteComputationArrayLifecycleLogger.logNetworkCheck(
-                getLevel(), getPos(), controllerPositions, reason, onlineBefore, this.isOnline,
-                getMainNode().isOnline(), getMainNode().isPowered(),
-                getMainNode().isActive(), getMainNode().getGrid() != null,
-                superclassFinishedAtNanos - startedAtNanos,
-                finishedAtNanos - superclassFinishedAtNanos, finishedAtNanos - startedAtNanos);
     }
 
     public void notifyCraftingCpuChange() {

@@ -47,7 +47,8 @@ import java.util.function.Supplier;
 
 public final class WirelessAePackets {
 
-    private static final String PROTOCOL_VERSION = "14";
+    private static final String PROTOCOL_VERSION = "25";
+    private static final MeInventoryRequestLimiter<ServerPlayer> TARGET_REQUEST_LIMITER = new MeInventoryRequestLimiter<>(8, 20);
     private static int nextPacketId;
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
@@ -124,8 +125,12 @@ public final class WirelessAePackets {
         registerPacket(SyncMEChamberManagerContentsPacket.class, SyncMEChamberManagerContentsPacket::encode,
                 SyncMEChamberManagerContentsPacket::decode, SyncMEChamberManagerContentsPacket::handle,
                 NetworkDirection.PLAY_TO_CLIENT);
+        registerPacket(SyncMEChamberSnapshotPacket.class, SyncMEChamberSnapshotPacket::encode,
+                SyncMEChamberSnapshotPacket::decode, SyncMEChamberSnapshotPacket::handle, NetworkDirection.PLAY_TO_CLIENT);
         MeInventoryAmountPackets.register(CHANNEL, () -> nextPacketId++);
+        FastCellDisplayPackets.register(CHANNEL, () -> nextPacketId++);
         JeiWirelessTerminalOrderPackets.register(CHANNEL, () -> nextPacketId++);
+        JeiPatternQuery.register(CHANNEL, () -> nextPacketId++);
     }
 
     public record ClearBindingToolPacket() {
@@ -283,6 +288,7 @@ public final class WirelessAePackets {
                 if (player == null || isCloseEnough(player, packet.targetPos)) {
                     return;
                 }
+                if (!TARGET_REQUEST_LIMITER.tryAcquire(player, player.serverLevel().getGameTime())) return;
 
                 ServerLevel level = player.serverLevel();
                 WirelessAeSavedData.MemberKey target = WirelessAeNetworkRuntime.resolveWirelessTarget(
@@ -386,6 +392,7 @@ public final class WirelessAePackets {
                 if (player == null || isCloseEnough(player, packet.targetPos)) {
                     return;
                 }
+                if (!TARGET_REQUEST_LIMITER.tryAcquire(player, player.serverLevel().getGameTime())) return;
 
                 ServerLevel level = player.serverLevel();
                 WirelessAeSavedData.MemberKey target = WirelessAeNetworkRuntime.resolveWirelessTarget(
@@ -418,7 +425,6 @@ public final class WirelessAePackets {
                 if (player == null || isCloseEnough(player, packet.targetPos)) {
                     return;
                 }
-
                 ServerLevel level = player.serverLevel();
                 if (!level.hasChunkAt(packet.targetPos)) {
                     return;
@@ -467,6 +473,7 @@ public final class WirelessAePackets {
                 if (player == null || isCloseEnough(player, packet.targetPos)) {
                     return;
                 }
+                if (!TARGET_REQUEST_LIMITER.tryAcquire(player, player.serverLevel().getGameTime())) return;
 
                 ServerLevel level = player.serverLevel();
                 WirelessAeSavedData.MemberKey target = WirelessAeNetworkRuntime.resolveWirelessTarget(
@@ -1003,6 +1010,30 @@ public final class WirelessAePackets {
                 }
             });
             context.setPacketHandled(true);
+        }
+    }
+
+    public record SyncMEChamberSnapshotPacket(int containerId, boolean contents, long revision,
+                                              int totalBytes, int offset, byte[] data) {
+
+        private static void encode(SyncMEChamberSnapshotPacket packet, FriendlyByteBuf buffer) {
+            buffer.writeVarInt(packet.containerId);
+            buffer.writeBoolean(packet.contents);
+            buffer.writeVarLong(packet.revision);
+            buffer.writeVarInt(packet.totalBytes);
+            buffer.writeVarInt(packet.offset);
+            buffer.writeByteArray(packet.data);
+        }
+
+        private static SyncMEChamberSnapshotPacket decode(FriendlyByteBuf buffer) {
+            return new SyncMEChamberSnapshotPacket(buffer.readVarInt(), buffer.readBoolean(), buffer.readVarLong(),
+                    buffer.readVarInt(), buffer.readVarInt(), buffer.readByteArray(
+                            org.gtlcore.gtlcore.integration.ae2.chamber.ChamberSnapshotTransfer.MAX_CHUNK_BYTES));
+        }
+
+        private static void handle(SyncMEChamberSnapshotPacket packet, Supplier<NetworkEvent.Context> supplier) {
+            dispatchClient(supplier.get(), () -> org.gtlcore.gtlcore.client.ae2.wireless.WirelessAeClientPacketHandler
+                    .handleMEChamberSnapshot(packet));
         }
     }
 
