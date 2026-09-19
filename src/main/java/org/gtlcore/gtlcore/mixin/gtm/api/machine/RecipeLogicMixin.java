@@ -174,22 +174,6 @@ public abstract class RecipeLogicMixin implements ILockRecipe, IRecipeStatus {
         }
     }
 
-    @Redirect(
-              method = "serverTick",
-              at = @At(
-                       value = "INVOKE",
-                       target = "Lcom/gregtechceu/gtceu/api/machine/trait/RecipeLogic;onRecipeFinish()V",
-                       remap = false),
-              remap = false)
-    private void gtlcore$finishRecipeWhenBatchOutputFits(RecipeLogic recipeLogic) {
-        if (this.lastRecipe != null && IGTRecipe.of(this.lastRecipe).getBatchSize() > 1 &&
-                !matchRecipeOutput(this.machine, this.lastRecipe)) {
-            this.setWaiting(null);
-            return;
-        }
-        recipeLogic.onRecipeFinish();
-    }
-
     /**
      * @author Dragons
      * @reason 删除lastFailedMatches操作
