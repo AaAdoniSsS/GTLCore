@@ -5,6 +5,8 @@ import org.gtlcore.gtlcore.integration.ae2.wireless.JeiPatternQuery;
 import org.gtlcore.gtlcore.integration.ae2.wireless.JeiPatternWorkers;
 import org.gtlcore.gtlcore.integration.ae2.wireless.WirelessAePackets;
 
+import com.lowdragmc.lowdraglib.utils.LocalizationUtils;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.world.item.ItemStack;
@@ -164,7 +166,7 @@ public final class JeiPatternStatus {
         boolean found = key != null && cache.craftable.contains(key);
 
         if (!found) return;
-        String label = "可合成";
+        String label = LocalizationUtils.format("gtlcore.jei.pattern_status.craftable");
         int labelWidth = mc.font.width(label);
         float scale = Math.min(0.5F, 16F / labelWidth);
         graphics.pose().pushPose();

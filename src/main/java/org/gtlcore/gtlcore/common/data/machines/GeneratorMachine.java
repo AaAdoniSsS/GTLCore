@@ -58,10 +58,10 @@ public class GeneratorMachine {
                     "gtceu.universal.tooltip.base_production_eut", 2 * GTValues.V[GTValues.ZPM]),
                     Component.translatable(
                             "gtceu.universal.tooltip.uses_per_hour_lubricant", 2000),
-                    Component.literal(
-                            "提供§f120mB/s§7的液态氧，并消耗§f双倍§7燃料以产生高达§f" + (2 * GTValues.V[GTValues.UV]) + "§7EU/t的功率。"),
-                    Component.literal(
-                            "再额外提供§f80mB/s§7的四氧化二氮，并消耗§f四倍§7燃料以产生高达§f" + (2 * GTValues.V[GTValues.UHV]) + "§7EU/t的功率。"))
+                    Component.translatable(
+                            "gtlcore.machine.chemical_energy_devourer.tooltip.0", 2 * GTValues.V[GTValues.UV]),
+                    Component.translatable(
+                            "gtlcore.machine.chemical_energy_devourer.tooltip.1", 2 * GTValues.V[GTValues.UHV]))
             .tooltipBuilder(GTLMachines.GTL_ADD)
             .recipeModifier(ChemicalEnergyDevourerMachine::recipeModifier, true)
             .appearanceBlock(GTBlocks.CASING_TUNGSTENSTEEL_ROBUST)

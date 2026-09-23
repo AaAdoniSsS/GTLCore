@@ -81,7 +81,7 @@ public class StructureWriteBehavior implements IItemUIFactory {
                         20,
                         new GuiTextureGroup(
                                 GuiTextures.BUTTON,
-                                new TextTexture("导出为日志")),
+                                new TextTexture("structure_writer.export_log")),
                         clickData -> exportLog(playerInventoryHolder)))
                 .widget(new ButtonWidget(
                         9,
@@ -90,7 +90,7 @@ public class StructureWriteBehavior implements IItemUIFactory {
                         20,
                         new GuiTextureGroup(
                                 GuiTextures.BUTTON,
-                                new TextTexture("沿X轴旋转")),
+                                new TextTexture("structure_writer.rotate_x")),
                         clickData -> changeDirX(playerInventoryHolder)))
                 .widget(new ButtonWidget(
                         90,
@@ -99,7 +99,7 @@ public class StructureWriteBehavior implements IItemUIFactory {
                         20,
                         new GuiTextureGroup(
                                 GuiTextures.BUTTON,
-                                new TextTexture("沿Y轴旋转")),
+                                new TextTexture("structure_writer.rotate_y")),
                         clickData -> changeDirY(playerInventoryHolder)));
     }
 

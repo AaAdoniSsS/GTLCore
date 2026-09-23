@@ -70,7 +70,7 @@ public final class MEChamberManagerTerminalScreen extends AEBaseScreen<MEChamber
     private static final int TEXT_WIDTH = MEChamberManagerTerminalLayout.LIST_CONTENT_WIDTH - 20;
     private static final int HIGHLIGHT_DURATION_MILLIS = 15_000;
     private static final TextTexture TAG_SORT_NAME_TEXTURE = new TextTexture("A-Z");
-    private static final TextTexture TAG_SORT_AMOUNT_TEXTURE = new TextTexture("数量▼");
+    private static final TextTexture TAG_SORT_AMOUNT_TEXTURE = new TextTexture("gui.gtlcore.sort_by_amount");
     private static final Comparator<MEChamberManagerTerminalMenu.Entry> ENTRY_ORDER = Comparator
             .comparing((MEChamberManagerTerminalMenu.Entry entry) -> entry.name().getString(),
                     String.CASE_INSENSITIVE_ORDER)

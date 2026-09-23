@@ -77,7 +77,7 @@ public class StructureDetectBehavior extends TooltipBehavior implements IToolBeh
                     ((ServerLevel) level).getServer().execute(() -> {
                         var pattern = controller.getPattern();
                         if (!LOCK.tryLock()) {
-                            player.sendSystemMessage(Component.literal("Structure detection is already running."));
+                            player.sendSystemMessage(Component.translatable("message.gtlcore.structure_detection_running"));
                             return;
                         }
                         try {
