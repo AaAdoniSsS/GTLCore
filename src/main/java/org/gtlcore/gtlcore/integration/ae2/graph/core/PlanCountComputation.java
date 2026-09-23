@@ -17,22 +17,34 @@ public final class PlanCountComputation {
     }
 
     public boolean step(PlanningBudget budget) {
-        budget.check();
-        if (stack.isEmpty()) return true;
-        Frame frame = stack.peek();
-        if (frame.step instanceof PlanStep.Batch batch) {
-            long runs = CheckedAmounts.multiply(batch.runs(), frame.multiplier);
-            if (runs > 0) counts.merge(batch.recipe(), runs, CheckedAmounts::add);
-            stack.pop();
-        } else if (frame.step instanceof PlanStep.Repeat repeat) {
-            stack.pop();
-            if (repeat.times() > 0) stack.push(new Frame(repeat.body(), CheckedAmounts.multiply(frame.multiplier, repeat.times())));
-        } else {
-            var children = ((PlanStep.Sequence) frame.step).children();
-            if (frame.child == children.size()) stack.pop();
-            else stack.push(new Frame(children.get(frame.child++), frame.multiplier));
+        for (int operation = 0; operation < 32; operation++) {
+            budget.check();
+            if (stack.isEmpty()) return true;
+            Frame frame = stack.peek();
+            if (frame.step instanceof PlanStep.Batch batch) {
+                add(batch, frame.multiplier);
+                stack.pop();
+            } else if (frame.step instanceof PlanStep.Repeat repeat) {
+                stack.pop();
+                if (repeat.times() > 0) stack.push(new Frame(repeat.body(), CheckedAmounts.multiply(frame.multiplier, repeat.times())));
+            } else {
+                var children = ((PlanStep.Sequence) frame.step).children();
+                if (frame.child == children.size()) stack.pop();
+                else {
+                    PlanStep child = children.get(frame.child++);
+                    // Large DAG witnesses are mostly flat batches. Counting one
+                    // does not need a traversal frame and a later pop operation.
+                    if (child instanceof PlanStep.Batch batch) add(batch, frame.multiplier);
+                    else stack.push(new Frame(child, frame.multiplier));
+                }
+            }
         }
         return stack.isEmpty();
+    }
+
+    private void add(PlanStep.Batch batch, long multiplier) {
+        long runs = CheckedAmounts.multiply(batch.runs(), multiplier);
+        if (runs > 0) counts.merge(batch.recipe(), runs, CheckedAmounts::add);
     }
 
     public Map<String, Long> result() {

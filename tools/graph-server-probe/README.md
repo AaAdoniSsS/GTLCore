@@ -87,6 +87,17 @@ python tools/summarize-graph-stress.py .local/server-stress-final.log .local/gra
 该 JSON 保留逐样本值、首笔、热中位数、最近秩 p95 和不一致结果。只有七个热样本，p95
 实际上为该组最大值，不能据此承诺稳定尾延迟。测试包哈希和性能结论见 `docs/graph-stress-performance.md`。
 
+捕获调度与精确输入测试还可使用以下命令，须等前一个套件 `SUITE COMPLETE` 后再继续：
+
+- `graphstresslarge`：一万亿数量，8,192 / 16,384 / 32,768 层链及 512 × 32 路共享依赖，每组五次。
+- `graphmemory128` 后执行 `graphstress65536`：仅将测试服运行时请求预算改为 128 MiB，65,536 层三次；不修改发布默认值。
+- `graphstressdense`：128 层精确加工链，额外挂载 8,192 种同物品的无关 NBT 库存，三次。
+- `graphload20` 后执行 `graphstressloaded`，以及 `graphload60` 后执行 `graphstressbusy`：在主线程每 tick 人为占用 20 / 60 ms，各测两次 8,192 层请求。先核对日志的 `load_ms`；完成后用 `graphload0` 清除。负载也会在 600 tick 后自动清除。
+
+`[Graph Capture]` 的 tick 统计只包含完整落在请求窗口内的 tick，不包含请求开始和结束的半个 tick，
+也不包含两 tick 之间的空闲任务耗时；必须与 `snapshot_max_slice_ms`、请求经过时间一起看。
+只有几个完整 tick 时，p95 实际接近最大值，不能当作长期 TPS 或尾延迟保证。
+
 ## 亿级数量与多装配机
 
 - `graphstress100m` 请求 100,000,000，`graphstress3b` 请求 3,000,000,000。

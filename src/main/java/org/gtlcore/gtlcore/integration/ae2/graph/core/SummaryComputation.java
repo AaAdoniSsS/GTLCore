@@ -32,16 +32,18 @@ public final class SummaryComputation<K> {
                 if (frame.ordinaryEntries.hasNext()) {
                     var entry = frame.ordinaryEntries.next();
                     K key = entry.getKey();
-                    BigInteger quantity = BigInteger.valueOf(entry.getValue()).multiply(frame.ordinaryRuns);
+                    BigInteger quantity = entry.getValue() == 1 ? frame.ordinaryRuns :
+                            BigInteger.valueOf(entry.getValue()).multiply(frame.ordinaryRuns);
                     BigInteger change = frame.change.getOrDefault(key, BigInteger.ZERO);
                     if (frame.ordinaryInputs) {
                         frame.need.merge(key, quantity.subtract(change).max(BigInteger.ZERO), BigInteger::max);
                         frame.peak.merge(key, change, BigInteger::max);
                         frame.change.put(key, change.subtract(quantity));
                     } else {
+                        BigInteger after = change.add(quantity);
                         frame.need.merge(key, change.negate().max(BigInteger.ZERO), BigInteger::max);
-                        frame.peak.merge(key, change.add(quantity), BigInteger::max);
-                        frame.change.put(key, change.add(quantity));
+                        frame.peak.merge(key, after, BigInteger::max);
+                        frame.change.put(key, after);
                     }
                     continue;
                 }

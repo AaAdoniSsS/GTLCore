@@ -17,6 +17,7 @@ import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
 import appeng.core.AEConfig;
+import appeng.crafting.pattern.AEProcessingPattern;
 import appeng.me.service.CraftingService;
 
 import java.util.*;
@@ -191,7 +192,8 @@ public final class GtlPatternCatalog {
                         normalizingSignature = signature;
                         normalizing = new Normalization(pattern, available, level, budget);
                         for (var input : signature.values().inputs()) for (var possible : input.choices()) {
-                            templates.putIfAbsent(possible.stack().what().getPrimaryKey(), possible.stack().what());
+                            if (!normalizing.exactInputs)
+                                templates.putIfAbsent(possible.stack().what().getPrimaryKey(), possible.stack().what());
                             pending.add(possible.stack().what());
                         }
                         return false;
@@ -220,8 +222,13 @@ public final class GtlPatternCatalog {
                     } else if (hit && !fuzzy.equals(structure.fuzzyKeys())) resetBuild();
                     else {
                         if (!hit) {
-                            structure = new Structure(new CapturedPatternCatalog(entries, recipeCount), Set.copyOf(seen),
-                                    Set.copyOf(templates.values()), Set.copyOf(fuzzy), bounded, Map.copyOf(dependencies), revision);
+                            // Ownership transfers here. This Capture never mutates
+                            // these collections after graph discovery; later phases
+                            // only validate their contents. Avoid rebuilding a large
+                            // hash table in one unsliceable server-thread operation.
+                            structure = new Structure(new CapturedPatternCatalog(entries, recipeCount), Collections.unmodifiableSet(seen),
+                                    Set.copyOf(templates.values()), Collections.unmodifiableSet(fuzzy), bounded,
+                                    Collections.unmodifiableMap(dependencies), revision);
                         } else if (structure.providerRevision() != revision) structure = new Structure(structure.catalog(),
                                 structure.resources(), structure.inputTemplates(), structure.fuzzyKeys(), structure.boundedAlternatives(),
                                 structure.dependencies(), revision);
@@ -275,7 +282,9 @@ public final class GtlPatternCatalog {
                             Structure removed = cache.remove(cache.keySet().iterator().next());
                             weight -= removed.resources().size() + removed.catalog().size();
                         }
-                        result = new Snapshot(structure, Map.copyOf(stock), Set.copyOf(emitted), revision, hit);
+                        // Phase 4 is terminal; no mutable owner escapes alongside
+                        // these read-only views. Subsequent requests own new maps.
+                        result = new Snapshot(structure, Collections.unmodifiableMap(stock), Collections.unmodifiableSet(emitted), revision, hit);
                         phase = 4;
                     }
                 }
@@ -360,6 +369,7 @@ public final class GtlPatternCatalog {
         final List<CapturedPatternCatalog.Recipe> variants = new ArrayList<>();
         final Map<AEKey, GenericStack> candidates = new LinkedHashMap<>();
         final IPatternDetails.IInput[] inputs;
+        final boolean exactInputs;
         int inputSlot, phase;
         int[] indices;
         boolean bounded;
@@ -374,6 +384,13 @@ public final class GtlPatternCatalog {
             this.budget = budget;
             inputs = pattern.getInputs();
             if (inputs.length > 256 || pattern.getOutputs().length > 256) throw new PlanningBudget.Exhausted(PlanningBudget.Limit.GRAPH_LIMIT);
+            // Like MAX_FAST's structural exactness check, specialize only the
+            // native processing implementation. Its Input.isValid is AEKey.matches;
+            // other NBT variants cannot be candidates. Check the actual inputs as
+            // well: wrappers or addon input implementations retain the full path.
+            boolean exact = pattern.getClass() == AEProcessingPattern.class;
+            for (var input : inputs) exact &= input.getClass().getName().equals("appeng.crafting.pattern.AEProcessingPattern$Input");
+            exactInputs = exact;
         }
 
         boolean step() {
@@ -400,7 +417,7 @@ public final class GtlPatternCatalog {
                 if (possibilities.hasNext() && candidates.size() < MAX_VARIANTS) {
                     possible = possibilities.next();
                     if (input.isValid(possible.what(), level)) candidates.put(possible.what(), possible);
-                    fuzzy = available.findFuzzy(possible.what(), FuzzyMode.IGNORE_ALL).iterator();
+                    if (!exactInputs) fuzzy = available.findFuzzy(possible.what(), FuzzyMode.IGNORE_ALL).iterator();
                     return false;
                 }
                 bounded |= possibilities.hasNext();

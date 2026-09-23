@@ -31,10 +31,10 @@ public final class PlanNodeCost {
         Set<K> roots = new LinkedHashSet<>();
         roots.add(plan.target());
         roots.addAll(plan.seeds().keySet());
-        BigInteger total = BigInteger.ZERO;
+        long total = 0;
         for (K root : roots) {
             if (!reached.add(root)) continue;
-            total = total.add(BigInteger.ONE);
+            total = Math.addExact(total, 1);
             pending.add(root);
             while (!pending.isEmpty()) {
                 for (Request<K> child : dependencies.getOrDefault(pending.removeFirst(), Set.of())) {
@@ -42,18 +42,18 @@ public final class PlanNodeCost {
                     if (!dependencies.containsKey(child.key())) {
                         // MAX_FAST does not merge terminal boundaries: each expanded
                         // parent request pays its leaf fee, even for the same material.
-                        total = total.add(BigInteger.ONE);
+                        total = Math.addExact(total, 1);
                     } else if (requests.add(child)) {
                         // Share an input template across all incoming paths. Reusing
                         // its entire subtree count would charge an exponentially
                         // expanded tree for a small shared DAG.
-                        total = total.add(BigInteger.ONE);
+                        total = Math.addExact(total, 1);
                         pending.addLast(child.key());
                     }
                 }
             }
         }
-        return total;
+        return BigInteger.valueOf(total);
     }
 
     private record Request<K>(String binding, int slot, K key, long amount, boolean configuration) {}

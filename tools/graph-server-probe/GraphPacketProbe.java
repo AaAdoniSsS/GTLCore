@@ -191,6 +191,9 @@ public final class GraphPacketProbe {
         var service = (CraftingService) grid.getCraftingService();
         var catalog = new GtlPatternCatalog();
         var first = catalog.capture(grid, service, level, source, target, new PlanningBudget(0, 1_000_000, () -> false));
+        var originalResources = new java.util.LinkedHashSet<>(first.structure().resources());
+        var originalDependencies = new HashMap<>(first.structure().dependencies());
+        var originalStock = new HashMap<>(first.stock());
         var warm = catalog.capture(grid, service, level, source, target, new PlanningBudget(0, 1_000_000, () -> false));
         check(warm.cacheHit() && catalogIdentity(first.structure()) == catalogIdentity(warm.structure()), "Warm structure was not shared");
         var field = CraftingService.class.getDeclaredField("craftingProviders");
@@ -204,6 +207,21 @@ public final class GraphPacketProbe {
         var after = catalog.capture(grid, service, level, source, target, new PlanningBudget(0, 1_000_000, () -> false));
         check(after.cacheHit() && catalogIdentity(after.structure()) == catalogIdentity(first.structure()), "Unchanged dependencies discarded compiled graph");
         check(first.stock().equals(after.stock()), "Structure reuse changed stock snapshot");
+        check(originalResources.equals(first.structure().resources()) && originalResources.equals(after.structure().resources()) &&
+                originalDependencies.equals(first.structure().dependencies()) && originalStock.equals(first.stock()),
+                "Published capture resources changed during reuse");
+        try {
+            first.structure().resources().clear();
+            throw new AssertionError("Published resource snapshot is mutable");
+        } catch (UnsupportedOperationException expected) {}
+        try {
+            first.structure().dependencies().clear();
+            throw new AssertionError("Published dependency snapshot is mutable");
+        } catch (UnsupportedOperationException expected) {}
+        try {
+            first.stock().clear();
+            throw new AssertionError("Published stock snapshot is mutable");
+        } catch (UnsupportedOperationException expected) {}
         System.out.println("[Graph Probe] PASS: actual provider remove/add in one tick advances twice; dependency-identical structure cache retained");
     }
 

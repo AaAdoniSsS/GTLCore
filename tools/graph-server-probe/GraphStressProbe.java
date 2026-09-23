@@ -40,19 +40,38 @@ public final class GraphStressProbe {
     private static appeng.api.storage.IStorageProvider stockProvider;
 
     public static void install(IGrid grid, List<IPatternDetails> supplied, GenericStack stock) throws Exception {
+        install(grid, supplied, stock, 0);
+    }
+
+    public static void install(IGrid grid, List<IPatternDetails> supplied, GenericStack stock, int unrelatedVariants) throws Exception {
         remove();
         var patterns = List.copyOf(supplied);
         fixture = patterns;
         initial = stock;
         // A real mounted MEStorage with a long inventory, avoiding a cell-size
-        // limit in the 100M / >int fixtures. Only the requested raw key is stored.
+        // limit in the 100M / >int fixtures. Optional unrelated NBT variants have
+        // the same primary item, exercising exact versus fuzzy input capture.
         fixtureStorage = grid.getStorageService();
+        var extraStock = new java.util.HashMap<AEKey, Long>();
+        for (int i = 0; i < unrelatedVariants; i++) {
+            var tag = new net.minecraft.nbt.CompoundTag();
+            tag.m_128405_("unrelated_graph_stock", i);
+            extraStock.put(appeng.api.stacks.AEItemKey.of((net.minecraft.world.item.Item) stock.what().getPrimaryKey(), tag), 100L);
+        }
         var storage = new appeng.api.storage.MEStorage() {
             private long held = stock.amount();
             public net.minecraft.network.chat.Component getDescription() { return stock.what().getDisplayName(); }
-            public synchronized void getAvailableStacks(KeyCounter out) { out.add(stock.what(), held); }
+            public synchronized void getAvailableStacks(KeyCounter out) {
+                out.add(stock.what(), held);
+                extraStock.forEach(out::add);
+            }
             public synchronized long extract(AEKey key, long amount, appeng.api.config.Actionable mode, IActionSource source) {
-                if (!key.equals(stock.what())) return 0;
+                if (!key.equals(stock.what())) {
+                    long available = extraStock.getOrDefault(key, 0L);
+                    long taken = Math.min(available, amount);
+                    if (taken != 0 && mode == appeng.api.config.Actionable.MODULATE) extraStock.put(key, available - taken);
+                    return taken;
+                }
                 long taken = Math.min(held, amount);
                 if (mode == appeng.api.config.Actionable.MODULATE) held -= taken;
                 return taken;
@@ -79,7 +98,7 @@ public final class GraphStressProbe {
         var field = CraftingService.class.getDeclaredField("craftingProviders"); field.setAccessible(true);
         registry = (NetworkCraftingProviders) field.get(grid.getCraftingService());
         registry.addProvider(mounted);
-        System.out.println("[Graph Stress] fixture_registered patterns=" + patterns.size());
+        System.out.println("[Graph Stress] fixture_registered patterns=" + patterns.size() + " unrelated_stock_variants=" + unrelatedVariants);
     }
 
     public static void remove() {
@@ -92,35 +111,43 @@ public final class GraphStressProbe {
     public record Sample(ICraftingPlan plan, long wall, long setup, long work, long snapshot, String failure) {}
 
     public static CompletableFuture<Sample> baseline(IGrid grid, Level level, IActionSource source, AEKey key, long amount) {
+        var tickWindow = GraphCaptureTimingProbe.begin("MAX_FAST");
         long start = System.nanoTime();
         CraftingCalculation calculation;
         try {
             calculation = new CraftingCalculation(level, grid, () -> source, new GenericStack(key, amount), CalculationStrategy.REPORT_MISSING_ITEMS);
         } catch (RuntimeException | StackOverflowError error) {
+            GraphCaptureTimingProbe.finish(tickWindow);
             return CompletableFuture.completedFuture(new Sample(null, System.nanoTime()-start, System.nanoTime()-start, 0, 0, error.toString()));
         }
         long setup = System.nanoTime()-start;
         CompletableFuture<Sample> result = new CompletableFuture<>();
         var task = OLD.submit(() -> {
             long work = System.nanoTime();
+            Sample sample;
             try {
                 var plan = calculation.run();
-                result.complete(new Sample(plan, System.nanoTime()-start, setup, System.nanoTime()-work, 0, ""));
+                sample = new Sample(plan, System.nanoTime()-start, setup, System.nanoTime()-work, 0, "");
             } catch (RuntimeException | StackOverflowError error) {
-                result.complete(new Sample(null, System.nanoTime()-start, setup, System.nanoTime()-work, 0, error.toString()));
+                sample = new Sample(null, System.nanoTime()-start, setup, System.nanoTime()-work, 0, error.toString());
             }
+            GraphCaptureTimingProbe.finish(tickWindow);
+            result.complete(sample);
         });
         CompletableFuture.delayedExecutor(30, TimeUnit.SECONDS).execute(() -> {
+            GraphCaptureTimingProbe.finish(tickWindow);
             if (result.complete(new Sample(null, System.nanoTime()-start, setup, 0, 0, "TIMEOUT_30S"))) task.cancel(true);
         });
         return result;
     }
 
     public static CompletableFuture<Sample> graph(IGrid grid, Level level, IActionSource source, AEKey key, long amount) {
+        var tickWindow = GraphCaptureTimingProbe.begin("GRAPH");
         long start = System.nanoTime();
         var request = (GraphPlanningRequest) grid.getCraftingService().beginCraftingCalculation(level, () -> source, key, amount, CalculationStrategy.REPORT_MISSING_ITEMS);
         long setup = System.nanoTime()-start;
         CompletableFuture<Sample> result = request.handle((plan, error) -> {
+            GraphCaptureTimingProbe.finish(tickWindow);
             long snapshot = request.budget().metrics().activeNanos().getOrDefault(PlanningBudget.Phase.SNAPSHOT, 0L);
             return new Sample(plan, System.nanoTime()-start, setup, plan instanceof AeGraphPlan graph ? graph.graph().planningNanos() : 0,
                     snapshot, error == null ? "" : error.toString());

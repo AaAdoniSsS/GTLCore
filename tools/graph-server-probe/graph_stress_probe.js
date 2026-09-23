@@ -50,7 +50,7 @@ ServerEvents.commandRegistry(event => {
             }
             level.getBlockEntity(new Pos(0, 65, 1)).getInternalInventory().setItemDirect(0, Item.of('ae2:item_storage_cell_256k'));
             // Stock is mounted as an isolated long-count MEStorage by the probe.
-            Probe.install(grid, patterns, new Stack(raw, amount + Math.max(4096, patterns.length * 4)));
+            Probe.install(grid, patterns, new Stack(raw, amount + Math.max(4096, patterns.length * 4)), spec.length > 3 ? spec[3] : 0);
             console.info('[Graph Stress] CASE label=' + label + ' depth=' + depth + ' width=' + width + ' registered_patterns=' + patterns.length + ' amount=' + amount);
             var sample = 0;
             function runSample() {
@@ -80,6 +80,15 @@ ServerEvents.commandRegistry(event => {
     // with no submission/stock transfer, rather than claiming it as a valid plan.
     register('graphstresslimit', 1000000000000, [['chain65536',65536,1]], 1);
     register('graphstress65536', 1000000000000, [['chain65536',65536,1]], 3);
+    register('graphstressbusy', 1000000000000, [['busy8192',8192,1]], 2);
+    register('graphstressloaded', 1000000000000, [['loaded8192',8192,1]], 2);
+    register('graphstressdense', 1000000000000, [['dense128x8192stock',128,1,8192]], 3);
+    [0, 20, 60].forEach(function(load) {
+        event.register(event.commands.literal('graphload' + load)
+            .requires(s=>s.hasPermission(4)).executes(ctx=>{
+                Java.loadClass('org.gtlcore.test.GraphCaptureTimingProbe').load(load); return 1;
+            }));
+    });
     event.register(event.commands.literal('graphmemory128').requires(s=>s.hasPermission(4)).executes(ctx=>{
         Java.loadClass('org.gtlcore.gtlcore.config.ConfigHolder').INSTANCE.ae2GraphPlannerMemoryMiB=128;
         console.info('[Graph Stress] isolated runtime memory budget=128 MiB; production default unchanged'); return 1;

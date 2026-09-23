@@ -1,5 +1,7 @@
 # 图合成首次下单捕获优化
 
+后续空闲阶段捕获与精确输入优化见 [第二轮报告](graph-idle-capture-performance.md)。
+
 2026-09-24，基于 `feat/ae-cycle-support` 的 `863ab023`。
 本轮针对第一次请求的目录捕获，补充中英文催化剂配置说明。
 此前的异步输出修复及大图缓存修复见 [上一轮报告](graph-large-and-async-output-validation.md)。

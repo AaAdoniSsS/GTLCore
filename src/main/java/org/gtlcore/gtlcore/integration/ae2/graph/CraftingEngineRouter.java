@@ -106,8 +106,9 @@ public final class CraftingEngineRouter {
                             checkpoint == null ? Set.of() : checkpoint.recoverySeeds().keySet(), budget);
                 }
                 long preparationNanos = System.nanoTime() - captureStarted;
-                GraphSnapshots.enqueue(task, budget, snapshot, nanos -> {
-                    work.snapshotNanos = preparationNanos + nanos;
+                GraphSnapshots.enqueue(task, budget, snapshot, timing -> {
+                    work.snapshotNanos = preparationNanos + timing.activeNanos();
+                    work.snapshotTiming = timing;
                     work.snapshotElapsedNanos = System.nanoTime() - captureStarted;
                 });
             } catch (Throwable error) {
@@ -139,6 +140,7 @@ public final class CraftingEngineRouter {
         private GraphPlan<AEKey> selected;
         private boolean partialSearch, directEmission;
         private long low, high, middle, snapshotNanos, snapshotElapsedNanos, catalogPreparationNanos;
+        private GraphSnapshots.Timing snapshotTiming;
         private AeGraphPlan result;
         private CatalystPolicy catalysts = CatalystPolicy.MINIMAL;
 
@@ -221,11 +223,12 @@ public final class CraftingEngineRouter {
             result = new AeGraphPlan(selected, prepared.bindings(), snapshot.emitable(), extractionStock);
             long assemblyNanos = System.nanoTime() - assemblyStarted;
             if (ConfigHolder.INSTANCE.ae2GraphDiagnosticLogging) GTLCore.LOGGER.info(
-                    "[Graph Crafting] plan result={} amount={} snapshot_ms={} planner_ms={} queue_ms={} patterns={} nodes={} cache_hit={} bytes={} plan={} snapshot_elapsed_ms={} snapshot_wait_ms={} plan_assembly_ms={} catalog_prepare_ms={}",
+                    "[Graph Crafting] plan result={} amount={} snapshot_ms={} planner_ms={} queue_ms={} patterns={} nodes={} cache_hit={} bytes={} plan={} snapshot_elapsed_ms={} snapshot_wait_ms={} plan_assembly_ms={} catalog_prepare_ms={} snapshot_idle_ms={} snapshot_tick_slices={} snapshot_idle_slices={} snapshot_max_slice_ms={}",
                     selected.result(), selected.amount(), snapshotNanos / 1_000_000.0, selected.planningNanos() / 1_000_000.0,
                     budget.waitingNanos() / 1_000_000.0, selected.recipes().size(), budget.nodes(), snapshot.cacheHit(), result.bytes(), result.id(),
                     snapshotElapsedNanos / 1_000_000.0, Math.max(0, snapshotElapsedNanos - snapshotNanos) / 1_000_000.0, assemblyNanos / 1_000_000.0,
-                    catalogPreparationNanos / 1_000_000.0);
+                    catalogPreparationNanos / 1_000_000.0, snapshotTiming.idleNanos() / 1_000_000.0,
+                    snapshotTiming.tickSlices(), snapshotTiming.idleSlices(), snapshotTiming.maxSliceNanos() / 1_000_000.0);
             if (ConfigHolder.INSTANCE.ae2GraphDiagnosticLogging) GTLCore.LOGGER.info("[Graph Crafting] phases={} wall_ms={} order_amount={}",
                     budget.metrics(), budget.runningWallNanos() / 1_000_000.0, selected.amount());
             return true;
