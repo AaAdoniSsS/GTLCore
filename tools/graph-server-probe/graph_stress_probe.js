@@ -27,15 +27,17 @@ ServerEvents.commandRegistry(event => {
     function key(label, layer, branch) {
         return Key['of(net.minecraft.world.item.ItemStack)'](Item.of('minecraft:paper', {graph_stress: label, layer: layer, branch: branch}));
     }
-    function register(name, amount) {
+    function register(name, amount, selectedCases, samples) {
+    selectedCases = selectedCases || cases;
+    samples = samples || 8;
     event.register(event.commands.literal(name).requires(source => source.hasPermission(4)).executes(ctx => {
         if (stressPending.length !== 0 || stressNext != null) throw new Error('Benchmark already active');
         var level = ctx.source.level, index = 0;
         var cpu = level.getBlockEntity(new Pos(1, 65, 0));
         var grid = cpu.getMainNode().getNode().getGrid(), source = new Source(cpu);
         function nextCase() {
-            if (index >= cases.length) { Probe.remove(); console.info('[Graph Stress] SUITE COMPLETE'); return; }
-            var spec = cases[index++], label = spec[0], depth = spec[1], width = spec[2], patterns = [];
+            if (index >= selectedCases.length) { Probe.remove(); console.info('[Graph Stress] SUITE COMPLETE'); return; }
+            var spec = selectedCases[index++], label = spec[0], depth = spec[1], width = spec[2], patterns = [];
             var raw = key(label, 0, 0), target = key(label, depth, 0);
             function pattern(inputs, output) {
                 patterns.push(new Processing(Key['of(net.minecraft.world.item.ItemStack)'](Pattern.encodeProcessingPattern(inputs, [output]))));
@@ -48,7 +50,7 @@ ServerEvents.commandRegistry(event => {
             }
             level.getBlockEntity(new Pos(0, 65, 1)).getInternalInventory().setItemDirect(0, Item.of('ae2:item_storage_cell_256k'));
             // Stock is mounted as an isolated long-count MEStorage by the probe.
-            Probe.install(grid, patterns, new Stack(raw, amount + 4096));
+            Probe.install(grid, patterns, new Stack(raw, amount + Math.max(4096, patterns.length * 4)));
             console.info('[Graph Stress] CASE label=' + label + ' depth=' + depth + ' width=' + width + ' registered_patterns=' + patterns.length + ' amount=' + amount);
             var sample = 0;
             function runSample() {
@@ -58,7 +60,7 @@ ServerEvents.commandRegistry(event => {
                 function finish() {
                     var valid = Probe.report(label, sample, amount, oldResult, graphResult);
                     if (!valid) { console.info('[Graph Stress] case stopped after failure or inequality: ' + label); later(nextCase); return; }
-                    if (++sample < 8) later(runSample); else later(nextCase);
+                    if (++sample < samples) later(runSample); else later(nextCase);
                 }
                 // Serial A/B, alternating order. Tick delay between samples is excluded from each timer.
                 if (sample % 2 === 0) old(() => graph(finish)); else graph(() => old(finish));
@@ -72,4 +74,14 @@ ServerEvents.commandRegistry(event => {
     register('graphstress', 1048576);
     register('graphstress100m', 100000000);
     register('graphstress3b', 3000000000);
+    register('graphstresslarge', 1000000000000,
+        [['chain8192',8192,1], ['chain16384',16384,1], ['chain32768',32768,1], ['shared512x32',512,32]], 5);
+    // Deliberately exceeds the default memory budget: expect a controlled refusal,
+    // with no submission/stock transfer, rather than claiming it as a valid plan.
+    register('graphstresslimit', 1000000000000, [['chain65536',65536,1]], 1);
+    register('graphstress65536', 1000000000000, [['chain65536',65536,1]], 3);
+    event.register(event.commands.literal('graphmemory128').requires(s=>s.hasPermission(4)).executes(ctx=>{
+        Java.loadClass('org.gtlcore.gtlcore.config.ConfigHolder').INSTANCE.ae2GraphPlannerMemoryMiB=128;
+        console.info('[Graph Stress] isolated runtime memory budget=128 MiB; production default unchanged'); return 1;
+    }));
 });

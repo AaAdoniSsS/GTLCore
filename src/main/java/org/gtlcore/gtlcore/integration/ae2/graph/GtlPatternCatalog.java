@@ -1,11 +1,10 @@
 package org.gtlcore.gtlcore.integration.ae2.graph;
 
 import org.gtlcore.gtlcore.integration.ae2.crafting.ManualCraftingInventoryLock;
-import org.gtlcore.gtlcore.integration.ae2.graph.core.CatalogIndex;
 import org.gtlcore.gtlcore.integration.ae2.graph.core.CheckedAmounts;
-import org.gtlcore.gtlcore.integration.ae2.graph.core.GraphCompiler;
 import org.gtlcore.gtlcore.integration.ae2.graph.core.GraphRecipe;
 import org.gtlcore.gtlcore.integration.ae2.graph.core.PlanningBudget;
+import org.gtlcore.gtlcore.integration.ae2.graph.core.PreparedCatalog;
 
 import net.minecraft.world.level.Level;
 
@@ -88,9 +87,6 @@ public final class GtlPatternCatalog {
         private final Deque<AEKey> pending = new ArrayDeque<>();
         private final List<GraphRecipe<AEKey>> recipes = new ArrayList<>();
         private final Set<String> seenVariants = new HashSet<>();
-        private final NavigableMap<Integer, List<GraphRecipe<AEKey>>> priorityBuckets = new TreeMap<>(Comparator.reverseOrder());
-        private Iterator<List<GraphRecipe<AEKey>>> sortedBuckets;
-        private Iterator<GraphRecipe<AEKey>> sorting;
         private final Map<AEKey, Long> stock = new LinkedHashMap<>();
         private final Set<AEKey> emitted = new LinkedHashSet<>(), fuzzy = new HashSet<>();
         private final Set<Object> fuzzyPrimary = new HashSet<>();
@@ -102,7 +98,6 @@ public final class GtlPatternCatalog {
         private AEKey key;
         private List<String> versions;
         private Snapshot result;
-        private CatalogIndex<AEKey> indexing;
         private Normalization normalizing;
         private Iterator<GraphRecipe<AEKey>> normalized;
 
@@ -180,7 +175,6 @@ public final class GtlPatternCatalog {
                             if (!seenVariants.add(variant.id())) return false;
                             budget.reserve(256L + 64L * (variant.slots().size() + variant.outputs().size()));
                             recipes.add(variant);
-                            priorityBuckets.computeIfAbsent(priorities.get(variant.binding()), ignored -> new ArrayList<>()).add(variant);
                             pending.addAll(variant.inputs().keySet());
                             return false;
                         }
@@ -223,11 +217,9 @@ public final class GtlPatternCatalog {
                     } else if (hit && !fuzzy.equals(structure.fuzzyKeys())) resetBuild();
                     else {
                         if (!hit) {
-                            sortedBuckets = priorityBuckets.values().iterator();
-                            recipes.clear();
-                            phase = 6;
-                            return false;
-                        } else if (structure.providerRevision() != revision) structure = new Structure(structure.compiler(), structure.bindings(),
+                            structure = new Structure(new PreparedCatalog<>(recipes, priorities), Map.copyOf(bindings), Set.copyOf(seen),
+                                    Set.copyOf(templates.values()), Set.copyOf(fuzzy), bounded, Map.copyOf(dependencies), revision);
+                        } else if (structure.providerRevision() != revision) structure = new Structure(structure.catalog(), structure.bindings(),
                                 structure.resources(), structure.inputTemplates(), structure.fuzzyKeys(), structure.boundedAlternatives(),
                                 structure.dependencies(), revision);
                         keys = structure.resources().iterator();
@@ -269,33 +261,19 @@ public final class GtlPatternCatalog {
                             patterns = null;
                             return false;
                         }
-                        if (structure.providerRevision() != revision) structure = new Structure(structure.compiler(), structure.bindings(), structure.resources(),
+                        if (structure.providerRevision() != revision) structure = new Structure(structure.catalog(), structure.bindings(), structure.resources(),
                                 structure.inputTemplates(), structure.fuzzyKeys(), structure.boundedAlternatives(), structure.dependencies(), revision);
                         cache.put(roots, structure);
-                        long weight = cache.values().stream().mapToLong(value -> value.resources().size() + value.compiler().catalog().size()).sum();
-                        while (cache.size() > 32 || weight > 65_536) {
+                        long weight = cache.values().stream().mapToLong(value -> value.resources().size() + value.catalog().size()).sum();
+                        // One catalog is already bounded by the request's graph/memory
+                        // limits. Keep the newest alone if it exceeds the shared weight
+                        // allowance; otherwise large orders immediately evict themselves.
+                        while (cache.size() > 1 && (cache.size() > 32 || weight > 65_536)) {
                             Structure removed = cache.remove(cache.keySet().iterator().next());
-                            weight -= removed.resources().size() + removed.compiler().catalog().size();
+                            weight -= removed.resources().size() + removed.catalog().size();
                         }
                         result = new Snapshot(structure, Map.copyOf(stock), Set.copyOf(emitted), revision, hit);
                         phase = 4;
-                    }
-                }
-                case 5 -> {
-                    if (!indexing.step(budget)) return false;
-                    structure = new Structure(indexing.result(), Map.copyOf(bindings), Set.copyOf(seen),
-                            Set.copyOf(templates.values()), Set.copyOf(fuzzy), bounded, Map.copyOf(dependencies), revision);
-                    indexing = null;
-                    keys = structure.resources().iterator();
-                    phase = 3;
-                    if (source != null) available = storage.getCachedInventory();
-                }
-                case 6 -> {
-                    if (sorting != null && sorting.hasNext()) recipes.add(sorting.next());
-                    else if (sortedBuckets.hasNext()) sorting = sortedBuckets.next().iterator();
-                    else {
-                        indexing = new CatalogIndex<>(recipes);
-                        phase = 5;
                     }
                 }
                 case 7 -> {
@@ -499,7 +477,7 @@ public final class GtlPatternCatalog {
 
     private record Picked(GenericStack template, long copies) {}
 
-    public record Structure(GraphCompiler<AEKey> compiler, Map<String, IPatternDetails> bindings, Set<AEKey> resources,
+    public record Structure(PreparedCatalog<AEKey> catalog, Map<String, IPatternDetails> bindings, Set<AEKey> resources,
                             Set<AEKey> inputTemplates, Set<AEKey> fuzzyKeys, boolean boundedAlternatives,
                             Map<AEKey, List<String>> dependencies, long providerRevision) {}
 

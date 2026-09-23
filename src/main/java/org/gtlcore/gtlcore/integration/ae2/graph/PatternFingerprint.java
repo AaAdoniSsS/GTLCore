@@ -10,6 +10,7 @@ import appeng.api.stacks.AEKey;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -62,7 +63,10 @@ public final class PatternFingerprint {
 
         public String of(IPatternDetails pattern) {
             StringBuilder text = new StringBuilder(pattern.getClass().getName());
-            text.append('|').append(key(pattern.getDefinition())).append('|').append(pattern.supportsPushInputsToExternalInventory());
+            // Encoded pattern NBT is normally unique and can have highly colliding
+            // hashes (adjacent input/output variants). Do not fill the reusable
+            // material-key LRU with definitions that are serialized only once.
+            text.append('|').append(PatternFingerprint.key(pattern.getDefinition())).append('|').append(pattern.supportsPushInputsToExternalInventory());
             for (var input : pattern.getInputs()) {
                 text.append(";i:").append(input.getMultiplier());
                 for (var possible : input.getPossibleInputs()) {
@@ -81,17 +85,29 @@ public final class PatternFingerprint {
     }
 
     private static String canonical(Tag tag) {
+        StringBuilder value = new StringBuilder();
+        canonical(tag, value);
+        return value.toString();
+    }
+
+    private static void canonical(Tag tag, StringBuilder value) {
         if (tag instanceof CompoundTag compound) {
-            StringBuilder value = new StringBuilder("{");
-            compound.getAllKeys().stream().sorted().forEach(key -> value.append(key.length()).append(':').append(key).append('=').append(canonical(compound.get(key))));
-            return value.append('}').toString();
-        }
-        if (tag instanceof ListTag list) {
-            StringBuilder value = new StringBuilder("[");
-            for (Tag entry : list) value.append(canonical(entry)).append(';');
-            return value.append(']').toString();
-        }
-        return tag.getId() + ":" + tag;
+            value.append('{');
+            String[] keys = compound.getAllKeys().toArray(String[]::new);
+            Arrays.sort(keys);
+            for (String key : keys) {
+                value.append(key.length()).append(':').append(key).append('=');
+                canonical(compound.get(key), value);
+            }
+            value.append('}');
+        } else if (tag instanceof ListTag list) {
+            value.append('[');
+            for (Tag entry : list) {
+                canonical(entry, value);
+                value.append(';');
+            }
+            value.append(']');
+        } else value.append(tag.getId()).append(':').append(tag);
     }
 
     public static String hash(String text) {

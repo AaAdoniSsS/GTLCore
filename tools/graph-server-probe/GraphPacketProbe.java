@@ -192,7 +192,7 @@ public final class GraphPacketProbe {
         var catalog = new GtlPatternCatalog();
         var first = catalog.capture(grid, service, level, source, target, new PlanningBudget(0, 1_000_000, () -> false));
         var warm = catalog.capture(grid, service, level, source, target, new PlanningBudget(0, 1_000_000, () -> false));
-        check(warm.cacheHit() && first.structure().compiler() == warm.structure().compiler(), "Warm structure was not shared");
+        check(warm.cacheHit() && catalogIdentity(first.structure()) == catalogIdentity(warm.structure()), "Warm structure was not shared");
         var field = CraftingService.class.getDeclaredField("craftingProviders");
         field.setAccessible(true);
         var providers = (NetworkCraftingProviders) field.get(service);
@@ -202,9 +202,14 @@ public final class GraphPacketProbe {
         providers.addProvider(provider);
         check(tracker.gtlcore$graphProviderGeneration() == revision + 2, "Two same-tick provider edits lost a revision");
         var after = catalog.capture(grid, service, level, source, target, new PlanningBudget(0, 1_000_000, () -> false));
-        check(after.cacheHit() && after.structure().compiler() == first.structure().compiler(), "Unchanged dependencies discarded compiled graph");
+        check(after.cacheHit() && catalogIdentity(after.structure()) == catalogIdentity(first.structure()), "Unchanged dependencies discarded compiled graph");
         check(first.stock().equals(after.stock()), "Structure reuse changed stock snapshot");
         System.out.println("[Graph Probe] PASS: actual provider remove/add in one tick advances twice; dependency-identical structure cache retained");
+    }
+
+    private static Object catalogIdentity(Object structure) throws Exception {
+        try { return structure.getClass().getMethod("catalog").invoke(structure); }
+        catch (NoSuchMethodException oldBuild) { return structure.getClass().getMethod("compiler").invoke(structure); }
     }
 
     /** Real addon expansion, not a hand-written replacement for wildcard semantics. */

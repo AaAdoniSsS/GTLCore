@@ -138,7 +138,14 @@ public final class GraphStressProbe {
                 equal(old.plan().missingItems(), graph.plan().missingItems()) && equal(old.plan().emittedItems(), graph.plan().emittedItems());
         boolean counts = comparable && old.plan().patternTimes().equals(graph.plan().patternTimes());
         boolean bytes = comparable && old.plan().bytes() == graph.plan().bytes();
-        boolean oldValid = comparable && valid(old.plan()), graphValid = comparable && valid(graph.plan());
+        boolean oldValid = old.plan() != null && valid(old.plan()), graphValid = graph.plan() != null && valid(graph.plan());
+        if(label.startsWith("chain") && graphValid) {
+            int depth=Integer.parseInt(label.substring(5));
+            long exact=Math.addExact(Math.multiplyExact(2L*depth+1,amount),8L*(depth+1));
+            if(graph.plan().bytes()!=exact) throw new AssertionError("Graph chain CPU charge differs from exact fixture formula");
+            if(old.plan()!=null && old.plan().bytes()!=exact)
+                System.out.println("[Graph Stress] exact_chain_bytes="+exact+" legacy_bytes="+old.plan().bytes()+" graph_bytes="+graph.plan().bytes());
+        }
         System.out.printf(Locale.ROOT,
                 "[Graph Stress] label=%s sample=%d amount=%d old_wall_ms=%.4f old_setup_ms=%.4f old_run_ms=%.4f graph_wall_ms=%.4f graph_entry_ms=%.4f graph_solver_ms=%.4f graph_snapshot_ms=%.4f old_bytes=%d graph_bytes=%d materials_equal=%s recipes_equal=%s bytes_equal=%s old_valid=%s graph_valid=%s old_raw=%d graph_raw=%d old_failure=%s graph_failure=%s%n",
                 label, sample, amount, old.wall()/1e6, old.setup()/1e6, old.work()/1e6, graph.wall()/1e6, graph.setup()/1e6, graph.work()/1e6, graph.snapshot()/1e6,
@@ -146,7 +153,10 @@ public final class GraphStressProbe {
                 old.plan() == null ? -1 : old.plan().usedItems().get(initial.what()), graph.plan() == null ? -1 : graph.plan().usedItems().get(initial.what()), old.failure(), graph.failure());
         // Different rounding/aggregation can select different valid plans. Preserve
         // the inequality in the report; never call these samples equivalent.
-        return comparable && oldValid && graphValid && (!(materials && counts) || bytes);
+        // Above 2^53 the legacy double byte accumulator can round an otherwise
+        // equivalent plan. Keep that difference visible; independent material
+        // validation determines whether another sample is safe to measure.
+        return comparable && oldValid && graphValid;
     }
 
     /** Independent fixture interpreter: recipes are installed in producer-before-consumer order. */

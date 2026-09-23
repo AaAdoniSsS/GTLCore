@@ -70,7 +70,9 @@ public final class GraphCompiler<K> {
         cache.put(new CacheKey<>(target, Set.copyOf(additional), Map.copyOf(choices), Set.copyOf(excluded)), result);
         long retainedNodes = 0;
         for (Compiled<K> entry : cache.values()) retainedNodes += entry.recipes().size() + entry.selected().size();
-        while (cache.size() > 128 || retainedNodes > 32_768) {
+        // A single successfully compiled graph has already passed request limits.
+        // Retain it alone instead of discarding the result just published.
+        while (cache.size() > 1 && (cache.size() > 128 || retainedNodes > 32_768)) {
             Compiled<K> removed = cache.remove(cache.keySet().iterator().next());
             retainedNodes -= removed.recipes().size() + removed.selected().size();
         }

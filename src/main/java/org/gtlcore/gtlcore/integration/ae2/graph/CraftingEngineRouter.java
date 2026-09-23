@@ -131,6 +131,8 @@ public final class CraftingEngineRouter {
         private final boolean preserve;
         private final GraphPlanningRequest request;
         private GtlPatternCatalog.Snapshot snapshot;
+        private PreparedCatalog<AEKey>.Build preparing;
+        private GraphCompiler<AEKey> compiler;
         private Map<AEKey, Long> available;
         private CatalystPlanningWork<AEKey> current;
         private GraphPlan<AEKey> selected;
@@ -157,10 +159,16 @@ public final class CraftingEngineRouter {
             if (!capture.isDone()) return false;
             if (snapshot == null) {
                 snapshot = capture.join();
+                preparing = snapshot.structure().catalog().build(budget);
+            }
+            if (compiler == null) {
+                if (!preparing.advance(slice)) return false;
+                compiler = preparing.result();
+                preparing = null;
                 request.dependencies(snapshot.structure().resources());
                 available = new LinkedHashMap<>(snapshot.stock());
                 if (checkpoint != null) checkpoint.forecast().forEach((key, count) -> available.merge(key, count, CheckedAmounts::add));
-                directEmission = snapshot.emitable().contains(target) && snapshot.structure().compiler().producers(target).isEmpty();
+                directEmission = snapshot.emitable().contains(target) && compiler.producers(target).isEmpty();
                 if (directEmission && checkpoint == null) available.remove(target);
                 current = calculation(amount);
             }
@@ -187,7 +195,7 @@ public final class CraftingEngineRouter {
 
         private CatalystPlanningWork<AEKey> calculation(long count) {
             return new CatalystPlanningWork<>(checkpoint != null ? CatalystPolicy.MINIMAL : catalysts, budget,
-                    policy -> new GraphPlanningWork<>(snapshot.structure().compiler(), target, count, available, snapshot.emitable(),
+                    policy -> new GraphPlanningWork<>(compiler, target, count, available, snapshot.emitable(),
                             checkpoint == null ? Map.of() : checkpoint.recoverySeeds(), preserve, checkpoint == null && !directEmission, budget).catalysts(policy));
         }
 

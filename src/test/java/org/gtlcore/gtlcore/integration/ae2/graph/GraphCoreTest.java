@@ -11,6 +11,7 @@ public final class GraphCoreTest {
 
     public static void main(String[] args) throws Exception {
         amounts();
+        preparedCatalog();
         ordinary();
         dagInventoryOracle();
         splitSources();
@@ -27,6 +28,32 @@ public final class GraphCoreTest {
         GraphRuntimeTest.run();
         GraphSchedulingTest.run();
         System.out.println("Graph core: " + assertions + " assertions passed");
+    }
+
+    private static void preparedCatalog() throws Exception {
+        var low = recipe("low", Map.of("A", 1L), Map.of("B", 1L));
+        var high = recipe("high", Map.of("A", 2L), Map.of("B", 1L));
+        var values = new ArrayList<>(List.of(low, high));
+        var priorities = new HashMap<>(Map.of("low", 0, "high", 10));
+        var prepared = new PreparedCatalog<>(values, priorities);
+        values.clear();
+        priorities.clear();
+        try (var scheduler = new PlanningScheduler(2, 8, 1, 100_000L)) {
+            var first = scheduler.submit(prepared.build(new PlanningBudget(0, 10000, () -> false)), new PlanningBudget(0, 10000, () -> false));
+            var second = scheduler.submit(prepared.build(new PlanningBudget(0, 10000, () -> false)), new PlanningBudget(0, 10000, () -> false));
+            var compiler = first.get(5, java.util.concurrent.TimeUnit.SECONDS);
+            eq(List.of(high, low), compiler.producers("B"), "Worker index preserves provider priority and detached inputs");
+            eq(true, compiler == second.get(5, java.util.concurrent.TimeUnit.SECONDS), "Concurrent builders publish one complete index");
+        }
+        var compiler = new GraphCompiler<>(List.of(low));
+        var selected = new HashMap<String, GraphRecipe<String>>();
+        for (int i = 0; i < 32769; i++) selected.put("K" + i, low);
+        var large = new GraphCompiler.Compiled<>(Map.of("low", low), selected, List.of());
+        compiler.publish("large", Map.of(), Set.of(), large);
+        eq(large, compiler.cached("large", Map.of(), Set.of()), "Oversized bounded graph must not evict itself");
+        compiler.publish("other", Map.of(), Set.of(), large);
+        eq(null, compiler.cached("large", Map.of(), Set.of()), "Only one oversized graph may remain cached");
+        eq(large, compiler.cached("other", Map.of(), Set.of()), "Newest oversized graph retained");
     }
 
     private static void displayTopology() {

@@ -1,5 +1,8 @@
 # 图规划开销与 MAX_FAST 对照
 
+后续的 32,768/65,536 层、一万亿数量压测和异步输出修复见
+[大规模图规划与增广 ME 异步输出验证](graph-large-and-async-output-validation.md)。下文保留 2026-09-23 的历史结果。
+
 2026-09-23，Java 21.0.3，Forge 47.3.7，AE 15.4.10，6 GiB 堆，加载实际
 `gtladditions-3.2.8Custom_SubSpace-fix2.jar`。本轮是在完整图引擎、合成环 UI 和并行修复基础上的后续优化。
 

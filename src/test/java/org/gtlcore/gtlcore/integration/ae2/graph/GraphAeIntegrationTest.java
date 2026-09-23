@@ -99,6 +99,7 @@ public final class GraphAeIntegrationTest {
         System.out.println("Actual YAML enum read/write passed: GRAPH / ALLOW_CONSUME");
         mixedInputsAndReturns();
         GraphAeAdapterTest.run();
+        AsyncOutputRegressionTest.run();
     }
 
     private static void graphRingViews(AEKey input, AEKey output, AEKey water) {

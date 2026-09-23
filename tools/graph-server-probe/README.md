@@ -123,3 +123,16 @@ python tools/summarize-graph-stress.py .local/server-stress-final.log .local/gra
 
 该组验证有效样板、规划和提交复核，不模拟整座 FOA 的真实机器加工。
 特殊无限分子装配机和另一条 ADD 上游分支的库存账本不在这组整机验收范围。
+
+## 大图及异步输出
+
+- `graphstresslarge`：一万亿订单，8192/16384/32768 层链和 512×32 共享图；独立解释器核对。
+- `graphstresslimit`：65536 层，默认预算下检查受控拒绝，不提交任务。
+- `graphmemory128` 后 `graphstress65536`：仅本次隔离服务端将规划预算改为 128 MiB，重启还原；三组新旧对照。
+- `asyncoutputprobe`：80/82 号位置的真实异步总成，堵塞写入线程，验证普通/掉落物保存；
+  `asyncoutputbench`：每样本 10000 次接收，每次 100 个带 NBT 物品，检查全部进入可保存 buffer。
+- `asyncgraphplace`，等待节点建网后 `asyncgraphnormal`：真实 CPU/异步总成返回路径，
+  外部处理提供者为可控测试实现，暂时满盘后每次只接收 7 个；约 90 秒完成。
+  完成后 `asyncgraphcancel` 验证取消及晚到产物，约 10 秒。
+
+以上命令会修改隔离测试世界，禁止复制到实际存档运行。
