@@ -36,6 +36,12 @@ public final class GraphAddonProbe {
         check(recipe.inputs().get(container) == 4L && recipe.outputs().get(container) == 1L, "FOA container consumption/return changed");
         check(recipe.outputs().get(product) == 4L, "FOA NBT output or multiplier lost");
         check(!PatternFingerprint.of(four).equals(PatternFingerprint.of(eight)), "FOA modes shared one fingerprint");
+        var capturedFour = PatternFingerprint.capture(four);
+        var capturedEight = PatternFingerprint.capture(eight);
+        check(!capturedFour.equals(capturedEight), "Detached provider signature ignored an FOA mode change");
+        var encoder = new PatternFingerprint.Context();
+        check(encoder.of(capturedFour).equals(PatternFingerprint.of(four)) &&
+                encoder.of(capturedEight).equals(PatternFingerprint.of(eight)), "Detached ADD values changed the fingerprint");
         var stock = Map.<AEKey,Long>of(input, 30_000_000_000L, container, 10L);
         var work = new GraphPlanningWork<>(new GraphCompiler<>(List.of(recipe)), product, 8, stock, true, true,
                 new PlanningBudget(5000, 1_000_000, () -> false));

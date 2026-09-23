@@ -37,6 +37,8 @@
   "gtlcore.ae.graph.cycle_reference_info": "This is a back-reference, not additional missing input. Check the confirmation list for inputs and seeds.",
   "config.gtlcore.option.ae2CraftingEngine": "AE Crafting Engine (restart required)",
   "config.gtlcore.option.ae2GraphSeedPolicy": "Graph Crafting Seed Policy",
+  "config.gtlcore.option.ae2GraphMaxExtraCatalystCopies": "Maximum Extra Catalyst Copies to Craft",
+  "config.gtlcore.option.ae2GraphMaxExtraCatalystCopies.comment": "Maximum additional catalyst copies to manufacture per cycle for parallel crafting. Uses existing stock first, then considers idle CPU co-processors and useful work. 0 disables extra production, but still allows required starting seeds. This is a ceiling, not a fixed quantity. Extra materials and recovered catalysts are included in the plan.",
   "config.gtlcore.option.ae2GraphPlannerNoticeAfterMs": "Graph Planning Progress Notice (ms)",
   "config.gtlcore.option.ae2GraphPlannerTimeoutMs": "Graph Planning Timeout (ms; 0 disables)",
   "config.gtlcore.option.ae2GraphPlannerThreads": "Graph Planning Workers",

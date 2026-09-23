@@ -1,5 +1,7 @@
 # 大规模图规划与增广 ME 异步输出验证
 
+后续的首次捕获优化与最新对照见 [图合成首次下单捕获优化](graph-capture-performance.md)。本页保留本轮原始数据。
+
 2026-09-24。基于 `feat/ae-cycle-support` 的 `f3a56640`，独立测试服使用 Java 21.0.3、
 Forge 47.3.7、AE 15.4.10、6 GiB 堆和实际 `gtladditions-3.2.8Custom_SubSpace-fix2.jar`。
 用户反馈来自原版 Core 的转述，没有对应存档、日志或触发步骤。以下区分可重复的问题与尚未确认的反馈。

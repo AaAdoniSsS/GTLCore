@@ -37,6 +37,8 @@
   "gtlcore.ae.graph.cycle_reference_info": "此节点表示环的闭合，不是额外缺料。实际输入与种子请查看合成确认列表。",
   "config.gtlcore.option.ae2CraftingEngine": "AE 合成引擎（需要重启）",
   "config.gtlcore.option.ae2GraphSeedPolicy": "图合成种子策略",
+  "config.gtlcore.option.ae2GraphMaxExtraCatalystCopies": "图合成额外催化剂合成上限",
+  "config.gtlcore.option.ae2GraphMaxExtraCatalystCopies.comment": "每个循环为加速并行而额外制造的催化剂份数上限。优先使用现有库存，再按空闲 CPU 的并行能力和实际工作量补充。0 禁止额外制造，但仍允许制造任务必需的启动种子。此值是上限，不是固定制造数量；额外材料和回收的催化剂会列入合成计划。",
   "config.gtlcore.option.ae2GraphPlannerNoticeAfterMs": "图合成进度提示阈值（毫秒）",
   "config.gtlcore.option.ae2GraphPlannerTimeoutMs": "图合成硬超时（毫秒；0 禁用）",
   "config.gtlcore.option.ae2GraphPlannerThreads": "图合成工作线程数",

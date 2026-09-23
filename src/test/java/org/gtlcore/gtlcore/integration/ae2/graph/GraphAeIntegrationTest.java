@@ -98,6 +98,8 @@ public final class GraphAeIntegrationTest {
             throw new AssertionError("Configuration enum round trip failed");
         System.out.println("Actual YAML enum read/write passed: GRAPH / ALLOW_CONSUME");
         mixedInputsAndReturns();
+        PatternFingerprintTest.run();
+        CapturedPatternCatalogTest.run();
         GraphAeAdapterTest.run();
         AsyncOutputRegressionTest.run();
     }

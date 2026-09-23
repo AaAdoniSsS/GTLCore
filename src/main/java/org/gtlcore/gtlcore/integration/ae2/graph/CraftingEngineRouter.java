@@ -131,13 +131,14 @@ public final class CraftingEngineRouter {
         private final boolean preserve;
         private final GraphPlanningRequest request;
         private GtlPatternCatalog.Snapshot snapshot;
-        private PreparedCatalog<AEKey>.Build preparing;
+        private CapturedPatternCatalog.Build preparing;
+        private CapturedPatternCatalog.Prepared prepared;
         private GraphCompiler<AEKey> compiler;
         private Map<AEKey, Long> available;
         private CatalystPlanningWork<AEKey> current;
         private GraphPlan<AEKey> selected;
         private boolean partialSearch, directEmission;
-        private long low, high, middle, snapshotNanos, snapshotElapsedNanos;
+        private long low, high, middle, snapshotNanos, snapshotElapsedNanos, catalogPreparationNanos;
         private AeGraphPlan result;
         private CatalystPolicy catalysts = CatalystPolicy.MINIMAL;
 
@@ -162,8 +163,12 @@ public final class CraftingEngineRouter {
                 preparing = snapshot.structure().catalog().build(budget);
             }
             if (compiler == null) {
-                if (!preparing.advance(slice)) return false;
-                compiler = preparing.result();
+                long started = System.nanoTime();
+                boolean ready = preparing.advance(slice);
+                catalogPreparationNanos += System.nanoTime() - started;
+                if (!ready) return false;
+                prepared = preparing.result();
+                compiler = prepared.compiler();
                 preparing = null;
                 request.dependencies(snapshot.structure().resources());
                 available = new LinkedHashMap<>(snapshot.stock());
@@ -213,13 +218,14 @@ public final class CraftingEngineRouter {
             Map<AEKey, Long> extractionStock = new LinkedHashMap<>(available);
             if (directEmission && checkpoint == null) extractionStock.remove(target);
             long assemblyStarted = System.nanoTime();
-            result = new AeGraphPlan(selected, snapshot.structure().bindings(), snapshot.emitable(), extractionStock);
+            result = new AeGraphPlan(selected, prepared.bindings(), snapshot.emitable(), extractionStock);
             long assemblyNanos = System.nanoTime() - assemblyStarted;
             if (ConfigHolder.INSTANCE.ae2GraphDiagnosticLogging) GTLCore.LOGGER.info(
-                    "[Graph Crafting] plan result={} amount={} snapshot_ms={} planner_ms={} queue_ms={} patterns={} nodes={} cache_hit={} bytes={} plan={} snapshot_elapsed_ms={} snapshot_wait_ms={} plan_assembly_ms={}",
+                    "[Graph Crafting] plan result={} amount={} snapshot_ms={} planner_ms={} queue_ms={} patterns={} nodes={} cache_hit={} bytes={} plan={} snapshot_elapsed_ms={} snapshot_wait_ms={} plan_assembly_ms={} catalog_prepare_ms={}",
                     selected.result(), selected.amount(), snapshotNanos / 1_000_000.0, selected.planningNanos() / 1_000_000.0,
                     budget.waitingNanos() / 1_000_000.0, selected.recipes().size(), budget.nodes(), snapshot.cacheHit(), result.bytes(), result.id(),
-                    snapshotElapsedNanos / 1_000_000.0, Math.max(0, snapshotElapsedNanos - snapshotNanos) / 1_000_000.0, assemblyNanos / 1_000_000.0);
+                    snapshotElapsedNanos / 1_000_000.0, Math.max(0, snapshotElapsedNanos - snapshotNanos) / 1_000_000.0, assemblyNanos / 1_000_000.0,
+                    catalogPreparationNanos / 1_000_000.0);
             if (ConfigHolder.INSTANCE.ae2GraphDiagnosticLogging) GTLCore.LOGGER.info("[Graph Crafting] phases={} wall_ms={} order_amount={}",
                     budget.metrics(), budget.runningWallNanos() / 1_000_000.0, selected.amount());
             return true;

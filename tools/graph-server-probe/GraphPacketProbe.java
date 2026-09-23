@@ -36,7 +36,7 @@ import io.netty.buffer.Unpooled;
 import java.util.ArrayDeque;
 import java.util.List;
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.Map;
 import com.gregtechceu.gtceu.api.data.tag.TagPrefix;
 import com.gregtechceu.gtceu.common.data.GTMaterials;
@@ -225,11 +225,23 @@ public final class GraphPacketProbe {
         var normalize = GtlPatternCatalog.class.getDeclaredMethod("normalize", IPatternDetails.class,
                 String.class, KeyCounter.class, Level.class);
         normalize.setAccessible(true);
-        var fingerprints = new HashSet<String>();
+        var fingerprints = new HashMap<String, PatternFingerprint.Values>();
+        int duplicates = 0;
         var recipes = new ArrayList<GraphRecipe<AEKey>>();
         for (var pattern : outward) {
             String id = PatternFingerprint.of(pattern);
-            check(fingerprints.add(id), "Different wildcard materials collapsed into one identity");
+            var captured = PatternFingerprint.capture(pattern);
+            check(id.equals(new PatternFingerprint.Context().of(captured)), "Captured wildcard fingerprint differs");
+            var previous = fingerprints.putIfAbsent(id, captured);
+            if (previous != null) {
+                // Addon material aliases can expand to the very same concrete
+                // pattern. Accept only identical values, never a hash collision.
+                check(previous.equals(captured), "Different wildcard semantics collapsed into one identity: " +
+                        previous + " vs " + captured);
+                if (++duplicates <= 3) System.out.println("[Graph Probe] identical wildcard expansion: inputs=" +
+                        captured.inputs() + " outputs=" + captured.outputs());
+                continue;
+            }
             @SuppressWarnings("unchecked")
             var variants = (List<GraphRecipe<AEKey>>) normalize.invoke(null, pattern, id, new KeyCounter(), level);
             check(variants.size() == 1, "Concrete wildcard processing pattern was not normalized");
@@ -264,7 +276,9 @@ public final class GraphPacketProbe {
         logic.setIOComponents(WildcardPatternLogic.IO.OUT, List.of(new TagIOComponent(GenericGTTag.item(TagPrefix.dust), 2)));
         var changed = logic.generateAllPatterns(level).findFirst().orElseThrow();
         check(!oldBinding.equals(PatternFingerprint.of(changed)), "Changing wildcard output reused stale binding");
-        System.out.println("[Graph Probe] PASS: real wildcard expansion (" + outward.size() + " materials), distinct fingerprints, two-recipe recovery SCC, exact seed/fuel, no-seed rejection and changed-output identity; ingot=" + ingot);
+        System.out.println("[Graph Probe] PASS: real wildcard expansion (" + outward.size() + " entries, " +
+                fingerprints.size() + " distinct patterns, " + duplicates + " identical aliases), distinct semantic fingerprints, " +
+                "two-recipe recovery SCC, exact seed/fuel, no-seed rejection and changed-output identity; ingot=" + ingot);
     }
 
     public static CraftingPlanSummary roundTrip(CraftingPlanSummary source) {

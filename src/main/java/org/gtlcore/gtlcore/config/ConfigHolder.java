@@ -100,7 +100,7 @@ public class ConfigHolder {
     public AEGraphSeedPolicy ae2GraphSeedPolicy = AEGraphSeedPolicy.PRESERVE;
     @Configurable
     @Configurable.Range(min = 0, max = 4096)
-    @Configurable.Comment("GRAPH: maximum additional catalyst working copies to manufacture per cycle for acceleration. Existing stock is used first; desired copies follow the largest idle CPU's co-processors + 1 (up to 4096) and useful recipe work. 0 disables extra production, not the minimum starter required by a job. This is a ceiling, never a forced quantity. Added materials and recovered catalysts appear in the plan.")
+    @Configurable.Comment("config.gtlcore.option.ae2GraphMaxExtraCatalystCopies.comment")
     public int ae2GraphMaxExtraCatalystCopies = 64;
     @Configurable
     @Configurable.Range(min = 1, max = 600000)

@@ -4,7 +4,6 @@ import org.gtlcore.gtlcore.integration.ae2.crafting.ManualCraftingInventoryLock;
 import org.gtlcore.gtlcore.integration.ae2.graph.core.CheckedAmounts;
 import org.gtlcore.gtlcore.integration.ae2.graph.core.GraphRecipe;
 import org.gtlcore.gtlcore.integration.ae2.graph.core.PlanningBudget;
-import org.gtlcore.gtlcore.integration.ae2.graph.core.PreparedCatalog;
 
 import net.minecraft.world.level.Level;
 
@@ -29,6 +28,8 @@ public final class GtlPatternCatalog {
 
     private record Roots(AEKey target, Set<AEKey> recovery) {}
 
+    public record Signature(PatternFingerprint.Values values, int priority) {}
+
     private final Map<Roots, Structure> cache = new LinkedHashMap<>(16, 0.75f, true);
     private Object recipeManager;
     private static long dataGeneration;
@@ -37,7 +38,7 @@ public final class GtlPatternCatalog {
 
     /** A failed execution preflight disproves the cached catalog, even without a provider event. */
     public void invalidateBinding(String binding) {
-        cache.values().removeIf(structure -> structure.bindings().containsKey(binding));
+        cache.values().removeIf(structure -> structure.catalog().mayContainBinding(binding));
         invalidationGeneration++;
     }
 
@@ -75,18 +76,15 @@ public final class GtlPatternCatalog {
         private final long dataRevision;
         private final long invalidationRevision;
         private final boolean simulate;
-        private final Map<String, IPatternDetails> bindings = new LinkedHashMap<>();
-        private final Map<String, Integer> priorities = new HashMap<>();
-        private final Map<AEKey, List<String>> dependencies = new LinkedHashMap<>();
+        private final Map<AEKey, List<Signature>> dependencies = new LinkedHashMap<>();
         private final Set<AEKey> seen = new LinkedHashSet<>();
         // IGNORE_ALL fuzzy scans use only the primary key. Cache one representative
         // instead of revisiting thousands of NBT variants on every warm request.
         private final Map<Object, AEKey> templates = new LinkedHashMap<>();
         private final Set<IPatternDetails> seenPatterns = Collections.newSetFromMap(new IdentityHashMap<>());
-        private final PatternFingerprint.Context fingerprints = new PatternFingerprint.Context();
         private final Deque<AEKey> pending = new ArrayDeque<>();
-        private final List<GraphRecipe<AEKey>> recipes = new ArrayList<>();
-        private final Set<String> seenVariants = new HashSet<>();
+        private final List<CapturedPatternCatalog.Entry> entries = new ArrayList<>();
+        private int recipeCount;
         private final Map<AEKey, Long> stock = new LinkedHashMap<>();
         private final Set<AEKey> emitted = new LinkedHashSet<>(), fuzzy = new HashSet<>();
         private final Set<Object> fuzzyPrimary = new HashSet<>();
@@ -96,10 +94,12 @@ public final class GtlPatternCatalog {
         private Iterator<AEKey> keys;
         private Iterator<IPatternDetails> patterns;
         private AEKey key;
-        private List<String> versions;
+        private List<Signature> versions;
         private Snapshot result;
         private Normalization normalizing;
-        private Iterator<GraphRecipe<AEKey>> normalized;
+        private Iterator<CapturedPatternCatalog.Recipe> normalized;
+        private IPatternDetails normalizingPattern;
+        private Signature normalizingSignature;
 
         Capture(IGrid grid, CraftingService service, Level level, IActionSource source, Roots roots, PlanningBudget budget) {
             if (!level.getServer().isSameThread()) throw new IllegalStateException("Graph snapshot requires server thread");
@@ -166,30 +166,33 @@ public final class GtlPatternCatalog {
                     if (normalizing != null) {
                         if (!normalizing.step()) return false;
                         bounded |= normalizing.bounded;
+                        entries.add(new CapturedPatternCatalog.Entry(normalizingPattern, normalizingSignature.values(),
+                                normalizingSignature.priority(), normalizing.variants));
                         normalized = normalizing.variants.iterator();
                         normalizing = null;
                     }
                     if (normalized != null) {
                         if (normalized.hasNext()) {
                             var variant = normalized.next();
-                            if (!seenVariants.add(variant.id())) return false;
                             budget.reserve(256L + 64L * (variant.slots().size() + variant.outputs().size()));
-                            recipes.add(variant);
-                            pending.addAll(variant.inputs().keySet());
+                            if (++recipeCount > 100_000) throw new PlanningBudget.Exhausted(PlanningBudget.Limit.GRAPH_LIMIT);
+                            for (var slot : variant.slots()) pending.add(slot.key());
                             return false;
                         }
                         normalized = null;
                     }
                     if (patterns != null && patterns.hasNext()) {
                         IPatternDetails pattern = patterns.next();
-                        String binding = fingerprints.of(pattern);
-                        versions.add(signature(pattern, binding));
+                        Signature signature = signature(pattern);
+                        versions.add(signature);
                         if (!seenPatterns.add(pattern)) return false;
-                        bindings.putIfAbsent(binding, pattern);
-                        normalizing = new Normalization(pattern, binding, available, level, budget, fingerprints);
-                        for (var input : pattern.getInputs()) for (var possible : input.getPossibleInputs()) {
-                            templates.putIfAbsent(possible.what().getPrimaryKey(), possible.what());
-                            pending.add(possible.what());
+                        budget.reserve(64);
+                        normalizingPattern = pattern;
+                        normalizingSignature = signature;
+                        normalizing = new Normalization(pattern, available, level, budget);
+                        for (var input : signature.values().inputs()) for (var possible : input.choices()) {
+                            templates.putIfAbsent(possible.stack().what().getPrimaryKey(), possible.stack().what());
+                            pending.add(possible.stack().what());
                         }
                         return false;
                     }
@@ -204,7 +207,7 @@ public final class GtlPatternCatalog {
                     }
                     key = pending.removeFirst();
                     if (!seen.add(key)) return false;
-                    if (seen.size() > 100_000 || recipes.size() > 100_000) throw new PlanningBudget.Exhausted(PlanningBudget.Limit.GRAPH_LIMIT);
+                    if (seen.size() > 100_000) throw new PlanningBudget.Exhausted(PlanningBudget.Limit.GRAPH_LIMIT);
                     budget.reserve(96);
                     versions = new ArrayList<>();
                     patterns = List.copyOf(service.getCraftingFor(key)).iterator();
@@ -217,9 +220,9 @@ public final class GtlPatternCatalog {
                     } else if (hit && !fuzzy.equals(structure.fuzzyKeys())) resetBuild();
                     else {
                         if (!hit) {
-                            structure = new Structure(new PreparedCatalog<>(recipes, priorities), Map.copyOf(bindings), Set.copyOf(seen),
+                            structure = new Structure(new CapturedPatternCatalog(entries, recipeCount), Set.copyOf(seen),
                                     Set.copyOf(templates.values()), Set.copyOf(fuzzy), bounded, Map.copyOf(dependencies), revision);
-                        } else if (structure.providerRevision() != revision) structure = new Structure(structure.catalog(), structure.bindings(),
+                        } else if (structure.providerRevision() != revision) structure = new Structure(structure.catalog(),
                                 structure.resources(), structure.inputTemplates(), structure.fuzzyKeys(), structure.boundedAlternatives(),
                                 structure.dependencies(), revision);
                         keys = structure.resources().iterator();
@@ -261,7 +264,7 @@ public final class GtlPatternCatalog {
                             patterns = null;
                             return false;
                         }
-                        if (structure.providerRevision() != revision) structure = new Structure(structure.catalog(), structure.bindings(), structure.resources(),
+                        if (structure.providerRevision() != revision) structure = new Structure(structure.catalog(), structure.resources(),
                                 structure.inputTemplates(), structure.fuzzyKeys(), structure.boundedAlternatives(), structure.dependencies(), revision);
                         cache.put(roots, structure);
                         long weight = cache.values().stream().mapToLong(value -> value.resources().size() + value.catalog().size()).sum();
@@ -301,15 +304,12 @@ public final class GtlPatternCatalog {
             return result != null;
         }
 
-        private String signature(IPatternDetails pattern) {
-            return signature(pattern, fingerprints.of(pattern));
-        }
-
-        private String signature(IPatternDetails pattern, String id) {
+        private Signature signature(IPatternDetails pattern) {
+            if (pattern.getInputs().length > 256 || pattern.getOutputs().length > 256)
+                throw new PlanningBudget.Exhausted(PlanningBudget.Limit.GRAPH_LIMIT);
             int priority = Integer.MIN_VALUE;
             for (var provider : service.getProviders(pattern)) priority = Math.max(priority, provider.getPatternPriority());
-            priorities.put(id, priority);
-            return id + ':' + priority;
+            return new Signature(PatternFingerprint.capture(pattern), priority);
         }
 
         private void resetBuild() {
@@ -344,21 +344,20 @@ public final class GtlPatternCatalog {
     }
 
     private static List<GraphRecipe<AEKey>> normalize(IPatternDetails pattern, String binding, KeyCounter available, Level level, PlanningBudget budget) {
-        var work = new Normalization(pattern, binding, available, level, budget, new PatternFingerprint.Context());
+        var work = new Normalization(pattern, available, level, budget);
         while (!work.step()) {}
-        return work.variants;
+        var fingerprints = new PatternFingerprint.Context();
+        return work.variants.stream().map(variant -> variant.encode(binding, fingerprints)).toList();
     }
 
     private static final class Normalization {
 
         final IPatternDetails pattern;
-        final String binding;
         final KeyCounter available;
         final Level level;
         final PlanningBudget budget;
-        final PatternFingerprint.Context fingerprints;
         final List<List<List<Picked>>> choices = new ArrayList<>();
-        final List<GraphRecipe<AEKey>> variants = new ArrayList<>();
+        final List<CapturedPatternCatalog.Recipe> variants = new ArrayList<>();
         final Map<AEKey, GenericStack> candidates = new LinkedHashMap<>();
         final IPatternDetails.IInput[] inputs;
         int inputSlot, phase;
@@ -368,13 +367,11 @@ public final class GtlPatternCatalog {
         Iterator<? extends it.unimi.dsi.fastutil.objects.Object2LongMap.Entry<AEKey>> fuzzy;
         GenericStack possible;
 
-        Normalization(IPatternDetails pattern, String binding, KeyCounter available, Level level, PlanningBudget budget, PatternFingerprint.Context fingerprints) {
+        Normalization(IPatternDetails pattern, KeyCounter available, Level level, PlanningBudget budget) {
             this.pattern = pattern;
-            this.binding = binding;
             this.available = available;
             this.level = level;
             this.budget = budget;
-            this.fingerprints = fingerprints;
             inputs = pattern.getInputs();
             if (inputs.length > 256 || pattern.getOutputs().length > 256) throw new PlanningBudget.Exhausted(PlanningBudget.Limit.GRAPH_LIMIT);
         }
@@ -425,7 +422,7 @@ public final class GtlPatternCatalog {
             }
             List<List<Picked>> selected = new ArrayList<>();
             for (int i = 0; i < indices.length; i++) selected.add(choices.get(i).get(indices[i]));
-            variants.add(variant(pattern, binding, selected, fingerprints));
+            variants.add(variant(pattern, selected));
             int at = indices.length - 1;
             while (at >= 0 && ++indices[at] == choices.get(at).size()) {
                 indices[at] = 0;
@@ -456,10 +453,9 @@ public final class GtlPatternCatalog {
         }
     }
 
-    private static GraphRecipe<AEKey> variant(IPatternDetails pattern, String binding, List<List<Picked>> selected, PatternFingerprint.Context fingerprints) {
+    private static CapturedPatternCatalog.Recipe variant(IPatternDetails pattern, List<List<Picked>> selected) {
         List<GraphRecipe.Slot<AEKey>> slots = new ArrayList<>();
         Map<AEKey, Long> outputs = new LinkedHashMap<>();
-        StringBuilder identity = new StringBuilder(binding);
         for (var output : pattern.getOutputs()) outputs.merge(output.what(), output.amount(), CheckedAmounts::add);
         for (int i = 0; i < selected.size(); i++) {
             for (Picked picked : selected.get(i)) {
@@ -467,19 +463,18 @@ public final class GtlPatternCatalog {
                 long amount = CheckedAmounts.multiply(choice.amount(), picked.copies());
                 boolean configuration = pattern.supportsPushInputsToExternalInventory() && GtlDispatchPolicy.configuration(choice.what());
                 slots.add(new GraphRecipe.Slot<>(choice.what(), amount, i, configuration));
-                identity.append('|').append(i).append(':').append(fingerprints.key(choice.what())).append(':').append(amount);
                 AEKey remainder = pattern.getInputs()[i].getRemainingKey(choice.what());
                 if (remainder != null) outputs.merge(remainder, picked.copies(), CheckedAmounts::add);
             }
         }
-        return new GraphRecipe<>(fingerprints.hash(identity.toString()), binding, slots, outputs);
+        return new CapturedPatternCatalog.Recipe(slots, outputs);
     }
 
     private record Picked(GenericStack template, long copies) {}
 
-    public record Structure(PreparedCatalog<AEKey> catalog, Map<String, IPatternDetails> bindings, Set<AEKey> resources,
+    public record Structure(CapturedPatternCatalog catalog, Set<AEKey> resources,
                             Set<AEKey> inputTemplates, Set<AEKey> fuzzyKeys, boolean boundedAlternatives,
-                            Map<AEKey, List<String>> dependencies, long providerRevision) {}
+                            Map<AEKey, List<Signature>> dependencies, long providerRevision) {}
 
     public record Snapshot(Structure structure, Map<AEKey, Long> stock, Set<AEKey> emitable, long epoch, boolean cacheHit) {}
 }

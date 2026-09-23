@@ -32,7 +32,7 @@ public final class SummaryComputation<K> {
                 if (frame.ordinaryEntries.hasNext()) {
                     var entry = frame.ordinaryEntries.next();
                     K key = entry.getKey();
-                    BigInteger quantity = BigInteger.valueOf(entry.getValue()).multiply(BigInteger.valueOf(frame.ordinaryRuns));
+                    BigInteger quantity = BigInteger.valueOf(entry.getValue()).multiply(frame.ordinaryRuns);
                     BigInteger change = frame.change.getOrDefault(key, BigInteger.ZERO);
                     if (frame.ordinaryInputs) {
                         frame.need.merge(key, quantity.subtract(change).max(BigInteger.ZERO), BigInteger::max);
@@ -104,7 +104,7 @@ public final class SummaryComputation<K> {
                         // a closed form. Fold directly into the parent; allocating
                         // and copying three tiny maps per recipe is unnecessary.
                         frame.ordinary = recipe;
-                        frame.ordinaryRuns = batch.runs();
+                        frame.ordinaryRuns = BigInteger.valueOf(batch.runs());
                         frame.ordinaryInputs = true;
                         frame.ordinaryEntries = recipe.inputs().entrySet().iterator();
                         return false;
@@ -118,7 +118,11 @@ public final class SummaryComputation<K> {
             stack.push(new Frame(((PlanStep.Repeat) frame.step).body()));
             return false;
         }
-        if (frame.keys == null) frame.keys = frame.change.keySet().iterator();
+        // A sequence already contains its exact prefix need, delta and peak.
+        // Rewriting every entry for repeat(1) only repeats the same arithmetic
+        // and budget bookkeeping. Batches still need their peak initialized.
+        if (frame.keys == null) frame.keys = frame.repeat == 1 && !(frame.step instanceof PlanStep.Batch) ?
+                Collections.emptyIterator() : frame.change.keySet().iterator();
         if (frame.keys.hasNext()) {
             K key = frame.keys.next();
             BigInteger delta = frame.change.get(key);
@@ -162,7 +166,7 @@ public final class SummaryComputation<K> {
         private GraphRecipe<K> ordinary;
         private Iterator<Map.Entry<K, Long>> ordinaryEntries;
         private boolean ordinaryInputs;
-        private long ordinaryRuns;
+        private BigInteger ordinaryRuns;
         private int child, phase;
         private long repeat = 1;
 
