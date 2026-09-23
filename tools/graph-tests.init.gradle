@@ -1,0 +1,22 @@
+// Optional validation tasks. Invoke with: gradlew -I tools/graph-tests.init.gradle graphCoreTest graphIntegrationTest
+gradle.projectsEvaluated {
+    rootProject {
+        def validationDir = layout.buildDirectory.dir('graph-validation').get().asFile
+        [graphCoreTest: 'GraphCoreTest', graphIntegrationTest: 'GraphAeIntegrationTest', graphBenchmark: 'GraphBenchmark'].each { taskName, entryPoint ->
+            tasks.register(taskName, JavaExec) {
+                group = 'verification'
+                dependsOn testClasses
+                // These headless tests need the real compiled APIs, not client runtime-only mods.
+                classpath = sourceSets.test.output + sourceSets.main.output + sourceSets.test.compileClasspath
+                mainClass = 'org.gtlcore.gtlcore.integration.ae2.graph.' + entryPoint
+                workingDir = validationDir
+                jvmArgs '-ea', '-Djava.io.tmpdir=' + new File(validationDir, 'tmp').absolutePath,
+                        '-Duser.home=' + new File(validationDir, 'home').absolutePath
+                doFirst {
+                    new File(validationDir, 'tmp').mkdirs()
+                    new File(validationDir, 'home').mkdirs()
+                }
+            }
+        }
+    }
+}
