@@ -269,24 +269,28 @@ public class GTLItems {
 
     public static final ItemEntry<ComponentItem> DEBUG_STRUCTURE_WRITER = REGISTRATE
             .item("debug_structure_writer", ComponentItem::create)
+            .properties(stack -> stack.stacksTo(1))
             .onRegister(GTItems.attach(StructureWriteBehavior.INSTANCE))
             .model(NonNullBiConsumer.noop())
             .register();
 
     public static final ItemEntry<ComponentItem> DEBUG_PATTERN_TEST = REGISTRATE
             .item("debug_pattern_test", ComponentItem::create)
+            .properties(stack -> stack.stacksTo(1))
             .onRegister(GTItems.attach(PatternTestBehavior.INSTANCE))
             .model(NonNullBiConsumer.noop())
             .register();
 
     public static final ItemEntry<ComponentItem> PATTERN_MODIFIER = REGISTRATE
             .item("pattern_modifier", ComponentItem::create)
+            .properties(stack -> stack.stacksTo(1))
             .onRegister(GTItems.attach(PatternModifier.INSTANCE))
             .model(NonNullBiConsumer.noop())
             .register();
 
     public static ItemEntry<ComponentItem> CFG_COPY = REGISTRATE
             .item("cfg_copy", ComponentItem::create)
+            .properties(stack -> stack.stacksTo(1))
             .onRegister(attach(ConfigurationCopyBehavior.INSTANCE, new TooltipBehavior(lines -> {
                 lines.add(Component.translatable("tooltip.gtlcore.cfg_copy"));
             })))

@@ -74,12 +74,12 @@ import lombok.Setter;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.IntStream;
 
 /**
  * Shared implementation for pattern buffer variants.
@@ -395,10 +395,13 @@ public abstract class MEPatternBufferPartMachineBase extends MEIOPartMachine
     // ========================================
 
     protected Iterable<InternalSlot> getActiveInternalSlots() {
-        return IntStream.range(0, getInternalSlotCount())
-                .mapToObj(this::getInternalSlot)
-                .filter(InternalSlot::isActive)
-                .toList();
+        int slotCount = getInternalSlotCount();
+        List<InternalSlot> slots = new ObjectArrayList<>(slotCount);
+        for (int slotIndex = 0; slotIndex < slotCount; slotIndex++) {
+            InternalSlot slot = getInternalSlot(slotIndex);
+            if (slot.isActive()) slots.add(slot);
+        }
+        return slots;
     }
 
     protected @Nullable InternalSlot getFirstActiveInternalSlot(IntCollection slots) {
@@ -419,15 +422,23 @@ public abstract class MEPatternBufferPartMachineBase extends MEIOPartMachine
     }
 
     protected int[] getActiveSlots() {
-        return IntStream.range(0, getInternalSlotCount())
-                .filter(i -> getInternalSlot(i).isActive())
-                .toArray();
+        int slotCount = getInternalSlotCount();
+        int[] slots = new int[slotCount];
+        int size = 0;
+        for (int slotIndex = 0; slotIndex < slotCount; slotIndex++) {
+            if (getInternalSlot(slotIndex).isActive()) slots[size++] = slotIndex;
+        }
+        return size == slotCount ? slots : Arrays.copyOf(slots, size);
     }
 
     protected int[] getActiveAndUnCachedSlots() {
-        return IntStream.range(0, getInternalSlotCount())
-                .filter(i -> getInternalSlot(i).isActive() && !hasRecipeCacheInSlot(i))
-                .toArray();
+        int slotCount = getInternalSlotCount();
+        int[] slots = new int[slotCount];
+        int size = 0;
+        for (int slotIndex = 0; slotIndex < slotCount; slotIndex++) {
+            if (getInternalSlot(slotIndex).isActive() && !hasRecipeCacheInSlot(slotIndex)) slots[size++] = slotIndex;
+        }
+        return size == slotCount ? slots : Arrays.copyOf(slots, size);
     }
 
     @Nullable

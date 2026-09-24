@@ -76,8 +76,8 @@ ServerEvents.commandRegistry(event => {
     register('graphstress3b', 3000000000);
     register('graphstresslarge', 1000000000000,
         [['chain8192',8192,1], ['chain16384',16384,1], ['chain32768',32768,1], ['shared512x32',512,32]], 5);
-    // Deliberately exceeds the default memory budget: expect a controlled refusal,
-    // with no submission/stock transfer, rather than claiming it as a valid plan.
+    // Set the isolated server's memory budget to 32 MiB before this rejection
+    // fixture. The current 128 MiB default can admit it; neither path submits a job.
     register('graphstresslimit', 1000000000000, [['chain65536',65536,1]], 1);
     register('graphstress65536', 1000000000000, [['chain65536',65536,1]], 3);
     register('graphstressbusy', 1000000000000, [['busy8192',8192,1]], 2);

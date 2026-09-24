@@ -95,7 +95,7 @@ public class TagFilterMEStockHatchPartMachine extends MEInputHatchPartMachine im
         super.attachConfigurators(configuratorPanel);
         configuratorPanel.attachConfigurators(new IFancyConfiguratorButton.Toggle(
                 new TextTexture("A-Z"),
-                new TextTexture("Sort"),
+                new TextTexture("gui.gtlcore.sort_by_amount"),
                 this::isCountSort,
                 (clickData, pressed) -> setCountSort(pressed))
                 .setTooltipsSupplier(pressed -> List.of(Component.translatable("tooltip.gtlcore.auto_pull_sort_mode"))));

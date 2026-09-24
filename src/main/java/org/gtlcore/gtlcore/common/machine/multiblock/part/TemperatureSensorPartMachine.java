@@ -57,7 +57,7 @@ public class TemperatureSensorPartMachine extends TieredPartMachine {
         var group = new WidgetGroup(Position.ORIGIN, new Size(176, 112));
 
         group.addWidget(new TextBoxWidget(8, 35, 65,
-                List.of(LocalizationUtils.format("最大温度"))));
+                List.of(LocalizationUtils.format("gui.gtlcore.temperature_sensor.max_temperature"))));
 
         group.addWidget(new TextFieldWidget(80, 35, 85, 18, () -> toText(max),
                 stringValue -> setMax(Mth.clamp(fromText(stringValue), 1, MAX_TEMP))).setNumbersOnly(1, MAX_TEMP));

@@ -90,7 +90,7 @@ python tools/summarize-graph-stress.py .local/server-stress-final.log .local/gra
 捕获调度与精确输入测试还可使用以下命令，须等前一个套件 `SUITE COMPLETE` 后再继续：
 
 - `graphstresslarge`：一万亿数量，8,192 / 16,384 / 32,768 层链及 512 × 32 路共享依赖，每组五次。
-- `graphmemory128` 后执行 `graphstress65536`：仅将测试服运行时请求预算改为 128 MiB，65,536 层三次；不修改发布默认值。
+- `graphstress65536`：65,536 层三次。当前新配置默认 128 MiB；若测试服保留旧 32 MiB 配置，可先用 `graphmemory128` 仅调整运行时预算。
 - `graphstressdense`：128 层精确加工链，额外挂载 8,192 种同物品的无关 NBT 库存，三次。
 - `graphload20` 后执行 `graphstressloaded`，以及 `graphload60` 后执行 `graphstressbusy`：在主线程每 tick 人为占用 20 / 60 ms，各测两次 8,192 层请求。先核对日志的 `load_ms`；完成后用 `graphload0` 清除。负载也会在 600 tick 后自动清除。
 
@@ -138,8 +138,8 @@ python tools/summarize-graph-stress.py .local/server-stress-final.log .local/gra
 ## 大图及异步输出
 
 - `graphstresslarge`：一万亿订单，8192/16384/32768 层链和 512×32 共享图；独立解释器核对。
-- `graphstresslimit`：65536 层，默认预算下检查受控拒绝，不提交任务。
-- `graphmemory128` 后 `graphstress65536`：仅本次隔离服务端将规划预算改为 128 MiB，重启还原；三组新旧对照。
+- `graphstresslimit`：先将隔离测试服的 `ae2GraphPlannerMemoryMiB` 配为 32 并重启，再用 65536 层检查受控拒绝，不提交任务。当前默认 128 MiB 已能容纳该用例，不能再假定默认配置会拒绝。
+- `graphmemory128` 后 `graphstress65536`：仅本次隔离服务端将规划预算改为 128 MiB，重启恢复配置文件的值；三组新旧对照。新生成的配置已默认 128 MiB。
 - `asyncoutputprobe`：80/82 号位置的真实异步总成，堵塞写入线程，验证普通/掉落物保存；
   `asyncoutputbench`：每样本 10000 次接收，每次 100 个带 NBT 物品，检查全部进入可保存 buffer。
 - `asyncgraphplace`，等待节点建网后 `asyncgraphnormal`：真实 CPU/异步总成返回路径，
