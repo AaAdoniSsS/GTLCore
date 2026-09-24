@@ -376,7 +376,8 @@ public final class GraphCpuController {
                 recovery.status() == RecoveryObligation.Status.INTERMEDIATE))
             waiting |= CraftingDispatchReason.RECOVERY_PENDING.mask();
         if (waiting != 0) return waiting;
-        if (runtime.reason().equals("WAIT_INPUT")) return CraftingDispatchReason.WAITING_FOR_INPUTS.mask();
+        if (runtime.reason().equals("WAIT_INPUT") || runtime.reason().equals("WAIT_PREFIX_RESERVATION"))
+            return CraftingDispatchReason.WAITING_FOR_INPUTS.mask();
         return switch (adapter == null ? "" : adapter.reason()) {
             case "WAIT_ENERGY" -> CraftingDispatchReason.INSUFFICIENT_POWER.mask();
             case "PROVIDER_OFFLINE" -> CraftingDispatchReason.NO_PROVIDER.mask();

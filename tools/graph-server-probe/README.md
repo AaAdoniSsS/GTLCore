@@ -1,5 +1,23 @@
 # 隔离 Forge 服务端验收探针
 
+`water_byproduct_probe.js` / `WaterByproductProbe` 专门测试 ExtendedAE 无限水元件与副产物回路。
+仅在隔离世界安装脚本，依次执行 `watergraphplace`、等待结构组装、`watergraphload`、等待库存同步、
+`watergraphstart`。固定测试台位于 `(144,65,0)` 附近，会替换该位置的 CPU；不用于实际存档。
+
+水来自驱动器中的真实 `expatternprovider:infinity_cell`；有限原料由测试存储提供，加工与回料由
+可计数的测试供应器模拟。真实 AE 样板注册、库存捕获、CPU 取料、两种执行器、回料路由均参与测试，
+这不是实际 GT 机器加工验证。测试会先等 AE 缓存刷新，再给 MAX_FAST 相同的起始库存；日志还检查
+旧 `MaxFastExecutor` 与 `CraftingCpuLogic.executeCrafting` 确实被调用。
+
+覆盖耗水 1000 mB、回水 500/1000/2000 mB，以及将水另外登记为主产物的并行样板。
+请求量为 9、97、1 亿、1 亿加 17、1 万亿；9 份订单实际执行，其余只做规划。
+另外验证已有无限水时跳过缺少原料的制水配方，以及不同阶段已经接受批次时修改配方触发重规划。
+`case=pipeline` 将上游回料交替延迟 1 / 60 tick，日志 `pipeline_overlap` 记录下游开工时是否还有上游在途。
+最终应有 34 个图引擎通过、33 个 MAX_FAST 规划通过、9 个图执行通过、8 个旧执行通过。
+后缀重规划用例只属于新引擎；不要把它当成与旧执行器等价的对照。
+
+必须检查日志中的 `FAIL`、`HARNESS FAILED` 和最终汇总，不能把成功生成计划算作执行通过。
+
 只用于一次性测试世界。脚本会在固定坐标放置或替换方块、存储盘和样板，不能复制进实际存档。
 测试模组不进入 Core 的 Gradle source set，也不随发布 JAR 打包。
 

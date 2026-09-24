@@ -30,6 +30,19 @@ public final class CraftingEngineRouter {
 
     private CraftingEngineRouter() {}
 
+    static <K> Map<K, Long> planningAvailability(Map<K, Long> network, Map<K, Long> forecast) {
+        Map<K, Long> result = new LinkedHashMap<>(network);
+        forecast.forEach((key, count) -> result.merge(key, CheckedAmounts.nonNegative(count), (stored, owned) -> {
+            // Availability is a lower bound for a long-sized request, not an
+            // ownership ledger. An infinity cell plus real CPU-held material
+            // must not overflow before replanning even starts. Physical inputs,
+            // expected outputs and settlement continue to use exact arithmetic.
+            CheckedAmounts.nonNegative(stored);
+            return stored + Math.min(owned, Long.MAX_VALUE - stored);
+        }));
+        return result;
+    }
+
     private static PlanningScheduler scheduler;
 
     private static final class Settings {
@@ -179,8 +192,7 @@ public final class CraftingEngineRouter {
                 compiler = prepared.compiler();
                 preparing = null;
                 request.dependencies(snapshot.structure().resources());
-                available = new LinkedHashMap<>(snapshot.stock());
-                if (checkpoint != null) checkpoint.forecast().forEach((key, count) -> available.merge(key, count, CheckedAmounts::add));
+                available = planningAvailability(snapshot.stock(), checkpoint == null ? Map.of() : checkpoint.forecast());
                 directEmission = snapshot.emitable().contains(target) && compiler.producers(target).isEmpty();
                 if (directEmission && checkpoint == null) available.remove(target);
                 current = calculation(amount);

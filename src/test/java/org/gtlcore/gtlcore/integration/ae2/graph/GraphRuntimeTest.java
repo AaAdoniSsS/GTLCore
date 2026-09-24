@@ -15,7 +15,9 @@ public final class GraphRuntimeTest {
         partialAndCancellation();
         nestedAndZero();
         independentDag();
+        partialDagPipeline();
         cyclicBatchParallelism();
+        delayedWaterByproduct();
         fullCatalystAccount();
         handoffSnapshot();
         oldReturnDuringRejection();
@@ -164,6 +166,29 @@ public final class GraphRuntimeTest {
         eq(Long.MAX_VALUE, fake.runtime.held("C"), "catalyst debit precedes credit without overflow");
     }
 
+    private static void partialDagPipeline() {
+        var p = plan(List.of(recipe("upstream", Map.of("R", 1L), Map.of("A", 1L, "X", 1L)),
+                recipe("downstream", Map.of("A", 1L), Map.of("P", 1L))), "P", 100, Map.of("R", 100L));
+        Fake fake = new Fake(p);
+        fake.runtime.tick(fake, 0, 100);
+        eq(1L, fake.pushes, "Only upstream can dispatch before its actual outputs arrive");
+        eq(10L, fake.runtime.accept("A", 10, false), "First partial upstream output arrives");
+        fake.runtime.tick(fake, 5, 100);
+        eq(List.of(100L, 10L), fake.batches, "DAG downstream starts with partial upstream production");
+        eq(Map.of("A", 90L, "X", 100L, "P", 10L), fake.runtime.expected(),
+                "Both stages remain in flight and the delayed side output remains owed");
+        eq(0L, fake.runtime.held("A"), "Only the ten physically returned inputs were spent");
+        eq(90L, fake.runtime.pendingRuns().get("downstream"), "Downstream retains exactly its unstarted work");
+        fake.runtime = new GraphJobRuntime<>(fake.runtime.snapshot());
+        eq(5L, fake.runtime.accept("A", 5, false), "Another partial return after reload");
+        fake.runtime.tick(fake, 10, 100);
+        eq(List.of(100L, 10L, 5L), fake.batches, "Reload keeps partial pipeline progress without resending upstream");
+        eq(100L, fake.runtime.waiting("X"), "Unrelated side output is still owed while downstream runs");
+        fake.complete();
+        eq(100L, fake.delivered.get("P"), "Partial pipeline delivers the exact target");
+        eq(100L, fake.refunded.get("X"), "Side outputs remain accounted for through final settlement");
+    }
+
     private static void cyclicBatchParallelism() {
         var unpack = recipe("unpack", Map.of("block", 1L), Map.of("D", 9L));
         var grow = recipe("grow", Map.of("C", 1L, "D", 1L), Map.of("C", 2L));
@@ -181,10 +206,8 @@ public final class GraphRuntimeTest {
         eq(4L, fake.pushes, "partial serial batch keeps parallel window after reload");
         fake.runtime.accept("D", 9, false);
         fake.runtime.tick(fake, 2, 8);
-        eq(4L, fake.pushes, "partial previous stage return does not release a different recipe");
-        fake.returnAll();
-        fake.runtime.tick(fake, 3, 8);
-        eq(8L, fake.pushes, "four physically held catalysts fill four separate machines");
+        eq(8L, fake.pushes, "partial previous stage return releases four funded downstream machines");
+        eq(27L, fake.runtime.waiting("D"), "unfinished upstream batches remain in flight during downstream work");
         eq(0L, fake.runtime.held("C"), "in-flight catalysts cannot be reused");
         fake.runtime = new GraphJobRuntime<>(fake.runtime.snapshot());
         fake.runtime.tick(fake, 10, 8);
@@ -203,6 +226,31 @@ public final class GraphRuntimeTest {
         cancelled.runtime.tick(cancelled, 1, 64);
         eq(4L, cancelled.refunded.get("C"), "cancel refunds only unspent catalysts");
         eq(null, cancelled.refunded.get("block"), "cancel cannot duplicate four dispatched inputs");
+    }
+
+    private static void delayedWaterByproduct() {
+        var recipes = List.of(recipe("wet", Map.of("R", 1L, "W", 1000L), Map.of("I", 1L)),
+                recipe("finish", Map.of("I", 1L), Map.of("P", 1L, "W", 2000L)));
+        var work = new GraphPlanningWork<>(new GraphCompiler<>(recipes), "P", 9,
+                Map.of("R", 9L, "W", Long.MAX_VALUE), true, true, new PlanningBudget(5000, 10000, () -> false))
+                .catalysts(new CatalystPolicy(2, 0));
+        while (!work.step()) {}
+        eq(true, work.result().feasible(), "Partial parallel water batch remains feasible");
+        var fake = new Fake(work.result());
+        fake.limit = 1;
+        fake.runtime.tick(fake, 0, 2);
+        eq(2L, fake.runtime.accept("I", 2, false), "Two wet intermediates actually return");
+        fake.runtime.tick(fake, 1, 2);
+        eq(2L, fake.runtime.accept("P", 2, false), "Products may return before their advertised water");
+        long pushes = fake.pushes;
+        for (int tick = 2; tick < 100; tick++) fake.runtime.tick(fake, tick, 8);
+        eq(pushes, fake.pushes, "Network availability cannot stand in for a missing physical byproduct return");
+        eq(4000L, fake.runtime.expected().get("W"), "Delayed water remains a real finite output obligation");
+        eq(false, fake.runtime.finished(), "A missing advertised output is waiting, not a completed order");
+        fake.runtime = new GraphJobRuntime<>(fake.runtime.snapshot());
+        eq(4000L, fake.runtime.accept("W", 4000, false), "Late water still settles its original obligation after reload");
+        fake.complete();
+        eq(9L, fake.delivered.get("P"), "Late water releases the remaining full waves and the partial tail exactly once");
     }
 
     private static void handoffSnapshot() {

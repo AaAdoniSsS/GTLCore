@@ -26,7 +26,11 @@ final class AllocationSearch<K> {
     private final Map<String, GraphRecipe<K>> relevant = new LinkedHashMap<>();
     private final List<GraphRecipe<K>> recipes = new ArrayList<>();
     private final List<SequenceSummary<K>> summaries = new ArrayList<>();
-    private final Map<K, Long> held = new LinkedHashMap<>();
+    // This search models the available network plus hypothetical recipe deltas,
+    // not the CPU's physical inventory. Stock at Long.MAX_VALUE must not forbid
+    // a recipe with a positive byproduct: the final witness borrows only its
+    // required prefix and independently checks all actual long-sized balances.
+    private final Map<K, BigInteger> held = new LinkedHashMap<>();
     private final List<Change<K>> undo = new ArrayList<>();
     private final List<PlanStep> path = new ArrayList<>();
     private final Deque<Frame> stack = new ArrayDeque<>();
@@ -79,7 +83,7 @@ final class AllocationSearch<K> {
                     // A finite, explicitly permitted external requirement for this
                     // candidate. This is not physical stock or a MAX_VALUE sentinel.
                     if (external.contains(key)) available = Math.max(available, CheckedAmounts.amount(goals.getOrDefault(key, BigInteger.ZERO)));
-                    set(key, available, false);
+                    set(key, BigInteger.valueOf(available), false);
                 }
                 stack.push(new Frame(0, 0));
                 visit();
@@ -106,7 +110,7 @@ final class AllocationSearch<K> {
             frame.checkedGoal = true;
             BigInteger goal = BigInteger.valueOf(amount);
             if (force) goal = goal.add(BigInteger.valueOf(stock.getOrDefault(target, 0L)));
-            if (BigInteger.valueOf(held.getOrDefault(target, 0L)).compareTo(goal) >= 0) {
+            if (held.getOrDefault(target, BigInteger.ZERO).compareTo(goal) >= 0) {
                 checking = new Candidate();
                 return false;
             }
@@ -138,8 +142,8 @@ final class AllocationSearch<K> {
         var summary = summaries.get(recipeIndex);
         for (var entry : summary.delta().entrySet()) {
             budget.check();
-            long next = CheckedAmounts.amount(BigInteger.valueOf(held.getOrDefault(entry.getKey(), 0L))
-                    .add(entry.getValue().multiply(BigInteger.valueOf(runs))));
+            BigInteger next = held.getOrDefault(entry.getKey(), BigInteger.ZERO)
+                    .add(entry.getValue().multiply(BigInteger.valueOf(runs)));
             set(entry.getKey(), next, true);
         }
         if (!visit()) {
@@ -184,13 +188,14 @@ final class AllocationSearch<K> {
         BigInteger bound = BigInteger.valueOf(Long.MAX_VALUE), useful = BigInteger.ZERO;
         for (K key : summary.keys()) {
             budget.check();
-            BigInteger current = BigInteger.valueOf(held.getOrDefault(key, 0L));
+            BigInteger current = held.getOrDefault(key, BigInteger.ZERO);
             if (current.compareTo(summary.required(key)) < 0) return 0;
             BigInteger delta = summary.delta(key);
             if (delta.signum() < 0) bound = bound.min(current.subtract(summary.required(key)).divide(delta.negate()).add(BigInteger.ONE));
             else if (delta.signum() > 0) {
-                bound = bound.min(BigInteger.valueOf(Long.MAX_VALUE).subtract(current).divide(delta));
-                useful = useful.max(CheckedAmounts.ceilDiv(goals.getOrDefault(key, BigInteger.ZERO).subtract(current), delta));
+                BigInteger goal = goals.getOrDefault(key, BigInteger.ZERO);
+                if (force && key.equals(target)) goal = goal.max(BigInteger.valueOf(stock.getOrDefault(target, 0L)).add(BigInteger.valueOf(amount)));
+                useful = useful.max(CheckedAmounts.ceilDiv(goal.subtract(current), delta));
             }
         }
         // A transformation with an identically zero vector cannot help a material
@@ -199,17 +204,18 @@ final class AllocationSearch<K> {
         return CheckedAmounts.amount(bound.min(useful.max(BigInteger.ONE)));
     }
 
-    private void set(K key, long value, boolean record) {
-        long old = held.getOrDefault(key, 0L);
-        if (old == value) return;
+    private void set(K key, BigInteger value, boolean record) {
+        if (value.signum() < 0) throw new IllegalArgumentException("Negative search inventory");
+        BigInteger old = held.getOrDefault(key, BigInteger.ZERO);
+        if (old.equals(value)) return;
         if (record) {
             undo.add(new Change<>(key, old));
-            reserve(40);
+            reserve(96);
         }
         long id = keyIds.get(key) + 1L;
-        hash1 ^= mix(id * 0x9e3779b97f4a7c15L ^ old) ^ mix(id * 0x9e3779b97f4a7c15L ^ value);
-        hash2 ^= mix(id * 0xd6e8feb86659fd93L + old) ^ mix(id * 0xd6e8feb86659fd93L + value);
-        if (value == 0) held.remove(key);
+        hash1 ^= mix(id * 0x9e3779b97f4a7c15L ^ old.longValue()) ^ mix(id * 0x9e3779b97f4a7c15L ^ value.longValue());
+        hash2 ^= mix(id * 0xd6e8feb86659fd93L + old.hashCode()) ^ mix(id * 0xd6e8feb86659fd93L + value.hashCode());
+        if (value.signum() == 0) held.remove(key);
         else held.put(key, value);
     }
 
@@ -218,8 +224,8 @@ final class AllocationSearch<K> {
             budget.check();
             Change<K> change = undo.remove(undo.size() - 1);
             set(change.key(), change.previous(), false);
-            memory -= 40;
-            budget.release(40);
+            memory -= 96;
+            budget.release(96);
         }
     }
 
@@ -253,7 +259,7 @@ final class AllocationSearch<K> {
         return result;
     }
 
-    private record Change<K>(K key, long previous) {}
+    private record Change<K>(K key, BigInteger previous) {}
 
     private record Stamp(long first, long second) {}
 

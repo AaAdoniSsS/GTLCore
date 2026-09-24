@@ -18,7 +18,7 @@ import java.util.Objects;
 public final class GraphJobCodec {
 
     public static final String NBT_KEY = "gtlcoreGraphJob";
-    private static final int SCHEMA = 3;
+    private static final int SCHEMA = 4;
     private static final int MAX_ENTRIES = 100_000;
 
     private GraphJobCodec() {}
@@ -70,6 +70,14 @@ public final class GraphJobCodec {
             cursor.add(row);
         });
         tag.put("cursor", cursor);
+        ListTag pipeline = new ListTag();
+        state.pipeline().forEach(batch -> {
+            CompoundTag row = new CompoundTag();
+            row.putString("recipe", batch.recipe());
+            row.putLong("runs", batch.runs());
+            pipeline.add(row);
+        });
+        tag.put("pipeline", pipeline);
         tag.putLong("remainingDelivery", state.remainingDelivery());
         tag.putString("state", state.state().name());
         tag.putString("reason", state.reason());
@@ -131,6 +139,11 @@ public final class GraphJobCodec {
             CompoundTag row = (CompoundTag) entry;
             cursor.add(new PlanCursor.Position(row.getInt("node"), amount(row, "remaining")));
         }
+        List<PlanStep.Batch> pipeline = new ArrayList<>();
+        if (schema >= 4) for (Tag entry : list(tag, "pipeline")) {
+            CompoundTag row = (CompoundTag) entry;
+            pipeline.add(new PlanStep.Batch(row.getString("recipe"), amount(row, "runs")));
+        }
         OutputObligations.Snapshot<AEKey> obligations;
         RecoveryObligation<AEKey> recovery;
         if (schema == 1) {
@@ -154,7 +167,7 @@ public final class GraphJobCodec {
                     amount(row, "stage"), RecoveryObligation.Status.valueOf(row.getString("status")));
         }
         return new GraphJobRuntime.Snapshot<>(plan, amounts(tag, "owned"), amounts(tag, "expected"),
-                amounts(tag, "uncertainInputs"), accepted, cursor, amount(tag, "remainingDelivery"),
+                amounts(tag, "uncertainInputs"), accepted, cursor, pipeline, amount(tag, "remainingDelivery"),
                 GraphJobRuntime.State.valueOf(tag.getString("state")), tag.getBoolean("suspended"), tag.getString("reason"), obligations, recovery, committed);
     }
 

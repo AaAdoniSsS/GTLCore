@@ -57,6 +57,7 @@ public final class GraphAeIntegrationTest {
         var loaded = new GraphJobRuntime<>(GraphJobCodec.read(saved));
         if (!saved.equals(GraphJobCodec.write(loaded.snapshot()))) throw new AssertionError("Actual NBT round trip changed the task");
         System.out.println("AE key/NBT integration round trip passed: " + amount);
+        pipelinePersistence(input, output);
         var waterTag = new CompoundTag();
         waterTag.putString("variant", "one");
         var water = AEFluidKey.of(Fluids.WATER, waterTag);
@@ -85,6 +86,7 @@ public final class GraphAeIntegrationTest {
         System.out.println("Actual AE processing-pattern normalization and fluid NBT/long tests passed");
         confirmationViews(variants.get(0), actualPattern, water, input, output);
         graphRingViews(input, output, water);
+        planningAvailability(input, water);
 
         var yaml = new YamlFormat();
         yaml.writeEnum("ae2CraftingEngine", AECraftingEngine.GRAPH);
@@ -104,6 +106,86 @@ public final class GraphAeIntegrationTest {
         ExactProcessingCaptureTest.run();
         GraphAeAdapterTest.run();
         AsyncOutputRegressionTest.run();
+    }
+
+    private static void pipelinePersistence(AEKey input, AEKey output) {
+        var recipe = new GraphRecipe<AEKey>("loop", "loop", List.of(new GraphRecipe.Slot<>(input, 1)), Map.of(input, 1L, output, 1L));
+        var plan = new GraphPlan<>(output, 3, true, new PlanStep.Sequence(List.of(new PlanStep.Batch("loop", 3))),
+                Map.of("loop", recipe), Map.of(input, 1L), Map.of(input, 1L), Map.of(), GraphPlan.Result.FEASIBLE, 0, 0);
+        var runtime = new GraphJobRuntime<>(plan, plan.initial(), Map.of());
+        var legacyFresh = GraphJobCodec.write(runtime.snapshot());
+        legacyFresh.putInt("schemaVersion", 3);
+        legacyFresh.remove("pipeline");
+        new GraphJobRuntime<>(GraphJobCodec.read(legacyFresh));
+        runtime.tick(new GraphJobRuntime.Adapter<>() {
+
+            public long capacity(GraphRecipe<AEKey> r, long requested) {
+                return 1;
+            }
+
+            public GraphJobRuntime.Outcome push(GraphRecipe<AEKey> r, long runs, Map<AEKey, Long> inputs) {
+                return GraphJobRuntime.Outcome.ACCEPTED;
+            }
+
+            public long deliver(AEKey key, long count) {
+                return count;
+            }
+
+            public long refund(AEKey key, long count) {
+                return count;
+            }
+        }, 0, 1);
+        var saved = GraphJobCodec.write(runtime.snapshot());
+        if (runtime.snapshot().pipeline().isEmpty()) throw new AssertionError("Pipeline window was not exercised");
+        var reloaded = new GraphJobRuntime<>(GraphJobCodec.read(saved));
+        if (!saved.equals(GraphJobCodec.write(reloaded.snapshot()))) throw new AssertionError("Pipeline NBT round trip changed prefetched work");
+        // The same physically accepted prefix as an old schema-3 serial cursor.
+        var legacyPartial = saved.copy();
+        legacyPartial.putInt("schemaVersion", 3);
+        legacyPartial.remove("pipeline");
+        ListTag cursor = new ListTag();
+        for (var position : List.of(new PlanCursor.Position(0, 0), new PlanCursor.Position(1, 2))) {
+            CompoundTag row = new CompoundTag();
+            row.putInt("node", position.node());
+            row.putLong("remaining", position.remaining());
+            cursor.add(row);
+        }
+        legacyPartial.put("cursor", cursor);
+        var migrated = new GraphJobRuntime<>(GraphJobCodec.read(legacyPartial));
+        if (!migrated.pendingRuns().equals(Map.of("loop", 2L)) || !migrated.expected().equals(runtime.expected()))
+            throw new AssertionError("Old in-flight task migration lost accepted outputs or resent its prefix");
+        var ambiguous = saved.copy();
+        ambiguous.getList("inFlight", 10).getCompound(0).putBoolean("ambiguous", true);
+        if (new GraphJobRuntime<>(GraphJobCodec.read(ambiguous)).state() != GraphJobRuntime.State.NEEDS_ATTENTION)
+            throw new AssertionError("Ambiguous recovered output owner must not authorize pipeline dispatch");
+        var bad = saved.copy();
+        bad.getList("pipeline", 10).getCompound(0).putLong("runs", 3);
+        try {
+            new GraphJobRuntime<>(GraphJobCodec.read(bad));
+            throw new AssertionError("Corrupt pipeline count was accepted");
+        } catch (IllegalArgumentException expected) {}
+        System.out.println("Pipeline NBT: partial window, schema-3 in-flight migration, ambiguous owner and corrupt count checks passed");
+    }
+
+    private static void planningAvailability(AEKey raw, AEKey water) {
+        var network = Map.of(raw, 5L, water, Long.MAX_VALUE);
+        var owned = Map.of(raw, 4L, water, 2000L);
+        var available = CraftingEngineRouter.planningAvailability(network, owned);
+        if (!available.equals(Map.of(raw, 9L, water, Long.MAX_VALUE)))
+            throw new AssertionError("Infinite network stock plus actual CPU water must remain available for replanning");
+        if (network.get(raw) != 5 || owned.get(raw) != 4 || owned.get(water) != 2000)
+            throw new AssertionError("Planning availability changed physical ownership");
+        if (!CraftingEngineRouter.planningAvailability(Map.of(water, Long.MAX_VALUE - 1000), Map.of(water, 2000L))
+                .equals(Map.of(water, Long.MAX_VALUE)))
+            throw new AssertionError("Large finite storage has the same availability bound");
+        boolean overflow = false;
+        try {
+            CheckedAmounts.add(Long.MAX_VALUE, 1);
+        } catch (ArithmeticException expected) {
+            overflow = true;
+        }
+        if (!overflow) throw new AssertionError("Physical material arithmetic must still reject overflow");
+        System.out.println("Replanning availability: infinity cell plus CPU-held water, finite boundary, immutable ownership passed");
     }
 
     private static void graphRingViews(AEKey input, AEKey output, AEKey water) {

@@ -24,7 +24,6 @@ public final class OutputObligations<K> {
     private final Map<K, Long> external = new LinkedHashMap<>();
     private final Map<Long, Ticket<K>> flights = new LinkedHashMap<>();
     private final Map<K, Deque<Ticket<K>>> byKey = new HashMap<>();
-    private final Map<String, Integer> byRecipe = new HashMap<>();
     private long nextId = 1;
 
     public OutputObligations(Map<K, Long> external) {
@@ -49,7 +48,6 @@ public final class OutputObligations<K> {
         if (flights.putIfAbsent(flight.id(), ticket) != null) throw new IllegalArgumentException("Duplicate output owner");
         for (K key : ticket.remaining.keySet()) byKey.computeIfAbsent(key, ignored -> new ArrayDeque<>()).add(ticket);
         if (ticket.remaining.isEmpty()) flights.remove(flight.id());
-        else byRecipe.merge(ticket.recipe, 1, Integer::sum);
         nextId = Math.max(nextId, flight.id() + 1);
     }
 
@@ -68,7 +66,6 @@ public final class OutputObligations<K> {
             if (!ticket.remaining.containsKey(key)) queue.removeFirst();
             if (ticket.remaining.isEmpty()) {
                 flights.remove(ticket.id);
-                byRecipe.compute(ticket.recipe, (recipe, count) -> count == 1 ? null : count - 1);
             }
         }
         if (queue != null && queue.isEmpty()) byKey.remove(key);
@@ -117,11 +114,6 @@ public final class OutputObligations<K> {
         return flights.size() < 4096 && nextId < Long.MAX_VALUE;
     }
 
-    /** Same-operation overlap spends real held inputs; different cyclic stages retain a barrier. */
-    public boolean onlyRecipe(String recipe) {
-        return external.isEmpty() && (byRecipe.isEmpty() || byRecipe.size() == 1 && byRecipe.containsKey(recipe));
-    }
-
     public boolean hasFlights() {
         return !flights.isEmpty();
     }
@@ -134,7 +126,6 @@ public final class OutputObligations<K> {
         external.clear();
         flights.clear();
         byKey.clear();
-        byRecipe.clear();
     }
 
     public Snapshot<K> snapshot() {

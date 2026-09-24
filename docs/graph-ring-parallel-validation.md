@@ -3,6 +3,7 @@
 2026-09-23，基线 `13a7328e1da18d04df41dceeef3ec4f3efee79b6`，分支 `feat/ae-cycle-support`。
 完整交付包 SHA-256：`b9ed101ceb932f55665bd96031affde24d718960f610adf0194e100d6f9f5ddf`。
 这是该轮本地交付时的记录；后续规划优化和提交见 [规划开销分析](graph-planning-performance.md)。
+跨阶段流水线已在后续实现，见 [流水线执行器验证](graph-pipeline-validation.md)；下文保留当时的对照结果。
 
 ## 执行器回归与修复
 

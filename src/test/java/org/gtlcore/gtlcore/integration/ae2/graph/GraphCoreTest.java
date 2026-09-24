@@ -22,10 +22,12 @@ public final class GraphCoreTest {
         catalystPolicy();
         logicalNodeFees();
         cycles();
+        stockedWaterByproduct();
         summaryOracle();
         ordinarySummaryOracle();
         boundedReachabilityOracle();
         GraphRuntimeTest.run();
+        GraphPipelineTest.run();
         GraphSchedulingTest.run();
         System.out.println("Graph core: " + assertions + " assertions passed");
     }
@@ -387,6 +389,60 @@ public final class GraphCoreTest {
         var unknown = raw(List.of(recipe("x", Map.of("X", 1L), Map.of("A", 1L)),
                 recipe("y", Map.of("Y", 1L), Map.of("A", 1L))), "A", 10, Map.of("X", 1L, "Y", 1L), true, true);
         eq(GraphPlan.Result.UNKNOWN, unknown.result(), "Bounded multi-source failure is not a false global missing proof");
+    }
+
+    private static void stockedWaterByproduct() {
+        // ExtendedAE's infinity cell advertises Long.MAX_VALUE under Core's mixin.
+        // Exact raw stock and odd order sizes expose accidental full-tail batches.
+        for (long amount : new long[] { 97, 100_000_000, 100_000_017, 1_000_000_000_017L }) {
+            for (long returned : new long[] { 500, 1000, 2000 }) {
+                var recipes = List.of(recipe("wet", Map.of("R", 1L, "W", 1000L), Map.of("I", 1L)),
+                        recipe("finish", Map.of("I", 1L), Map.of("P", 1L, "W", returned)));
+                for (int lanes : new int[] { 1, 2, 64, 4096 }) {
+                    for (long water : new long[] { Long.MAX_VALUE, Math.multiplyExact(amount, 1000) }) {
+                        var budget = new PlanningBudget(5000, 10000, () -> false);
+                        var work = new GraphPlanningWork<>(new GraphCompiler<>(recipes), "P", amount,
+                                Map.of("R", amount, "W", water), true, true, budget).catalysts(new CatalystPolicy(lanes, 0));
+                        while (!work.step()) {}
+                        var p = work.result();
+                        String context = "Water loop amount=" + amount + " returned=" + returned + " lanes=" + lanes;
+                        check(p.feasible(), context + " remains feasible: " + p.result());
+                        PlanVerifier.verify(p);
+                        eq(amount, p.initial().get("R"), context + " exact raw demand");
+                        eq(amount, p.patternTimes().get("wet"), context + " no overproduction upstream");
+                        eq(amount, p.patternTimes().get("finish"), context + " no overproduction downstream");
+                        check(p.initial().get("W") <= water, context + " stocked water funds startup");
+                        if (amount < 100) interpret(p, 2 * amount);
+                    }
+                }
+            }
+        }
+        var unnecessary = List.of(recipe("p", Map.of("R", 1L, "W", 1000L), Map.of("P", 1L)),
+                recipe("recycle", Map.of("P", 1L, "S", 1L), Map.of("Q", 1L, "W", 1000L)));
+        var p = plan(unnecessary, "P", 100_000_000, Map.of("R", 100_000_000L, "W", Long.MAX_VALUE), true, true);
+        eq(Map.of("p", 100_000_000L), p.patternTimes(), "Stocked water avoids an unnecessary byproduct recipe with missing S");
+        var loop = List.of(recipe("wet", Map.of("R", 1L, "W", 1000L), Map.of("I", 1L)),
+                recipe("finish", Map.of("I", 1L), Map.of("P", 1L, "W", 1000L)));
+        p = raw(loop, "P", 97, Map.of("R", 97L), true, true);
+        check(!p.feasible(), "Future byproduct water cannot fund an unseeded loop");
+        p = plan(loop, "P", 97, Map.of("R", 97L, "W", 1000L), true, true);
+        eq(1000L, p.initial().get("W"), "One real bucket can start a conserved-water loop");
+        interpret(p, 194);
+        var changed = List.of(loop.get(0), recipe("finish", Map.of("I", 1L), Map.of("P", 1L, "W", 3000L)));
+        for (int intermediate = 1; intermediate <= 9; intermediate++) {
+            for (long water : new long[] { Long.MAX_VALUE, Long.MAX_VALUE - 1, 5000 }) {
+                var work = new GraphPlanningWork<>(new GraphCompiler<>(changed), "P", 9,
+                        Map.of("R", 9L - intermediate, "I", (long) intermediate, "W", water), Set.of(), Map.of("W", 2000L),
+                        true, false, new PlanningBudget(5000, 10000, () -> false)).catalysts(CatalystPolicy.MINIMAL);
+                while (!work.step()) {}
+                p = work.result();
+                check(p.feasible(), "Existing intermediates and a full water cell permit replanning: " + p.result());
+                PlanVerifier.verify(p);
+                eq(9L - intermediate, p.patternTimes().getOrDefault("wet", 0L), "Replan does not repeat completed upstream work");
+                eq(9L, p.patternTimes().get("finish"), "Replan finishes all remaining intermediates");
+                interpret(p, 18);
+            }
+        }
     }
 
     private static void externalSupply() {

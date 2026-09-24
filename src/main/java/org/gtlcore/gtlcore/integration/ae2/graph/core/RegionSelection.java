@@ -36,6 +36,7 @@ public final class RegionSelection<K> {
     private PlanStep body;
     private SummaryComputation<K> computation;
     private SequenceSummary<K> summary;
+    private SequenceSummary<K> unitSummary;
     private Iterator<K> keys;
     private BigInteger count;
     private Map<K, Long> reserve;
@@ -109,6 +110,7 @@ public final class RegionSelection<K> {
             case 3 -> {
                 if (computation.step()) {
                     summary = computation.result();
+                    if (!scaled) unitSummary = summary;
                     if (!scaled && region.cyclic()) {
                         scaled = true;
                         workingCopies = (int) Math.min(catalystPolicy.parallelism(), amount);
@@ -118,12 +120,7 @@ public final class RegionSelection<K> {
                                     .min(BigInteger.valueOf(Integer.MAX_VALUE)).longValue());
                         workingCopies = Math.max(1, workingCopies);
                         if (recipes.size() > 1 && workingCopies > 1) {
-                            List<PlanStep> parallel = new ArrayList<>();
-                            for (PlanStep child : children) {
-                                PlanStep.Batch batch = (PlanStep.Batch) child;
-                                parallel.add(new PlanStep.Batch(batch.recipe(), CheckedAmounts.multiply(batch.runs(), workingCopies)));
-                            }
-                            body = new PlanStep.Sequence(parallel);
+                            body = parallelBody(workingCopies);
                             computation = new SummaryComputation<>(body, byId, budget);
                             return false;
                         }
@@ -138,17 +135,24 @@ public final class RegionSelection<K> {
                 if (keys.hasNext()) {
                     K key = keys.next();
                     BigInteger gap = demand.getOrDefault(key, BigInteger.ZERO).subtract(BigInteger.valueOf(stock.getOrDefault(key, 0L)));
-                    BigInteger gain = summary.delta(key);
+                    BigInteger gain = unitSummary.delta(key);
                     if (gain.signum() > 0) count = count.max(CheckedAmounts.ceilDiv(gap, gain));
                     else if (gap.signum() > 0 && summary.required(key).signum() == 0) possible = false;
                 } else {
                     if (forceTarget && produced.contains(target)) {
-                        if (summary.delta(target).signum() <= 0) possible = false;
-                        else count = count.max(CheckedAmounts.ceilDiv(BigInteger.valueOf(amount), summary.delta(target)));
+                        if (unitSummary.delta(target).signum() <= 0) possible = false;
+                        else count = count.max(CheckedAmounts.ceilDiv(BigInteger.valueOf(amount), unitSummary.delta(target)));
                     }
                     if (!possible) {
                         nextTrial();
                         return phase == 8;
+                    }
+                    if (recipes.size() > 1 && count.signum() > 0 && count.compareTo(BigInteger.valueOf(workingCopies)) < 0) {
+                        workingCopies = count.intValueExact();
+                        body = parallelBody(workingCopies);
+                        computation = new SummaryComputation<>(body, byId, budget);
+                        phase = 3;
+                        return false;
                     }
                     reserve = new LinkedHashMap<>();
                     keys = produced.iterator();
@@ -165,16 +169,29 @@ public final class RegionSelection<K> {
                         if (summary.delta(key).signum() > 0) {
                             BigInteger gap = demand.getOrDefault(key, BigInteger.ZERO).add(BigInteger.valueOf(seed))
                                     .subtract(BigInteger.valueOf(stock.getOrDefault(key, 0L)));
-                            count = count.max(CheckedAmounts.ceilDiv(gap, summary.delta(key)));
+                            count = count.max(CheckedAmounts.ceilDiv(gap, unitSummary.delta(key)));
                         }
                     }
                 } else {
                     runs = CheckedAmounts.amount(count);
-                    keys = produced.iterator();
-                    missing = 0;
-                    absentSeedTypes = 0;
-                    missingAmount = BigInteger.ZERO;
-                    phase = 6;
+                    if (recipes.size() > 1 && workingCopies > 1) {
+                        long full = runs / workingCopies, tail = runs % workingCopies;
+                        if (tail != 0) {
+                            // Parallelism changes grouping, never the required number
+                            // of cycles. A partial last wave must not charge a full
+                            // wave's raw materials or force an allocation search.
+                            List<PlanStep> waves = new ArrayList<>();
+                            if (full > 0) waves.add(new PlanStep.Repeat(body, full));
+                            waves.add(parallelBody(tail));
+                            body = new PlanStep.Sequence(waves);
+                            computation = new SummaryComputation<>(body, byId, budget);
+                            runs = 1;
+                            phase = 7;
+                            return false;
+                        }
+                        runs = full;
+                    }
+                    beginValidation();
                 }
             }
             case 6 -> {
@@ -200,11 +217,34 @@ public final class RegionSelection<K> {
                     else nextTrial();
                 }
             }
+            case 7 -> {
+                if (computation.step()) {
+                    summary = computation.result();
+                    beginValidation();
+                }
+            }
             default -> {
                 return true;
             }
         }
         return phase == 8;
+    }
+
+    private PlanStep parallelBody(long copies) {
+        List<PlanStep> parallel = new ArrayList<>();
+        for (PlanStep child : children) {
+            PlanStep.Batch batch = (PlanStep.Batch) child;
+            parallel.add(new PlanStep.Batch(batch.recipe(), CheckedAmounts.multiply(batch.runs(), copies)));
+        }
+        return new PlanStep.Sequence(parallel);
+    }
+
+    private void beginValidation() {
+        keys = produced.iterator();
+        missing = 0;
+        absentSeedTypes = 0;
+        missingAmount = BigInteger.ZERO;
+        phase = 6;
     }
 
     private void nextTrial() {
