@@ -39,6 +39,39 @@ public final class GraphStressProbe {
     private static appeng.api.networking.storage.IStorageService fixtureStorage;
     private static appeng.api.storage.IStorageProvider stockProvider;
 
+    /** Four condensed slots, two choices each and 3 copies: 4^4 = 256 variants. */
+    public static IPatternDetails alternatives(IPatternDetails pattern) {
+        return new Alternatives(pattern);
+    }
+
+    private static final class Alternatives implements IPatternDetails {
+        private final IPatternDetails original;
+        private final IInput[] inputs = new IInput[4];
+        private final GenericStack[] outputs;
+        Alternatives(IPatternDetails original) {
+            this.original = original;
+            var first = original.getInputs()[0].getPossibleInputs()[0];
+            for (int slot = 0; slot < inputs.length; slot++) {
+                var tag = new net.minecraft.nbt.CompoundTag();
+                tag.m_128365_("graph_unused_alternative", first.what().toTagGeneric());
+                tag.m_128405_("slot", slot);
+                AEKey alternate = appeng.api.stacks.AEItemKey.of((net.minecraft.world.item.Item) first.what().getPrimaryKey(), tag);
+                inputs[slot] = new IInput() {
+                    public GenericStack[] getPossibleInputs() { return new GenericStack[]{first, new GenericStack(alternate, first.amount())}; }
+                    public long getMultiplier() { return 3; }
+                    public boolean isValid(AEKey key, Level level) { return key.equals(first.what()) || key.equals(alternate); }
+                    public AEKey getRemainingKey(AEKey key) { return null; }
+                };
+            }
+            outputs = java.util.Arrays.stream(original.getOutputs())
+                    .map(stack -> new GenericStack(stack.what(), Math.multiplyExact(stack.amount(), 12))).toArray(GenericStack[]::new);
+        }
+        public appeng.api.stacks.AEItemKey getDefinition() { return original.getDefinition(); }
+        public IInput[] getInputs() { return inputs; }
+        public GenericStack[] getOutputs() { return outputs; }
+        public boolean supportsPushInputsToExternalInventory() { return false; }
+    }
+
     public static void install(IGrid grid, List<IPatternDetails> supplied, GenericStack stock) throws Exception {
         install(grid, supplied, stock, 0);
     }
@@ -109,6 +142,11 @@ public final class GraphStressProbe {
     }
 
     public record Sample(ICraftingPlan plan, long wall, long setup, long work, long snapshot, String failure) {}
+
+    public static boolean reportGraph(String label, int sample, long amount, Sample graph) {
+        report(label, sample, amount, new Sample(null, 0, 0, 0, 0, "NOT_RUN_VARIANT_CAPTURE_FIXTURE"), graph);
+        return graph.plan() != null && valid(graph.plan());
+    }
 
     public static CompletableFuture<Sample> baseline(IGrid grid, Level level, IActionSource source, AEKey key, long amount) {
         var tickWindow = GraphCaptureTimingProbe.begin("MAX_FAST");
@@ -201,7 +239,7 @@ public final class GraphStressProbe {
             if (runs < 0) return false;
             selected++;
             for (var input : pattern.getInputs()) {
-                if (input.getPossibleInputs().length != 1) throw new AssertionError("Fixture must have exact inputs");
+                if (input.getPossibleInputs().length != 1 && !(pattern instanceof Alternatives)) throw new AssertionError("Unexpected fixture alternatives");
                 var item = input.getPossibleInputs()[0];
                 long count = Math.multiplyExact(Math.multiplyExact(item.amount(), input.getMultiplier()), runs);
                 if (held.get(item.what()) < count) return false;

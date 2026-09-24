@@ -93,6 +93,12 @@ python tools/summarize-graph-stress.py .local/server-stress-final.log .local/gra
 - `graphstress65536`：65,536 层三次。当前新配置默认 128 MiB；若测试服保留旧 32 MiB 配置，可先用 `graphmemory128` 仅调整运行时预算。
 - `graphstressdense`：128 层精确加工链，额外挂载 8,192 种同物品的无关 NBT 库存，三次。
 - `graphload20` 后执行 `graphstressloaded`，以及 `graphload60` 后执行 `graphstressbusy`：在主线程每 tick 人为占用 20 / 60 ms，各测两次 8,192 层请求。先核对日志的 `load_ms`；完成后用 `graphload0` 清除。负载也会在 600 tick 后自动清除。
+- `graphstressalternatives`：128 层受控自定义样板，每个样板 4 槽、每槽 2 种输入、倍率 3，产生 256 个变体，共 32,768 个变体。每组 3 次、一万亿目标；只有第一种输入有来源，独立解释器核对原料和产物。
+- `graphload60` 后 `graphstressalternativesbusy`：同一变体负载的低 TPS 测试。两项变体测试仅比较优化前后的 Graph；该人工样板的 MAX_FAST 测试曾触发 30 秒保护，日志明确标记 `NOT_RUN_VARIANT_CAPTURE_FIXTURE`，不制造旧算法的成功耗时或等价结论。
+
+后台展开版日志增加 `catalog_elapsed_ms`（目录准备经过时间）、`catalog_parallel_ms`（并行展开及编码的累计活动时间）、
+`catalog_parallel_batches`。`catalog_prepare_ms` 是协调线程加并行子任务的累计活动时间，因此可以大于经过时间。
+捕获仍看 `snapshot_ms` / `snapshot_elapsed_ms` / `snapshot_wait_ms`；移到后台的工作不会消失，应一起比较整单经过时间。
 
 `[Graph Capture]` 的 tick 统计只包含完整落在请求窗口内的 tick，不包含请求开始和结束的半个 tick，
 也不包含两 tick 之间的空闲任务耗时；必须与 `snapshot_max_slice_ms`、请求经过时间一起看。

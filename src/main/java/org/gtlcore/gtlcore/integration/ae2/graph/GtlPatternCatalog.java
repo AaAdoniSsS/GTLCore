@@ -1,7 +1,6 @@
 package org.gtlcore.gtlcore.integration.ae2.graph;
 
 import org.gtlcore.gtlcore.integration.ae2.crafting.ManualCraftingInventoryLock;
-import org.gtlcore.gtlcore.integration.ae2.graph.core.CheckedAmounts;
 import org.gtlcore.gtlcore.integration.ae2.graph.core.GraphRecipe;
 import org.gtlcore.gtlcore.integration.ae2.graph.core.PlanningBudget;
 
@@ -25,7 +24,7 @@ import java.util.*;
 /** Snapshot creation and pattern methods run on the server thread, never the solver thread. */
 public final class GtlPatternCatalog {
 
-    private static final int MAX_VARIANTS = 256;
+    private static final int MAX_VARIANTS = CapturedPattern.MAX_VARIANTS;
 
     private record Roots(AEKey target, Set<AEKey> recovery) {}
 
@@ -97,8 +96,8 @@ public final class GtlPatternCatalog {
         private AEKey key;
         private List<Signature> versions;
         private Snapshot result;
-        private Normalization normalizing;
-        private Iterator<CapturedPatternCatalog.Recipe> normalized;
+        private CandidateCapture normalizing;
+        private Iterator<AEKey> normalized;
         private IPatternDetails normalizingPattern;
         private Signature normalizingSignature;
 
@@ -166,18 +165,18 @@ public final class GtlPatternCatalog {
                 case 1 -> {
                     if (normalizing != null) {
                         if (!normalizing.step()) return false;
-                        bounded |= normalizing.bounded;
+                        CapturedPattern captured = normalizing.result();
+                        bounded |= captured.bounded();
+                        recipeCount += captured.size();
+                        if (recipeCount > 100_000) throw new PlanningBudget.Exhausted(PlanningBudget.Limit.GRAPH_LIMIT);
                         entries.add(new CapturedPatternCatalog.Entry(normalizingPattern, normalizingSignature.values(),
-                                normalizingSignature.priority(), normalizing.variants));
-                        normalized = normalizing.variants.iterator();
+                                normalizingSignature.priority(), captured));
+                        normalized = captured.dependencies();
                         normalizing = null;
                     }
                     if (normalized != null) {
                         if (normalized.hasNext()) {
-                            var variant = normalized.next();
-                            budget.reserve(256L + 64L * (variant.slots().size() + variant.outputs().size()));
-                            if (++recipeCount > 100_000) throw new PlanningBudget.Exhausted(PlanningBudget.Limit.GRAPH_LIMIT);
-                            for (var slot : variant.slots()) pending.add(slot.key());
+                            pending.add(normalized.next());
                             return false;
                         }
                         normalized = null;
@@ -190,7 +189,7 @@ public final class GtlPatternCatalog {
                         budget.reserve(64);
                         normalizingPattern = pattern;
                         normalizingSignature = signature;
-                        normalizing = new Normalization(pattern, available, level, budget);
+                        normalizing = new CandidateCapture(pattern, signature.values(), available, level, budget);
                         for (var input : signature.values().inputs()) for (var possible : input.choices()) {
                             if (!normalizing.exactInputs)
                                 templates.putIfAbsent(possible.stack().what().getPrimaryKey(), possible.stack().what());
@@ -353,37 +352,42 @@ public final class GtlPatternCatalog {
     }
 
     private static List<GraphRecipe<AEKey>> normalize(IPatternDetails pattern, String binding, KeyCounter available, Level level, PlanningBudget budget) {
-        var work = new Normalization(pattern, available, level, budget);
+        var work = new CandidateCapture(pattern, PatternFingerprint.capture(pattern), available, level, budget);
         while (!work.step()) {}
         var fingerprints = new PatternFingerprint.Context();
-        return work.variants.stream().map(variant -> variant.encode(binding, fingerprints)).toList();
+        var expansion = work.result().expand(budget);
+        List<GraphRecipe<AEKey>> result = new ArrayList<>();
+        while (expansion.hasNext()) result.add(expansion.next().encode(binding, fingerprints));
+        return List.copyOf(result);
     }
 
-    private static final class Normalization {
+    static final class CandidateCapture {
 
-        final IPatternDetails pattern;
+        final PatternFingerprint.Values values;
         final KeyCounter available;
         final Level level;
         final PlanningBudget budget;
-        final List<List<List<Picked>>> choices = new ArrayList<>();
-        final List<CapturedPatternCatalog.Recipe> variants = new ArrayList<>();
+        final List<CapturedPattern.Input> capturedInputs = new ArrayList<>();
+        final List<CapturedPattern.Candidate> capturedCandidates = new ArrayList<>();
         final Map<AEKey, GenericStack> candidates = new LinkedHashMap<>();
         final IPatternDetails.IInput[] inputs;
         final boolean exactInputs;
-        int inputSlot, phase;
-        int[] indices;
+        int inputSlot;
         boolean bounded;
-        Iterator<GenericStack> possibilities;
+        Iterator<PatternFingerprint.Choice> possibilities;
+        Iterator<GenericStack> capturing;
         Iterator<? extends it.unimi.dsi.fastutil.objects.Object2LongMap.Entry<AEKey>> fuzzy;
         GenericStack possible;
+        CapturedPattern result;
 
-        Normalization(IPatternDetails pattern, KeyCounter available, Level level, PlanningBudget budget) {
-            this.pattern = pattern;
+        CandidateCapture(IPatternDetails pattern, PatternFingerprint.Values values, KeyCounter available, Level level, PlanningBudget budget) {
+            this.values = values;
             this.available = available;
             this.level = level;
             this.budget = budget;
             inputs = pattern.getInputs();
-            if (inputs.length > 256 || pattern.getOutputs().length > 256) throw new PlanningBudget.Exhausted(PlanningBudget.Limit.GRAPH_LIMIT);
+            if (inputs.length > 256 || values.outputs().size() > 256) throw new PlanningBudget.Exhausted(PlanningBudget.Limit.GRAPH_LIMIT);
+            budget.reserve(96L + 32L * (inputs.length + values.outputs().size()));
             // Like MAX_FAST's structural exactness check, specialize only the
             // native processing implementation. Its Input.isValid is AEKey.matches;
             // other NBT variants cannot be candidates. Check the actual inputs as
@@ -395,14 +399,29 @@ public final class GtlPatternCatalog {
 
         boolean step() {
             budget.check();
-            if (phase == 2) return true;
-            if (phase == 0) {
-                if (inputSlot == inputs.length) {
-                    indices = new int[choices.size()];
-                    phase = 1;
-                    return false;
+            if (result != null) return true;
+            if (inputSlot == inputs.length) {
+                result = new CapturedPattern(capturedInputs, values.outputs(), values.external(), bounded);
+                return true;
+            }
+            var input = inputs[inputSlot];
+            var inputValues = values.inputs().get(inputSlot);
+            if (exactInputs && inputValues.choices().size() == 1) {
+                var choice = inputValues.choices().get(0);
+                List<CapturedPattern.Candidate> selected;
+                if (input.isValid(choice.stack().what(), level)) {
+                    budget.reserve(64);
+                    selected = List.of(new CapturedPattern.Candidate(choice.stack(), choice.remaining(),
+                            values.external() && GtlDispatchPolicy.configuration(choice.stack().what())));
+                } else selected = List.of();
+                capturedInputs.add(new CapturedPattern.Input(inputValues.multiplier(), selected));
+                if (++inputSlot == inputs.length || selected.isEmpty()) {
+                    result = new CapturedPattern(capturedInputs, values.outputs(), values.external(), bounded);
+                    return true;
                 }
-                var input = inputs[inputSlot];
+                return false;
+            }
+            if (capturing == null) {
                 if (fuzzy != null) {
                     if (fuzzy.hasNext() && candidates.size() < MAX_VARIANTS) {
                         var entry = fuzzy.next();
@@ -413,81 +432,51 @@ public final class GtlPatternCatalog {
                     bounded |= fuzzy.hasNext();
                     fuzzy = null;
                 }
-                if (possibilities == null) possibilities = List.of(input.getPossibleInputs()).iterator();
+                if (possibilities == null) possibilities = inputValues.choices().iterator();
                 if (possibilities.hasNext() && candidates.size() < MAX_VARIANTS) {
-                    possible = possibilities.next();
+                    possible = possibilities.next().stack();
                     if (input.isValid(possible.what(), level)) candidates.put(possible.what(), possible);
                     if (!exactInputs) fuzzy = available.findFuzzy(possible.what(), FuzzyMode.IGNORE_ALL).iterator();
                     return false;
                 }
                 bounded |= possibilities.hasNext();
                 if (candidates.isEmpty()) {
-                    phase = 2;
+                    capturedInputs.add(new CapturedPattern.Input(inputValues.multiplier(), List.of()));
+                    result = new CapturedPattern(capturedInputs, values.outputs(), values.external(), bounded);
                     return true;
                 }
-                List<List<Picked>> selections = new ArrayList<>();
-                for (GenericStack candidate : candidates.values()) selections.add(List.of(new Picked(candidate, input.getMultiplier())));
-                if (!pattern.supportsPushInputsToExternalInventory() && input.getMultiplier() <= 9 && candidates.size() > 1) {
-                    mixed(new ArrayList<>(candidates.values()), 0, input.getMultiplier(), new ArrayList<>(), selections, budget);
-                    bounded |= selections.size() >= MAX_VARIANTS;
-                }
-                choices.add(List.copyOf(selections));
+                capturing = candidates.values().iterator();
+            }
+            GenericStack candidate = capturing.next();
+            // Declared remainders were already captured for the binding signature.
+            // Only fuzzy alternatives need another callback, still on this thread.
+            AEKey remaining = null;
+            boolean declared = false;
+            for (var choice : inputValues.choices()) if (choice.stack().what().equals(candidate.what())) {
+                remaining = choice.remaining();
+                declared = true;
+                break;
+            }
+            if (!declared) remaining = input.getRemainingKey(candidate.what());
+            budget.reserve(64);
+            capturedCandidates.add(new CapturedPattern.Candidate(candidate, remaining,
+                    values.external() && GtlDispatchPolicy.configuration(candidate.what())));
+            if (!capturing.hasNext()) {
+                capturedInputs.add(new CapturedPattern.Input(inputValues.multiplier(), capturedCandidates));
+                capturedCandidates.clear();
                 inputSlot++;
                 possibilities = null;
+                capturing = null;
                 candidates.clear();
-                return false;
             }
-            List<List<Picked>> selected = new ArrayList<>();
-            for (int i = 0; i < indices.length; i++) selected.add(choices.get(i).get(indices[i]));
-            variants.add(variant(pattern, selected));
-            int at = indices.length - 1;
-            while (at >= 0 && ++indices[at] == choices.get(at).size()) {
-                indices[at] = 0;
-                at--;
-            }
-            if (at < 0) phase = 2;
-            else if (variants.size() >= MAX_VARIANTS) {
-                bounded = true;
-                phase = 2;
-            }
-            return phase == 2;
+            return false;
+        }
+
+        CapturedPattern result() {
+            if (result == null) throw new IllegalStateException("Candidate capture incomplete");
+            return result;
         }
     }
-
-    private static void mixed(List<GenericStack> candidates, int at, long left, List<Picked> selected,
-                              List<List<Picked>> out, PlanningBudget budget) {
-        budget.check();
-        if (out.size() >= MAX_VARIANTS) return;
-        if (left == 0) {
-            if (selected.size() > 1) out.add(List.copyOf(selected));
-            return;
-        }
-        if (at >= candidates.size()) return;
-        for (long count = left; count >= 0 && out.size() < MAX_VARIANTS; count--) {
-            if (count > 0) selected.add(new Picked(candidates.get(at), count));
-            mixed(candidates, at + 1, left - count, selected, out, budget);
-            if (count > 0) selected.remove(selected.size() - 1);
-        }
-    }
-
-    private static CapturedPatternCatalog.Recipe variant(IPatternDetails pattern, List<List<Picked>> selected) {
-        List<GraphRecipe.Slot<AEKey>> slots = new ArrayList<>();
-        Map<AEKey, Long> outputs = new LinkedHashMap<>();
-        for (var output : pattern.getOutputs()) outputs.merge(output.what(), output.amount(), CheckedAmounts::add);
-        for (int i = 0; i < selected.size(); i++) {
-            for (Picked picked : selected.get(i)) {
-                var choice = picked.template();
-                long amount = CheckedAmounts.multiply(choice.amount(), picked.copies());
-                boolean configuration = pattern.supportsPushInputsToExternalInventory() && GtlDispatchPolicy.configuration(choice.what());
-                slots.add(new GraphRecipe.Slot<>(choice.what(), amount, i, configuration));
-                AEKey remainder = pattern.getInputs()[i].getRemainingKey(choice.what());
-                if (remainder != null) outputs.merge(remainder, picked.copies(), CheckedAmounts::add);
-            }
-        }
-        return new CapturedPatternCatalog.Recipe(slots, outputs);
-    }
-
-    private record Picked(GenericStack template, long copies) {}
 
     public record Structure(CapturedPatternCatalog catalog, Set<AEKey> resources,
                             Set<AEKey> inputTemplates, Set<AEKey> fuzzyKeys, boolean boundedAlternatives,

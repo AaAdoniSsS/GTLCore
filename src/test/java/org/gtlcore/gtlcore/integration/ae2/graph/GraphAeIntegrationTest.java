@@ -100,6 +100,7 @@ public final class GraphAeIntegrationTest {
         mixedInputsAndReturns();
         PatternFingerprintTest.run();
         CapturedPatternCatalogTest.run();
+        CapturedPatternExpansionTest.run();
         ExactProcessingCaptureTest.run();
         GraphAeAdapterTest.run();
         AsyncOutputRegressionTest.run();

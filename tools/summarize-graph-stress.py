@@ -36,13 +36,15 @@ for (label, amount), rows in groups.items():
     warm = [row for row in rows if row['sample'] > 0]
     measured = {}
     for key in ('old_wall_ms', 'old_setup_ms', 'old_run_ms', 'graph_wall_ms', 'graph_entry_ms', 'graph_solver_ms', 'graph_snapshot_ms'):
-        values = sorted(row[key] for row in warm if not row['old_failure'] and not row['graph_failure'])
+        values = sorted(row[key] for row in warm if not row['graph_failure'] and
+                        (key.startswith('graph_') or not row['old_failure']))
         if values:
             measured[key] = {'median': statistics.median(values), 'p95_nearest_rank': values[math.ceil(.95*len(values))-1], 'min': values[0], 'max': values[-1]}
     name = label if len({key[1] for key in groups}) == 1 else f'{label}@{amount}'
     report[name] = {'samples': len(rows), 'first': rows[0], 'warm_samples': len(warm),
                      'all_equivalent': all(row['materials_equal'] and row['recipes_equal'] and row['bytes_equal'] for row in rows),
                      'all_interpreted_valid': all(row.get('old_valid') and row.get('graph_valid') for row in rows),
+                     'all_graph_valid': all(row.get('graph_valid') for row in rows),
                      'warm': measured, 'rows': rows}
 args.output.parent.mkdir(parents=True, exist_ok=True)
 args.output.write_text(json.dumps(report, indent=2), encoding='utf-8')
@@ -50,6 +52,7 @@ for label, data in report.items():
     print(label, 'samples=', data['samples'], 'equivalent=', data['all_equivalent'])
     if data['warm']:
         for key in ('old_wall_ms', 'graph_wall_ms', 'graph_solver_ms', 'graph_snapshot_ms'):
-            print(' ', key, data['warm'][key])
+            if key in data['warm']:
+                print(' ', key, data['warm'][key])
     else:
         print(' ', data['first'])

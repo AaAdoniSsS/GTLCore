@@ -40,7 +40,8 @@ ServerEvents.commandRegistry(event => {
             var spec = selectedCases[index++], label = spec[0], depth = spec[1], width = spec[2], patterns = [];
             var raw = key(label, 0, 0), target = key(label, depth, 0);
             function pattern(inputs, output) {
-                patterns.push(new Processing(Key['of(net.minecraft.world.item.ItemStack)'](Pattern.encodeProcessingPattern(inputs, [output]))));
+                var effective = new Processing(Key['of(net.minecraft.world.item.ItemStack)'](Pattern.encodeProcessingPattern(inputs, [output])));
+                patterns.push(spec.length > 4 && spec[4] ? Probe.alternatives(effective) : effective);
             }
             for (var layer = 1; layer <= depth; layer++) for (var branch = 0; branch < width; branch++) {
                 if (width === 1) pattern([new Stack(key(label, layer-1, 0), 1)], new Stack(key(label, layer, 0), 1));
@@ -58,12 +59,14 @@ ServerEvents.commandRegistry(event => {
                 function old(done) { stressPending.push({future: Probe.baseline(grid, level, source, target, amount), complete: value => { oldResult = value; done(); }}); }
                 function graph(done) { stressPending.push({future: Probe.graph(grid, level, source, target, amount), complete: value => { graphResult = value; done(); }}); }
                 function finish() {
-                    var valid = Probe.report(label, sample, amount, oldResult, graphResult);
+                    var valid = spec.length > 5 && spec[5] ? Probe.reportGraph(label, sample, amount, graphResult) :
+                        Probe.report(label, sample, amount, oldResult, graphResult);
                     if (!valid) { console.info('[Graph Stress] case stopped after failure or inequality: ' + label); later(nextCase); return; }
                     if (++sample < samples) later(runSample); else later(nextCase);
                 }
                 // Serial A/B, alternating order. Tick delay between samples is excluded from each timer.
-                if (sample % 2 === 0) old(() => graph(finish)); else graph(() => old(finish));
+                if (spec.length > 5 && spec[5]) graph(finish);
+                else if (sample % 2 === 0) old(() => graph(finish)); else graph(() => old(finish));
             }
             later(runSample);
         }
@@ -83,6 +86,11 @@ ServerEvents.commandRegistry(event => {
     register('graphstressbusy', 1000000000000, [['busy8192',8192,1]], 2);
     register('graphstressloaded', 1000000000000, [['loaded8192',8192,1]], 2);
     register('graphstressdense', 1000000000000, [['dense128x8192stock',128,1,8192]], 3);
+    // Deliberately compare graph capture revisions only: MAX_FAST expands this
+    // custom condensed-slot fixture beyond the 30 s guard. No legacy timings
+    // from this fixture should be presented as comparable completed plans.
+    register('graphstressalternatives', 1000000000000, [['alternatives128',128,1,0,true,true]], 3);
+    register('graphstressalternativesbusy', 1000000000000, [['alternativesBusy128',128,1,0,true,true]], 3);
     [0, 20, 60].forEach(function(load) {
         event.register(event.commands.literal('graphload' + load)
             .requires(s=>s.hasPermission(4)).executes(ctx=>{
