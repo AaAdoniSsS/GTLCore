@@ -34,6 +34,7 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
     private Bootstrap bootstrap;
     private PlanVerification<K> verifying;
     private AllocationSearch<K> allocating;
+    private MissingStockAnalysis<K> missingAnalysis;
     private boolean allocationAttempted;
     private Iterator<K> alternatives;
     private GraphPlan<K> candidate, best, verified, result;
@@ -99,8 +100,14 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
             switch (phase) {
                 case 0 -> {
                     if (pending.isEmpty()) {
-                        result = best == null || !provenMissing(best) ? failure(GraphPlan.Result.UNKNOWN) : best;
-                        return true;
+                        if (best == null || best.missing().isEmpty()) {
+                            result = failure(GraphPlan.Result.UNKNOWN);
+                            return true;
+                        }
+                        missingAnalysis = new MissingStockAnalysis<>(compiler, target, stock, external,
+                                requiredSeeds.keySet(), excluded, forceCraft, budget);
+                        phase = 9;
+                        return false;
                     }
                     choices = pending.removeFirst();
                     if (!seen.add(choices)) return false;
@@ -183,6 +190,27 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
                         alternatives = graph.selected().keySet().iterator();
                         phase = 5;
                     }
+                }
+                case 9 -> {
+                    if (!missingAnalysis.step()) return false;
+                    boolean blocked = missingAnalysis.blocked();
+                    missingAnalysis = null;
+                    if (!blocked && !provenMissing(best)) {
+                        result = failure(GraphPlan.Result.UNKNOWN);
+                        return true;
+                    }
+                    // Prove the proposed missing-material preview really reaches
+                    // the goal when funded. It remains non-executable until its
+                    // exact deficits are supplied and a new request is planned.
+                    verifying = new PlanVerification<>(new GraphPlan<>(best.target(), best.amount(), best.preserveSeeds(),
+                            best.steps(), best.recipes(), best.initialExact(), best.seeds(), Map.of(),
+                            GraphPlan.Result.FEASIBLE, best.searchNodes(), best.planningNanos()), budget);
+                    phase = 10;
+                }
+                case 10 -> {
+                    if (!verifying.step()) return false;
+                    result = best;
+                    phase = 8;
                 }
                 default -> {
                     return true;

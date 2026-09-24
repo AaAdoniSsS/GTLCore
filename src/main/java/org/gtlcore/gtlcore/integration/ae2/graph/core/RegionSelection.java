@@ -81,13 +81,14 @@ public final class RegionSelection<K> {
         budget.phase(PlanningBudget.Phase.SOLVE);
         List<GraphRecipe<K>> recipes = region.recipes();
         // A speculative local ordering must leave budget for allocation search.
-        // Stopping it is UNKNOWN, not proof that its best missing seed is required.
+        // Keep a concrete candidate even when this local search is cut short.
+        // Its deficits do not prove that stock is missing: the caller must still
+        // try other allocations or independently prove that no plan can start.
         if (phase != 8 && region.cyclic() && budget.nodes() - searchStarted > 32_768L + 128L * recipes.size()) {
             if (ordering != null) {
                 ordering.close();
                 ordering = null;
             }
-            best = null;
             phase = 8;
             return true;
         }

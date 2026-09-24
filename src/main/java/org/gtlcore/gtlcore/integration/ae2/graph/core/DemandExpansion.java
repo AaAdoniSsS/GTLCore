@@ -16,7 +16,7 @@ final class DemandExpansion<K> {
     private final PlanningBudget budget;
     private final Iterator<GraphRecipe<K>> indexing;
     private final Deque<Frame> frames = new ArrayDeque<>();
-    private final Set<K> active = new HashSet<>();
+    private final Map<K, Frame> active = new HashMap<>();
     private final List<Change<K>> undo = new ArrayList<>();
     private final List<PlanStep> path = new ArrayList<>();
     private final long started, allowance;
@@ -24,6 +24,7 @@ final class DemandExpansion<K> {
     private int phase, rootPasses;
     private boolean failed;
     private PlanStep result;
+    private Frame satisfiedAncestor;
 
     DemandExpansion(Map<String, GraphRecipe<K>> recipes, Map<K, BigInteger> held, Map<K, BigInteger> goals, PlanningBudget budget) {
         this.recipes = recipes;
@@ -51,6 +52,19 @@ final class DemandExpansion<K> {
             }
             phase = 1;
         }
+        if (satisfiedAncestor != null) {
+            Frame satisfied = satisfiedAncestor;
+            satisfiedAncestor = null;
+            // Making a selected input may already supply an ancestor's actual
+            // goal as a coproduct. Keep this executable prefix and discard the
+            // now-unnecessary intermediate request, not its produced material.
+            if (active.get(satisfied.key) == satisfied && amount(satisfied.key).compareTo(satisfied.wanted) >= 0) {
+                while (frames.peek() != satisfied) {
+                    budget.check();
+                    pop(true);
+                }
+            }
+        }
         if (frames.isEmpty()) {
             for (var goal : goals.entrySet()) {
                 budget.check();
@@ -70,7 +84,10 @@ final class DemandExpansion<K> {
             frame.summary = null;
             BigInteger gain = summary.delta(frame.key);
             if (gain.signum() <= 0) {
-                reject(frame);
+                if (frame.prefixSummary) {
+                    frame.prefixSummary = false;
+                    frame.body = null;
+                } else reject(frame);
                 return false;
             }
             BigInteger gap = frame.wanted.subtract(amount(frame.key));
@@ -84,6 +101,15 @@ final class DemandExpansion<K> {
                 }
                 if (change.signum() < 0)
                     repeats = repeats.min(current.subtract(need).divide(change.negate()).add(BigInteger.ONE));
+                Frame ancestor = active.get(key);
+                if (change.signum() > 0 && ancestor != null && ancestor != frame) {
+                    // Stop at the first useful coproduct breakpoint. Fully
+                    // expanding the selected intermediate can manufacture far
+                    // more than needed, or consume another branch's seed.
+                    BigInteger ancestorGap = ancestor.wanted.subtract(current);
+                    if (ancestorGap.signum() > 0)
+                        repeats = repeats.min(CheckedAmounts.ceilDiv(ancestorGap, change));
+                }
             }
             // One iteration has already run. Replace its trace by a compressed
             // body, avoiding duplicate subtrees at every nesting level.
@@ -93,13 +119,26 @@ final class DemandExpansion<K> {
                     budget.check();
                     set(change.getKey(), amount(change.getKey()).add(change.getValue().multiply(extra)));
                 }
-                truncate(frame.unitPath);
+                truncate(frame.prefixSummary ? frame.originalPath : frame.unitPath);
                 if (frame.body instanceof PlanStep.Batch batch)
                     append(PlanStep.batch(batch.recipe(), BigInteger.valueOf(batch.runs()).multiply(extra.add(BigInteger.ONE))));
                 else append(PlanStep.repeat(frame.body, extra.add(BigInteger.ONE)));
             }
             frame.body = null;
             frame.unitStarted = false;
+            if (!frame.prefixSummary && frames.size() == 1 && frame.iterations > 1 &&
+                    amount(frame.key).compareTo(frame.wanted) < 0) {
+                // A shared cycle may alternate several different input routes:
+                // each individual iteration drains a finite intermediate, while
+                // their composition restores it. Compile that actual prefix as
+                // one macro and apply the same exact requirement/delta check.
+                // Never extrapolate from net target output alone.
+                frame.prefixSummary = true;
+                List<PlanStep> prefix = path.subList(frame.originalPath, path.size());
+                frame.body = new PlanStep.Sequence(prefix);
+                reserve(64L + 8L * prefix.size());
+                frame.summary = new SummaryComputation<>(frame.body, recipes, budget);
+            } else frame.prefixSummary = false;
             return false;
         }
         if (amount(frame.key).compareTo(frame.wanted) >= 0) {
@@ -127,7 +166,7 @@ final class DemandExpansion<K> {
         for (var input : frame.recipe.inputs().entrySet()) {
             budget.check();
             if (amount(input.getKey()).compareTo(BigInteger.valueOf(input.getValue())) >= 0) continue;
-            if (active.contains(input.getKey()) || frames.size() >= 4096) reject(frame);
+            if (active.containsKey(input.getKey()) || frames.size() >= 4096) reject(frame);
             else push(input.getKey(), BigInteger.valueOf(input.getValue()));
             return false;
         }
@@ -153,8 +192,9 @@ final class DemandExpansion<K> {
 
     private void push(K key, BigInteger wanted) {
         reserve(256);
-        frames.push(new Frame(key, wanted));
-        active.add(key);
+        Frame frame = new Frame(key, wanted);
+        frames.push(frame);
+        active.put(key, frame);
     }
 
     private void pop(boolean success) {
@@ -176,6 +216,7 @@ final class DemandExpansion<K> {
         frame.unitStarted = false;
         frame.summary = null;
         frame.body = null;
+        frame.prefixSummary = false;
     }
 
     private void set(K key, BigInteger value) {
@@ -186,6 +227,9 @@ final class DemandExpansion<K> {
         undo.add(new Change<>(key, previous));
         if (value.signum() == 0) held.remove(key);
         else held.put(key, value);
+        Frame ancestor = active.get(key);
+        if (ancestor != null && ancestor != frames.peek() && value.compareTo(ancestor.wanted) >= 0)
+            satisfiedAncestor = ancestor;
     }
 
     private void rollback(int mark) {
@@ -240,7 +284,7 @@ final class DemandExpansion<K> {
         final List<GraphRecipe<K>> alternatives;
         final int originalUndo = undo.size(), originalPath = path.size();
         int producer, unitUndo, unitPath, iterations;
-        boolean unitStarted;
+        boolean unitStarted, prefixSummary;
         GraphRecipe<K> recipe;
         PlanStep body;
         SummaryComputation<K> summary;
