@@ -122,8 +122,9 @@ public class ConfigHolder {
     @Configurable.Comment("GRAPH: cumulative traversal/search/verification work per request, shared by regions and continuations.")
     public int ae2GraphPlannerMaxSteps = 10000000;
     @Configurable
-    @Configurable.Range(min = 16, max = 256)
-    public int ae2GraphPlannerMemoryMiB = 32;
+    @Configurable.Range(min = 16, max = 1024)
+    @Configurable.Comment("config.gtlcore.option.ae2GraphPlannerMemoryMiB.comment")
+    public int ae2GraphPlannerMemoryMiB = 128;
     @Configurable
     @Configurable.Comment("Log graph planning and aggregated dispatch timings; no per-item logging.")
     public boolean ae2GraphDiagnosticLogging = false;
