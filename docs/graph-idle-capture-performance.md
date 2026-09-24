@@ -4,9 +4,17 @@
 
 ## 为什么 MAX_FAST 的快照较快
 
-实际 AE `NetworkCraftingSimulationState` 主要复制库存数量；开启模拟提取时再调用模拟提取。
-Graph 的 `snapshot` 计时还包含依赖发现、有效样板捕获、输入选择、容器返还与数量采集。
-两个计时名称覆盖的工作不同，不能用复制一张库存表替代 Graph 的全部捕获。
+原版 AE 的 `NetworkCraftingSimulationState` 构造函数复制库存数量，但当前 Core 的
+`NetworkCraftingSimulationStateMixin` 已跳过这次整表复制：保留 `getCachedInventory()` 返回的引用，
+在规划期间按需查询；开启模拟提取或存在手工库存预留时再调用原库存的模拟提取。
+因此，不能把原版 AE 的库存复制流程当作当前 MAX_FAST 的实际实现。
+Graph 的 `snapshot` 计时还包含依赖发现、有效样板捕获、输入选择、容器返还与相关资源数量采集；
+两个路径的准备工作及线程边界不同。
+
+Core 的 `CraftingCalculationMixin` 同时取消了原版 AE 按 tick 暂停/恢复计算的握手：
+`handlePausing` 只检查线程中断，`simulateFor` 只观察完成状态，后台任务可连续执行。
+Graph 的后台求解也不按 tick 发放额度；Graph 额外受 tick 调度影响的是主线程捕获阶段。
+这不代表 MAX_FAST 不受 CPU 竞争、GC、后台任务排队或请求发起/提交的主线程延迟影响。
 
 这轮发现并处理了两个具体问题：
 
