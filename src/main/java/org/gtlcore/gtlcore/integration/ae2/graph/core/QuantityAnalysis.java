@@ -161,6 +161,12 @@ final class QuantityAnalysis<K> {
             bounds.close();
             bounds = null;
             if (model.recipes.size() > 192 || model.keys.size() > 128) return finish(false);
+            // Keep the exact model, but let the caller try cheap executable
+            // witnesses before paying for simplex and continuous coverability.
+            phase = 8;
+            return false;
+        }
+        if (phase == 8) {
             linear = new ExactLinearProgram(model.recipes.size(), model.constraints, model.objective(false), budget);
             phase = 2;
             return false;
@@ -245,5 +251,13 @@ final class QuantityAnalysis<K> {
     boolean blocked() {
         if (phase != 4) throw new IllegalStateException("Quantity analysis is incomplete");
         return blocked;
+    }
+
+    boolean readyForHeavyAnalysis() {
+        return phase == 8;
+    }
+
+    void discard() {
+        if (phase != 4) finish(false);
     }
 }

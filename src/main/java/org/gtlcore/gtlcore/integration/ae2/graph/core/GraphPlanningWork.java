@@ -37,6 +37,9 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
     private IntegerCountSearch<K> countSearch;
     private MissingStockAnalysis<K> missingAnalysis;
     private QuantityAnalysis<K> quantities;
+    private boolean quantityDeferred;
+    private long quickSearchStarted, quickSearchAllowance;
+    private int quantityResumePhase = -1;
     private Boolean quantityBlocked;
     private Boolean stockBlocked;
     private boolean allocationAttempted, countAttempted, frontierTruncated;
@@ -102,6 +105,11 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
     private boolean step(PlanningScheduler.Slice slice) {
         try {
             budget.check();
+            if (quantityDeferred && phase != 4 && phase != 8 && phase != 10 &&
+                    !(phase == 3 && candidate.feasible()) &&
+                    (phase == 9 || budget.nodes() - quickSearchStarted >= quickSearchAllowance)) {
+                resumeQuantityAnalysis(phase);
+            }
             switch (phase) {
                 case 0 -> {
                     if (forceCraft && !external.contains(target) &&
@@ -195,6 +203,7 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
                     if (!verifying.step()) return false;
                     verified = candidate;
                     result = candidate;
+                    discardQuantityAnalysis();
                     budget.phase(PlanningBudget.Phase.COMPLETE);
                     phase = 8;
                 }
@@ -257,6 +266,7 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
                 case 10 -> {
                     if (!verifying.step()) return false;
                     result = best;
+                    discardQuantityAnalysis();
                     phase = 8;
                 }
                 case 11 -> {
@@ -266,14 +276,26 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
                     afterSolve();
                 }
                 case 12 -> {
+                    if (quantityResumePhase < 0 && quantities.readyForHeavyAnalysis()) {
+                        quantityDeferred = true;
+                        quickSearchStarted = budget.nodes();
+                        quickSearchAllowance = Math.min(16_384L, budget.remainingWork() / 8);
+                        budget.note("quantity", "bounds_inconclusive; deferred_exact_analysis");
+                        afterSolve();
+                        return false;
+                    }
                     if (!quantities.step()) return false;
                     quantityBlocked = quantities.blocked();
                     budget.note("quantity", "proven_blocked=" + quantityBlocked);
                     quantities = null;
                     if (quantityBlocked) {
+                        if (allocating != null) allocating.discard();
                         allocating = new AllocationSearch<>(compiler, target, amount, stock, external, requiredSeeds,
                                 preserve, forceCraft, excluded, budget, started, true);
                         phase = 13;
+                    } else if (quantityResumePhase >= 0) {
+                        phase = quantityResumePhase;
+                        quantityResumePhase = -1;
                     } else afterSolve();
                 }
                 case 13 -> {
@@ -311,6 +333,7 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
                         phase = allocating == null ? 0 : 6;
                     }
                 }
+                case 15 -> startCountSearch();
                 default -> {
                     return true;
                 }
@@ -325,6 +348,10 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
     }
 
     private void startCountSearch() {
+        if (quantityDeferred) {
+            resumeQuantityAnalysis(15);
+            return;
+        }
         countAttempted = true;
         budget.note("integer_counts", "start");
         countSearch = new IntegerCountSearch<>(compiler, target, amount, stock, requiredSeeds, external,
@@ -333,7 +360,7 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
     }
 
     private void afterSolve() {
-        if (!candidate.feasible() && quantityBlocked == null) {
+        if (!candidate.feasible() && quantityBlocked == null && quantities == null) {
             quantities = new QuantityAnalysis<>(compiler, target, amount, stock, external, requiredSeeds, excluded, budget, forceCraft);
             phase = 12;
             return;
@@ -366,6 +393,19 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
         phase = 3;
     }
 
+    private void resumeQuantityAnalysis(int resumePhase) {
+        quantityDeferred = false;
+        quantityResumePhase = resumePhase;
+        budget.note("quantity", "resume_exact_analysis; quick_work=" + (budget.nodes() - quickSearchStarted));
+        phase = 12;
+    }
+
+    private void discardQuantityAnalysis() {
+        if (quantities != null) quantities.discard();
+        quantities = null;
+        quantityDeferred = false;
+    }
+
     private void verifyMissing() {
         verifying = new PlanVerification<>(new GraphPlan<>(best.target(), best.amount(), best.preserveSeeds(),
                 best.steps(), best.recipes(), best.initialExact(), best.seeds(), Map.of(),
@@ -388,6 +428,7 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
 
     @Override
     public GraphPlan<K> limited(PlanningBudget.Exhausted limit) {
+        discardQuantityAnalysis();
         if (verified != null) return new GraphPlan<>(verified.target(), verified.amount(), verified.preserveSeeds(), verified.steps(),
                 verified.recipes(), verified.initialExact(), verified.seeds(), Map.of(), GraphPlan.Result.FEASIBLE_NOT_PROVEN_OPTIMAL,
                 budget.nodes(), System.nanoTime() - started);
@@ -395,6 +436,7 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
     }
 
     private GraphPlan<K> failure(GraphPlan.Result reason) {
+        discardQuantityAnalysis();
         if (reason == GraphPlan.Result.UNKNOWN && frontierTruncated) {
             budget.failureDetail("candidate_frontier=4096; remaining strategies exhausted");
             reason = GraphPlan.Result.SEARCH_LIMIT;
