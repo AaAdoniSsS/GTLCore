@@ -1,304 +1,272 @@
 package org.gtlcore.gtlcore.integration.ae2.graph.core;
 
-import java.math.BigInteger;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 
-/**
- * Native integer state-equation search with executable witnesses. Branch on
- * fractional counts; refine spurious integer candidates only with a proved
- * support obstruction or an exhaustively rejected fixed multiset.
- */
+/** Bounded branch search with retained continuations, shared proofs and verified incumbents. */
 final class IntegerCountSearch<K> implements AutoCloseable {
 
     private final RecipeCountModel<K> model;
     private final K target;
-    private final long amount, started;
+    private final long amount, started, allowance;
     private final Map<K, Long> stock, seeds;
     private final Set<K> external;
     private final boolean preserve, force;
     private final PlanningBudget budget;
-    private final long allowance;
-    private final Deque<List<ExactLinearProgram.Constraint>> pending = new ArrayDeque<>();
-    private List<ExactLinearProgram.Constraint> current;
-    private List<ExactLinearProgram.Constraint> linearConstraints;
+    private final Deque<IntegerCountBranch<K>> pending = new ArrayDeque<>(), deferred = new ArrayDeque<>();
     private final Set<ExactLinearProgram.Constraint> materialConflicts = new LinkedHashSet<>();
-    private final List<SupportConflict> supportConflicts = new ArrayList<>();
-    private final Set<List<BigInteger>> rejectedMultisets = new HashSet<>();
-    private CountBounds propagating;
-    private int globalRows;
-    private ExactLinearProgram linear;
-    private CountSchedule<K> scheduling;
-    private AllocationSearch.Candidate<K> assembling;
-    private BigInteger[] counts;
-    private GraphPlan<K> result;
-    private boolean complete, infeasible;
-    private long memory, work;
-    private int candidates;
+    private final Set<IntegerCountBranch.SupportConflict> supportConflicts = new LinkedHashSet<>();
+    private final List<Incumbent<K>> frontier = new ArrayList<>();
+    private final AtomicBoolean stopped = new AtomicBoolean(), released = new AtomicBoolean();
+    private CompletableFuture<List<IntegerCountBranch<K>>> running;
+    private List<IntegerCountBranch<K>> dispatched = List.of();
+    private Incumbent<K> best;
+    private boolean complete, infeasible, unresolved;
+    private long work, improvementUntil = Long.MAX_VALUE;
+    private int branches, rounds, suspensions, boundPrunes, peakWidth;
+
+    private record Incumbent<K>(GraphPlan<K> plan, PlanPreference<K> cost, long memory) {}
 
     IntegerCountSearch(GraphCompiler<K> compiler, K target, long amount, Map<K, Long> stock,
                        Map<K, Long> seeds, Set<K> external, Set<String> excluded, boolean preserve, boolean force,
                        PlanningBudget budget, long started) {
         this.target = target;
         this.amount = amount;
-        this.stock = stock;
-        this.seeds = seeds;
-        this.external = external;
+        this.stock = Map.copyOf(stock);
+        this.seeds = Map.copyOf(seeds);
+        this.external = Set.copyOf(external);
         this.preserve = preserve;
         this.force = force;
         this.budget = budget;
-        allowance = Math.min(2_000_000, budget.remainingWork() / 4);
         this.started = started;
-        model = RecipeCountModel.create(compiler, target, amount, stock, seeds, external, excluded, force, budget);
+        allowance = Math.min(2_000_000, budget.remainingWork() / 4);
+        model = RecipeCountModel.create(compiler, target, amount, this.stock, this.seeds, this.external, excluded, force, budget);
         if (model == null || model.recipes.size() > 64 || model.keys.size() > 96) {
             if (model != null) budget.note("integer_counts", "skipped; recipes=" + model.recipes.size() + "/64; keys=" + model.keys.size() + "/96");
             complete = true;
             close();
             return;
         }
-        if (!budget.tryReserve(2L << 20)) {
-            budget.note("integer_counts", "skipped; workspace_bytes=" + (2L << 20) + "; insufficient memory");
-            complete = true;
-            close();
-            return;
-        }
-        memory = 2L << 20;
-        pending.add(List.of());
+        enqueue(List.of());
     }
 
     boolean step() {
-        long before = budget.nodes();
-        try {
-            return advance();
-        } catch (ExactRational.PrecisionLimit limit) {
-            return finish(false);
-        } finally {
-            work += budget.nodes() - before;
-        }
+        return step(null);
     }
 
-    private boolean advance() {
-        budget.check();
+    boolean step(PlanningScheduler.Slice slice) {
         if (complete) return true;
-        if (work >= allowance || candidates >= 128 || pending.size() > 256) {
-            budget.note("integer_counts", "local_limit; work=" + work + "/" + allowance + "; candidates=" + candidates + "/128; frontier=" + pending.size() + "/256");
-            return finish(false);
+        if (running != null) {
+            if (!running.isDone()) return false;
+            harvest(true);
         }
-        if (assembling != null) {
-            if (!assembling.step()) return false;
-            result = assembling.plan;
-            if (result != null) {
-                try {
-                    PlanVerifier.verifyRuntimeInventory(result);
-                } catch (ArithmeticException capacity) {
-                    // These counts might still admit a streaming/nested order.
-                    // Reject this buffered witness, never learn an impossibility.
-                    result = null;
+        budget.check();
+        if (work >= allowance || work >= improvementUntil) return finish(false);
+        if (pending.isEmpty() && deferred.isEmpty()) return finish(!unresolved && best == null);
+        int width = slice == null ? 1 : Math.min(16, slice.parallelism());
+        int residentLimit = Math.max(4, width);
+        List<IntegerCountBranch<K>> wave = take(width, residentLimit);
+        if (wave.isEmpty()) return finish(false);
+        peakWidth = Math.max(peakWidth, wave.size());
+        long quantum = Math.max(1, Math.min(4096, (Math.min(allowance, improvementUntil) - work) / wave.size()));
+        var materials = List.copyOf(materialConflicts);
+        var support = List.copyOf(supportConflicts);
+        PlanPreference<K> incumbent = best == null ? null : best.cost();
+        List<Supplier<IntegerCountBranch<K>>> partitions = new ArrayList<>();
+        for (var branch : wave) partitions.add(() -> {
+            branch.run(quantum, materials, support, incumbent, stopped::get);
+            return branch;
+        });
+        dispatched = wave;
+        rounds++;
+        if (slice != null && wave.size() > 1) {
+            running = slice.fork(PlanningBudget.Phase.SOLVE, partitions);
+            return false;
+        }
+        for (var partition : partitions) partition.get();
+        merge(wave, true);
+        dispatched = List.of();
+        return false;
+    }
+
+    CompletableFuture<?> waitingFor() {
+        return running;
+    }
+
+    private List<IntegerCountBranch<K>> take(int width, int residentLimit) {
+        List<IntegerCountBranch<K>> selected = new ArrayList<>();
+        long resident = pending.stream().filter(branch -> branch.initialized).count();
+        int scanned = pending.size();
+        while (selected.size() < width && scanned-- > 0) {
+            var branch = pending.removeFirst();
+            if (!branch.initialized && resident >= residentLimit) {
+                pending.addLast(branch);
+                continue;
+            }
+            if (!branch.initialized) resident++;
+            selected.add(branch);
+        }
+        while (selected.size() < width && !deferred.isEmpty()) selected.add(deferred.removeFirst());
+        return selected;
+    }
+
+    private void harvest(boolean continueSearch) {
+        var future = running;
+        running = null;
+        try {
+            if (future.isCompletedExceptionally()) {
+                // allOf completes only after every child has stopped. Recover
+                // independently verified siblings even if another hit a limit.
+                merge(dispatched, false);
+                future.join();
+            } else merge(future.join(), continueSearch);
+        } catch (RuntimeException | Error failure) {
+            dispatched.stream().filter(branch -> branch.state == IntegerCountBranch.State.FOUND).forEach(this::retain);
+            dispatched.forEach(IntegerCountBranch::close);
+            Throwable cause = failure;
+            while (cause instanceof java.util.concurrent.CompletionException && cause.getCause() != null) cause = cause.getCause();
+            if (cause instanceof PlanningBudget.Exhausted limit) throw limit;
+            throw failure;
+        } finally {
+            dispatched = List.of();
+        }
+    }
+
+    private void merge(List<IntegerCountBranch<K>> wave, boolean continueSearch) {
+        for (var branch : wave) {
+            work += branch.work;
+            branch.work = 0;
+            if (!continueSearch) {
+                if (branch.state == IntegerCountBranch.State.FOUND) retain(branch);
+                else unresolved = true;
+                branch.close();
+                continue;
+            }
+            if (materialConflicts.size() < 64) for (var conflict : branch.learnedMaterials) {
+                if (materialConflicts.size() == 64) break;
+                materialConflicts.add(conflict);
+            }
+            if (supportConflicts.size() < 64) for (var conflict : branch.supportConflicts) {
+                if (supportConflicts.size() == 64) break;
+                supportConflicts.add(conflict);
+            }
+            for (var child : branch.children) enqueue(child);
+            branch.children.clear();
+            switch (branch.state) {
+                case OPEN -> {
+                    suspensions++;
+                    pending.addLast(branch);
                 }
-            }
-            return finish(false);
-        }
-        if (scheduling != null) {
-            if (!scheduling.step()) return false;
-            if (scheduling.result() == CountSchedule.Result.WITNESS) {
-                Map<String, GraphRecipe<K>> recipes = new LinkedHashMap<>();
-                model.recipes.forEach(recipe -> recipes.put(recipe.id(), recipe));
-                assembling = new AllocationSearch.Candidate<>(scheduling.witness(), recipes, target, amount, stock, seeds, external,
-                        preserve, force, false, budget, started);
-                scheduling.close();
-                scheduling = null;
-                return false;
-            }
-            if (scheduling.result() != CountSchedule.Result.DEAD) return finish(false);
-            scheduling.close();
-            scheduling = null;
-            excludeProvedMultiset();
-            return false;
-        }
-        if (propagating != null) {
-            if (!propagating.step()) return false;
-            boolean blocked = propagating.blocked();
-            var bounds = propagating.tightened();
-            propagating.close();
-            propagating = null;
-            if (blocked) return false;
-            linearConstraints.addAll(bounds);
-            linear = new ExactLinearProgram(model.recipes.size(), linearConstraints, model.objective(true), budget);
-            return false;
-        }
-        if (linear == null) {
-            if (pending.isEmpty()) return finish(true);
-            current = pending.removeLast();
-            linearConstraints = new ArrayList<>(model.constraints);
-            linearConstraints.addAll(materialConflicts);
-            globalRows = linearConstraints.size();
-            linearConstraints.addAll(current);
-            propagating = new CountBounds(model.recipes.size(), linearConstraints, budget);
-            candidates++;
-            return false;
-        }
-        if (!linear.step()) return false;
-        var status = linear.result();
-        ExactRational[] point = linear.point();
-        if (status == ExactLinearProgram.Result.INFEASIBLE) learnMaterialConflict(linear.certificate());
-        linear.close();
-        linear = null;
-        if (status == ExactLinearProgram.Result.INFEASIBLE) return false;
-        if (status != ExactLinearProgram.Result.OPTIMAL) return finish(false);
-        for (SupportConflict conflict : supportConflicts) if (violates(conflict, point)) {
-            branch(conflict);
-            return false;
-        }
-        for (int i = 0; i < point.length; i++) if (!point[i].integral()) {
-            enqueue(current, bound(i, point[i].floor(), false));
-            enqueue(current, bound(i, point[i].ceil(), true));
-            return false;
-        }
-        counts = Arrays.stream(point).map(ExactRational::numerator).toArray(BigInteger[]::new);
-        if (rejectedMultisets.contains(List.of(counts))) {
-            excludeProvedMultiset();
-            return false;
-        }
-        if (refineSupport()) return false;
-        scheduling = new CountSchedule<>(model, counts, budget);
-        return false;
-    }
-
-    private boolean refineSupport() {
-        Set<K> reachable = new HashSet<>(external);
-        stock.forEach((key, value) -> { if (value > 0) reachable.add(key); });
-        BitSet fired = new BitSet();
-        boolean changed;
-        do {
-            changed = false;
-            for (int i = 0; i < counts.length; i++) {
-                budget.check();
-                if (counts[i].signum() == 0 || fired.get(i)) continue;
-                GraphRecipe<K> recipe = model.recipes.get(i);
-                if (consumedKeys(recipe).stream().anyMatch(key -> !reachable.contains(key))) continue;
-                reachable.addAll(recipe.outputs().keySet());
-                fired.set(i);
-                changed = true;
-            }
-        } while (changed);
-        for (int blocked = 0; blocked < counts.length; blocked++) if (counts[blocked].signum() > 0 && !fired.get(blocked)) {
-            // If this transition is used, a first producer must introduce an
-            // initially absent place without itself requiring an absent place.
-            // Keep both possibilities: avoid the transition, or include a repair.
-            Map<Integer, BigInteger> repairs = new LinkedHashMap<>();
-            for (int i = 0; i < counts.length; i++) {
-                budget.check();
-                GraphRecipe<K> recipe = model.recipes.get(i);
-                if (consumedKeys(recipe).stream().allMatch(reachable::contains) &&
-                        recipe.outputs().keySet().stream().anyMatch(key -> model.ids.containsKey(key) && !reachable.contains(key)))
-                    repairs.put(i, BigInteger.ONE.negate());
-            }
-            SupportConflict conflict = new SupportConflict(blocked, new ExactLinearProgram.Constraint(repairs, BigInteger.ONE.negate()));
-            if (!supportConflicts.contains(conflict)) supportConflicts.add(conflict);
-            branch(conflict);
-            return true;
-        }
-        return false;
-    }
-
-    private Set<K> consumedKeys(GraphRecipe<K> recipe) {
-        Set<K> keys = new LinkedHashSet<>(recipe.inputs().keySet());
-        keys.removeIf(key -> recipe.inputs().get(key).longValue() == recipe.configurationInputs().getOrDefault(key, 0L));
-        return keys;
-    }
-
-    private void excludeProvedMultiset() {
-        // Disjoint lexicographic branches cover every OTHER integer vector.
-        // This is only reached after complete finite scheduling, never a timeout.
-        rejectedMultisets.add(List.of(counts.clone()));
-        var prefix = new ArrayList<>(current);
-        for (int i = 0; i < counts.length; i++) {
-            if (counts[i].signum() > 0) enqueue(prefix, bound(i, counts[i].subtract(BigInteger.ONE), false));
-            enqueue(prefix, bound(i, counts[i].add(BigInteger.ONE), true));
-            prefix.add(bound(i, counts[i], false));
-            prefix.add(bound(i, counts[i], true));
-        }
-    }
-
-    private record SupportConflict(int blocked, ExactLinearProgram.Constraint repair) {}
-
-    private boolean violates(SupportConflict conflict, ExactRational[] point) {
-        if (point[conflict.blocked()].signum() == 0) return false;
-        ExactRational repairs = ExactRational.ZERO;
-        for (int variable : conflict.repair().terms().keySet()) repairs = repairs.add(point[variable]);
-        return repairs.compareTo(ExactRational.ONE) < 0;
-    }
-
-    private void branch(SupportConflict conflict) {
-        enqueue(current, bound(conflict.blocked(), BigInteger.ZERO, false));
-        if (!conflict.repair().terms().isEmpty()) {
-            var required = new ArrayList<>(current);
-            required.add(bound(conflict.blocked(), BigInteger.ONE, true));
-            enqueue(required, conflict.repair());
-        }
-    }
-
-    private void learnMaterialConflict(ExactRational[] proof) {
-        if (materialConflicts.size() >= 64) return;
-        // Combine only globally valid material rows. The other Farkas terms
-        // describe this branch; dropping those terms leaves a reusable resource
-        // inequality that is valid for all branches of THIS inventory snapshot.
-        BigInteger scale = BigInteger.ONE;
-        for (int i = 0; i < globalRows; i++) {
-            scale = scale.divide(scale.gcd(proof[i].denominator())).multiply(proof[i].denominator());
-            if (scale.bitLength() > 2048) return;
-        }
-        Map<Integer, BigInteger> terms = new LinkedHashMap<>();
-        BigInteger upper = BigInteger.ZERO;
-        for (int i = 0; i < globalRows; i++) {
-            BigInteger weight = proof[i].numerator().multiply(scale.divide(proof[i].denominator()));
-            if (weight.signum() < 0) return;
-            if (weight.signum() == 0) continue;
-            upper = upper.add(linearConstraints.get(i).upper().multiply(weight));
-            for (var term : linearConstraints.get(i).terms().entrySet()) {
-                budget.check();
-                terms.merge(term.getKey(), term.getValue().multiply(weight), BigInteger::add);
+                case FOUND -> {
+                    retain(branch);
+                    branch.close();
+                }
+                case UNRESOLVED -> {
+                    if (branch.resume()) {
+                        suspensions++;
+                        deferred.addLast(branch);
+                    } else {
+                        unresolved = true;
+                        branch.close();
+                    }
+                }
+                case PRUNED -> {
+                    boundPrunes++;
+                    branch.close();
+                }
+                default -> branch.close();
             }
         }
-        terms.values().removeIf(value -> value.signum() == 0);
-        if (terms.isEmpty()) return;
-        BigInteger common = upper.abs();
-        for (BigInteger coefficient : terms.values()) common = common.gcd(coefficient);
-        BigInteger divisor = common;
-        if (divisor.signum() > 0) {
-            terms.replaceAll((key, value) -> value.divide(divisor));
-            upper = upper.divide(divisor);
+    }
+
+    private void retain(IntegerCountBranch<K> branch) {
+        if (branch.workspace == 0) return; // Already transferred or disposed.
+        if (frontier.stream().anyMatch(old -> old.cost().dominates(branch.preference))) return;
+        boolean replaces = best == null || branch.preference.preferredTo(best.cost());
+        for (var iterator = frontier.iterator(); iterator.hasNext();) {
+            var old = iterator.next();
+            if (branch.preference.dominates(old.cost())) {
+                budget.release(old.memory());
+                iterator.remove();
+            }
         }
-        if (upper.bitLength() > 2048 || terms.values().stream().anyMatch(value -> value.bitLength() > 2048)) return;
-        materialConflicts.add(new ExactLinearProgram.Constraint(terms, upper));
+        if (frontier.size() == 16) {
+            if (!replaces) return;
+            budget.release(frontier.remove(frontier.size() - 1).memory());
+        }
+        // Transfer the branch's existing workspace reservation with the retained
+        // program. Harvesting a verified result needs no new deadline-sensitive
+        // allocation, and discarded alternatives release their own reservation.
+        Incumbent<K> candidate = new Incumbent<>(branch.plan, branch.preference, branch.workspace);
+        branch.workspace = 0;
+        if (best == null) {
+            best = candidate;
+            improvementUntil = Math.min(allowance, work + Math.min(16_384L, Math.max(0, (allowance - work) / 8)));
+        } else if (replaces) best = candidate;
+        // Incomparable materials remain separate candidates. This bound affects
+        // optimization only; it is never used to assert infeasibility.
+        frontier.add(candidate);
     }
 
-    private void enqueue(List<ExactLinearProgram.Constraint> prefix, ExactLinearProgram.Constraint constraint) {
-        var next = new ArrayList<>(prefix);
-        next.add(constraint);
-        pending.add(List.copyOf(next));
+    private void enqueue(List<ExactLinearProgram.Constraint> constraints) {
+        if (branches >= 256 || pending.size() + deferred.size() >= 256) {
+            unresolved = true;
+            return;
+        }
+        var branch = new IntegerCountBranch<>(model, target, amount, stock, seeds, external, preserve, force, budget, started, constraints);
+        branches++;
+        if (branch.state != IntegerCountBranch.State.OPEN) {
+            unresolved = true;
+            branch.close();
+        } else pending.addLast(branch);
     }
 
-    private static ExactLinearProgram.Constraint bound(int variable, BigInteger value, boolean lower) {
-        return new ExactLinearProgram.Constraint(Map.of(variable, lower ? BigInteger.ONE.negate() : BigInteger.ONE), lower ? value.negate() : value);
+    GraphPlan<K> result() {
+        // A global deadline can expire between parallel completion and the next
+        // coordinator slice. Recover already verified witnesses before cleanup.
+        if (running != null && running.isDone()) {
+            try {
+                harvest(false);
+            } catch (PlanningBudget.Exhausted ignored) { /* An incumbent remains valid after the limit. */ }
+        }
+        if (running == null) dispatched.stream().filter(branch -> branch.state == IntegerCountBranch.State.FOUND).forEach(this::retain);
+        return best == null ? null : best.plan();
     }
 
-    GraphPlan<K> result() { return result; }
-    boolean infeasible() { return infeasible; }
+    boolean infeasible() {
+        return infeasible;
+    }
 
     private boolean finish(boolean proved) {
         complete = true;
-        infeasible = proved;
+        infeasible = proved && !unresolved && best == null;
+        budget.note("integer_counts", "branches=" + branches + "; slices=" + rounds + "; suspended=" + suspensions +
+                "; peak_width=" + peakWidth + "; work=" + work + "/" + allowance + "; frontier=" + frontier.size() +
+                "; bound_prunes=" + boundPrunes + "; unresolved=" + unresolved + "; witness=" + (best != null));
         close();
         return true;
     }
 
     @Override
     public void close() {
-        if (linear != null) linear.close();
-        if (propagating != null) propagating.close();
-        if (scheduling != null) scheduling.close();
+        stopped.set(true);
+        CompletableFuture<?> future = running;
+        if (future != null && !future.isDone()) future.whenComplete((value, failure) -> release());
+        else release();
+    }
+
+    private void release() {
+        if (!released.compareAndSet(false, true)) return;
+        pending.forEach(IntegerCountBranch::close);
+        deferred.forEach(IntegerCountBranch::close);
+        dispatched.forEach(IntegerCountBranch::close);
+        pending.clear();
+        deferred.clear();
+        dispatched = List.of();
         if (model != null) model.close();
-        budget.release(memory);
-        memory = 0;
+        frontier.forEach(candidate -> budget.release(candidate.memory()));
+        frontier.clear();
     }
 }

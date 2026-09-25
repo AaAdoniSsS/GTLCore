@@ -42,6 +42,11 @@ public final class PlanningBudget {
     private final long submitted;
     private final AtomicLong started = new AtomicLong(Long.MIN_VALUE);
     private final AtomicLong nodes = new AtomicLong();
+    // Branch quanta run contiguously on one worker. A shared thread counter
+    // avoids creating weak ThreadLocal keys for every order on the long-lived
+    // worker pool; per-order cumulative limits remain in nodes below.
+    private static final ThreadLocal<long[]> THREAD_NODES = ThreadLocal.withInitial(() -> new long[1]);
+    private volatile boolean countThreadWork;
     private final AtomicLong reservedBytes = new AtomicLong();
     private final AtomicLong peakBytes = new AtomicLong();
     private final AtomicBoolean cancelRequested = new AtomicBoolean();
@@ -91,7 +96,14 @@ public final class PlanningBudget {
 
     public void check() {
         checkpoint();
+        if (countThreadWork) THREAD_NODES.get()[0]++;
         if (nodes.incrementAndGet() > maxNodes) throw exhausted(Limit.SEARCH_LIMIT, "cumulative_work=" + nodes.get() + "/" + maxNodes);
+    }
+
+    /** Per-thread accounting prevents concurrent branches charging one another's work. */
+    long threadWork() {
+        countThreadWork = true;
+        return THREAD_NODES.get()[0];
     }
 
     public Exhausted exhausted(Limit limit, String detail) {

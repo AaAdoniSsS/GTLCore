@@ -311,7 +311,7 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
                     }
                 }
                 case 14 -> {
-                    if (!countSearch.step()) return false;
+                    if (!countSearch.step(slice)) return false;
                     GraphPlan<K> counted = countSearch.result();
                     boolean proved = countSearch.infeasible();
                     budget.note("integer_counts", "witness=" + (counted != null) + "; proven_infeasible=" + proved);
@@ -415,6 +415,7 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
 
     @Override
     public CompletableFuture<?> waitingFor() {
+        if (countSearch != null && countSearch.waitingFor() != null) return countSearch.waitingFor();
         if (compiling != null && compiling.waitingFor() != null) return compiling.waitingFor();
         if (bootstrap != null && bootstrap.seedWork != null) return bootstrap.seedWork.waitingFor();
         return null;
@@ -428,6 +429,11 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
 
     @Override
     public GraphPlan<K> limited(PlanningBudget.Exhausted limit) {
+        if (countSearch != null) {
+            GraphPlan<K> counted = countSearch.result();
+            if (counted != null) verified = counted;
+            countSearch.close();
+        }
         discardQuantityAnalysis();
         if (verified != null) return new GraphPlan<>(verified.target(), verified.amount(), verified.preserveSeeds(), verified.steps(),
                 verified.recipes(), verified.initialExact(), verified.seeds(), Map.of(), GraphPlan.Result.FEASIBLE_NOT_PROVEN_OPTIMAL,
@@ -436,6 +442,7 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
     }
 
     private GraphPlan<K> failure(GraphPlan.Result reason) {
+        if (countSearch != null) countSearch.close();
         discardQuantityAnalysis();
         if (reason == GraphPlan.Result.UNKNOWN && frontierTruncated) {
             budget.failureDetail("candidate_frontier=4096; remaining strategies exhausted");
@@ -445,6 +452,13 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
                 "; allocation_tried=" + allocationAttempted + "; counts_tried=" + countAttempted);
         return new GraphPlan<>(target, amount, preserve, new PlanStep.Sequence(List.of()), Map.of(), Map.of(), Map.of(), Map.of(),
                 reason, budget.nodes(), System.nanoTime() - started);
+    }
+
+    @Override
+    public void close() {
+        if (countSearch != null) countSearch.close();
+        if (bootstrap != null && bootstrap.seedWork != null) bootstrap.seedWork.close();
+        discardQuantityAnalysis();
     }
 
     /** A failed bounded sequence search does not by itself prove missing stock. */

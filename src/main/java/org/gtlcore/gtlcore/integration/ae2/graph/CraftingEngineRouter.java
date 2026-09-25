@@ -263,6 +263,7 @@ public final class CraftingEngineRouter {
             }
             if (low > high) return finish();
             middle = low + (high - low) / 2;
+            current.close();
             current = calculation(middle);
             return false;
         }
@@ -272,6 +273,11 @@ public final class CraftingEngineRouter {
             return new CatalystPlanningWork<>(checkpoint != null ? CatalystPolicy.MINIMAL : catalysts, budget,
                     policy -> new GraphPlanningWork<>(compiler, target, count, available, snapshot.emitable(),
                             checkpoint == null ? Map.of() : checkpoint.recoverySeeds(), preserve, checkpoint == null && !directEmission, budget).catalysts(policy));
+        }
+
+        @Override
+        public void close() {
+            if (current != null) current.close();
         }
 
         private RuntimeException limitOrUnknown(GraphPlan<AEKey> plan) {

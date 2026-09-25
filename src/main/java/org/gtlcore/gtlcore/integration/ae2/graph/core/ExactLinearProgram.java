@@ -10,9 +10,15 @@ import java.util.*;
  */
 final class ExactLinearProgram implements AutoCloseable {
 
-    enum Result { OPTIMAL, INFEASIBLE, UNBOUNDED, UNKNOWN }
+    enum Result {
+        OPTIMAL,
+        INFEASIBLE,
+        UNBOUNDED,
+        UNKNOWN
+    }
 
     record Constraint(Map<Integer, BigInteger> terms, BigInteger upper) {
+
         Constraint {
             terms = Map.copyOf(terms);
         }
@@ -46,27 +52,32 @@ final class ExactLinearProgram implements AutoCloseable {
         }
         memory = bytes;
         try {
-        table = new ExactRational[rows + 2][variables + 2];
-        for (ExactRational[] row : table) Arrays.fill(row, ExactRational.ZERO);
-        basic = new int[rows];
-        nonbasic = new int[variables + 1];
-        for (int i = 0; i < rows; i++) {
-            basic[i] = variables + i;
-            for (var term : constraints.get(i).terms().entrySet()) {
-                budget.check();
-                table[i][term.getKey()] = ExactRational.of(term.getValue());
+            table = new ExactRational[rows + 2][variables + 2];
+            for (ExactRational[] row : table) Arrays.fill(row, ExactRational.ZERO);
+            basic = new int[rows];
+            nonbasic = new int[variables + 1];
+            for (int i = 0; i < rows; i++) {
+                basic[i] = variables + i;
+                for (var term : constraints.get(i).terms().entrySet()) {
+                    budget.check();
+                    table[i][term.getKey()] = ExactRational.of(term.getValue());
+                }
+                table[i][variables] = ExactRational.ONE.negate();
+                table[i][variables + 1] = ExactRational.of(constraints.get(i).upper());
             }
-            table[i][variables] = ExactRational.ONE.negate();
-            table[i][variables + 1] = ExactRational.of(constraints.get(i).upper());
-        }
-        for (int j = 0; j < variables; j++) {
-            nonbasic[j] = j;
-            table[rows][j] = ExactRational.of(objective[j]).negate();
-        }
-        nonbasic[variables] = -1;
-        table[rows + 1][variables] = ExactRational.ONE;
+            for (int j = 0; j < variables; j++) {
+                nonbasic[j] = j;
+                table[rows][j] = ExactRational.of(objective[j]).negate();
+            }
+            nonbasic[variables] = -1;
+            table[rows + 1][variables] = ExactRational.ONE;
         } catch (ExactRational.PrecisionLimit limit) {
             finish(Result.UNKNOWN);
+        } catch (RuntimeException | Error failure) {
+            // Cancellation/limits can interrupt construction before the caller
+            // owns this workspace. Release it here, just as after a work slice.
+            close();
+            throw failure;
         }
     }
 
@@ -91,7 +102,8 @@ final class ExactLinearProgram implements AutoCloseable {
                 for (int i = 0; i < rows; i++) if (basic[i] == -1) {
                     int entering = -1;
                     for (int j = 0; j <= variables; j++) if (nonbasic[j] != -1 && table[i][j].signum() != 0 &&
-                            (entering < 0 || nonbasic[j] < nonbasic[entering])) entering = j;
+                            (entering < 0 || nonbasic[j] < nonbasic[entering]))
+                        entering = j;
                     if (entering >= 0) {
                         pivot(i, entering);
                         return false;
@@ -105,7 +117,8 @@ final class ExactLinearProgram implements AutoCloseable {
             for (int j = 0; j <= variables; j++) {
                 charge();
                 if (nonbasic[j] != -1 && table[objectiveRow][j].signum() < 0 &&
-                        (entering < 0 || nonbasic[j] < nonbasic[entering])) entering = j;
+                        (entering < 0 || nonbasic[j] < nonbasic[entering]))
+                    entering = j;
             }
             if (entering < 0) {
                 if (phase == 1) {
@@ -241,9 +254,17 @@ final class ExactLinearProgram implements AutoCloseable {
         return true;
     }
 
-    Result result() { return result; }
-    ExactRational[] point() { return point == null ? null : point.clone(); }
-    ExactRational[] certificate() { return certificate == null ? null : certificate.clone(); }
+    Result result() {
+        return result;
+    }
+
+    ExactRational[] point() {
+        return point == null ? null : point.clone();
+    }
+
+    ExactRational[] certificate() {
+        return certificate == null ? null : certificate.clone();
+    }
 
     @Override
     public void close() {
