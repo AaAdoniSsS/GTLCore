@@ -2,6 +2,8 @@ package org.gtlcore.gtlcore.integration.ae2.graph.core;
 
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.concurrent.CancellationException;
@@ -45,6 +47,7 @@ public final class PlanningBudget {
     private final AtomicBoolean cancelRequested = new AtomicBoolean();
     private volatile Phase phase = Phase.QUEUED;
     private volatile String failureDetail = "";
+    private final Deque<String> diagnostics = new ArrayDeque<>();
     private static final ThreadMXBean CPU_CLOCK = ManagementFactory.getThreadMXBean();
     private final AtomicLongArray phaseNanos = new AtomicLongArray(Phase.values().length);
     private final AtomicLongArray phaseCpuNanos = new AtomicLongArray(Phase.values().length);
@@ -93,7 +96,8 @@ public final class PlanningBudget {
 
     public Exhausted exhausted(Limit limit, String detail) {
         failureDetail = detail;
-        return new Exhausted(limit);
+        note("limit", limit + ": " + detail);
+        return new Exhausted(limit, detail);
     }
 
     public void failureDetail(String detail) {
@@ -104,12 +108,24 @@ public final class PlanningBudget {
         return failureDetail;
     }
 
+    /** A bounded trace of strategy transitions, not a record for every search node. */
+    public synchronized void note(String stage, String detail) {
+        String entry = stage + "@" + nodes.get() + ": " + detail;
+        diagnostics.addLast(entry.length() > 768 ? entry.substring(0, 768) + "..." : entry);
+        while (diagnostics.size() > 32) diagnostics.removeFirst();
+    }
+
+    public synchronized String diagnostics() {
+        return String.join(" | ", diagnostics);
+    }
+
     /** Cancellation/time check without charging another search state. */
     public void checkpoint() {
         if (Thread.currentThread().isInterrupted() || cancelRequested.get() || cancelled.getAsBoolean())
             throw new CancellationException("Graph planning cancelled");
         start();
-        if (timeoutNanos != 0 && clock.getAsLong() - started.get() >= timeoutNanos) throw new Exhausted(Limit.TIMEOUT);
+        if (timeoutNanos != 0 && clock.getAsLong() - started.get() >= timeoutNanos)
+            throw exhausted(Limit.TIMEOUT, "active_wall_ms=" + runningWallNanos() / 1_000_000L + "/" + timeoutNanos / 1_000_000L);
     }
 
     public void reserve(long bytes) {
@@ -117,9 +133,22 @@ public final class PlanningBudget {
         long current = reservedBytes.addAndGet(bytes);
         if (current < 0 || current > maxBytes) {
             reservedBytes.addAndGet(-bytes);
-            throw new Exhausted(Limit.MEMORY_LIMIT);
+            throw exhausted(Limit.MEMORY_LIMIT, "reserved_bytes=" + reservedBytes.get() + "; requested_bytes=" + bytes + "; limit_bytes=" + maxBytes);
         }
         peakBytes.accumulateAndGet(current, Math::max);
+    }
+
+    /** Optional strategies may decline a workspace without exhausting the order. */
+    boolean tryReserve(long bytes) {
+        if (bytes < 0) throw new IllegalArgumentException("Negative memory reservation");
+        checkpoint();
+        long previous;
+        do {
+            previous = reservedBytes.get();
+            if (bytes > maxBytes - previous) return false;
+        } while (!reservedBytes.compareAndSet(previous, previous + bytes));
+        peakBytes.accumulateAndGet(previous + bytes, Math::max);
+        return true;
     }
 
     public void release(long bytes) {
@@ -132,6 +161,10 @@ public final class PlanningBudget {
 
     public long nodes() {
         return nodes.get();
+    }
+
+    long remainingWork() {
+        return Math.max(0, maxNodes - nodes.get());
     }
 
     public long reservedBytes() {
@@ -226,7 +259,11 @@ public final class PlanningBudget {
         }
 
         public Exhausted(Limit limit) {
-            super("GRAPH_" + limit);
+            this(limit, "");
+        }
+
+        public Exhausted(Limit limit, String detail) {
+            super("GRAPH_" + limit + (detail.isEmpty() ? "" : " (" + detail + ")"));
             this.limit = limit;
         }
 

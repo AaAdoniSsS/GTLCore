@@ -35,6 +35,7 @@ public final class CatalystPlanningWork<K> implements PlanningScheduler.Work<Gra
 
     private boolean consume() {
         GraphPlan<K> candidate = current.result();
+        budget.note("catalysts", "attempt=" + attempts + "; extra=" + extra + "; minimum=" + minimum + "; result=" + candidate.result());
         if (switch (candidate.result()) {
             case TIMEOUT, SEARCH_LIMIT, MEMORY_LIMIT, GRAPH_LIMIT, QUEUE_LIMIT -> true;
             default -> false;
