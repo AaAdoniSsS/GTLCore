@@ -52,6 +52,7 @@ public final class RegionSelection<K> {
     private long countWork;
     private RegionSelection<K> single;
     private boolean triedSingles;
+    private boolean conversionPair;
 
     public RegionSelection(GraphCompiler.Region<K> region, Map<K, BigInteger> demand, Map<K, Long> stock,
                            K target, long amount, boolean preserve, boolean forceTarget, Set<K> external, PlanningBudget budget, CatalystPolicy policy, Map<K, Long> catalystStock) {
@@ -103,6 +104,7 @@ public final class RegionSelection<K> {
                     byId.put(recipe.id(), recipe);
                     produced.addAll(recipe.outputs().keySet());
                 } else {
+                    conversionPair = nonGrowingConversion(recipes);
                     if (region.cyclic() && recipes.size() > 6) {
                         counts = new RegionCounts<>(recipes, demand, stock, external, target, amount, forceTarget, preserve, budget);
                         countWork = budget.nodes();
@@ -295,14 +297,16 @@ public final class RegionSelection<K> {
                 Choice<K> choice = single.result();
                 single = null;
                 index++;
-                if (choice != null && choice.runs().signum() > 0 && produced.stream().allMatch(key -> demand.getOrDefault(key, BigInteger.ZERO).compareTo(BigInteger.valueOf(stock.getOrDefault(key, 0L))) <= 0 ||
-                        choice.summary().delta(key).signum() > 0 || choice.summary().required(key).signum() > 0)) {
+                if (choice != null && choice.runs().signum() > 0 &&
+                        (!forceTarget || !produced.contains(target) || choice.summary().delta(target).signum() > 0) &&
+                        produced.stream().allMatch(key -> demand.getOrDefault(key, BigInteger.ZERO).compareTo(BigInteger.valueOf(stock.getOrDefault(key, 0L))) <= 0 ||
+                                choice.summary().delta(key).signum() > 0 || choice.summary().required(key).signum() > 0)) {
                     // A conversion cycle need not run every recipe. A single
                     // direction can be a valid funded preview even when a full
                     // traversal has zero net gain. The caller proves missing
                     // stock independently and verifies the complete program.
-                    best = choice;
-                    phase = 8;
+                    if (best == null || betterConversion(choice, best)) best = choice;
+                    if (!conversionPair) phase = 8;
                 }
             }
             default -> {
@@ -313,12 +317,67 @@ public final class RegionSelection<K> {
     }
 
     private boolean complete() {
-        if (phase == 8 && best == null && region.cyclic() && region.recipes().size() > 1 && !triedSingles) {
+        if (phase == 8 && (best == null || conversionPair && best.runs().signum() > 0) &&
+                region.cyclic() && region.recipes().size() > 1 && !triedSingles) {
             triedSingles = true;
             phase = 11;
             index = 0;
         }
         return phase == 8;
+    }
+
+    private boolean nonGrowingConversion(List<GraphRecipe<K>> recipes) {
+        if (!region.cyclic() || recipes.size() != 2) return false;
+        var first = recipes.get(0);
+        var second = recipes.get(1);
+        if (first.inputs().size() != 1 || first.outputs().size() != 1 ||
+                second.inputs().size() != 1 || second.outputs().size() != 1 ||
+                !first.configurationInputs().isEmpty() || !second.configurationInputs().isEmpty() ||
+                !Collections.disjoint(first.inputs().keySet(), first.outputs().keySet()) ||
+                !first.inputs().keySet().equals(second.outputs().keySet()) ||
+                !second.inputs().keySet().equals(first.outputs().keySet()))
+            return false;
+        BigInteger consumed = BigInteger.valueOf(first.inputs().values().iterator().next())
+                .multiply(BigInteger.valueOf(second.inputs().values().iterator().next()));
+        BigInteger returned = BigInteger.valueOf(first.outputs().values().iterator().next())
+                .multiply(BigInteger.valueOf(second.outputs().values().iterator().next()));
+        return returned.compareTo(consumed) <= 0;
+    }
+
+    private boolean betterConversion(Choice<K> candidate, Choice<K> previous) {
+        // A full lossy traversal can be executable yet waste stock. Compare it
+        // with one-way conversion even after finding a funded witness. Keep
+        // mixed conversions when they are needed to fill an indivisible batch.
+        BigInteger[] next = conversionCost(candidate), old = conversionCost(previous);
+        for (int i = 0; i < next.length; i++) {
+            int comparison = next[i].compareTo(old[i]);
+            if (comparison != 0) return comparison < 0;
+        }
+        return false;
+    }
+
+    private BigInteger[] conversionCost(Choice<K> choice) {
+        BigInteger missingTypes = BigInteger.ZERO, absentTypes = BigInteger.ZERO;
+        BigInteger deficitTotal = BigInteger.ZERO, initialTotal = BigInteger.ZERO;
+        for (K key : produced) {
+            budget.check();
+            BigInteger delta = choice.summary().delta(key);
+            BigInteger prefix = choice.summary().required(key).add(delta.negate().max(BigInteger.ZERO)
+                    .multiply(choice.runs().subtract(BigInteger.ONE)));
+            BigInteger goal = demand.getOrDefault(key, BigInteger.ZERO).add(BigInteger.valueOf(choice.seeds().getOrDefault(key, 0L)));
+            BigInteger initial = prefix.max(goal.subtract(delta.multiply(choice.runs()))).max(BigInteger.ZERO);
+            initialTotal = initialTotal.add(initial);
+            BigInteger deficit = initial.subtract(BigInteger.valueOf(stock.getOrDefault(key, 0L)));
+            if (!external.contains(key) && deficit.signum() > 0) {
+                missingTypes = missingTypes.add(BigInteger.ONE);
+                if (stock.getOrDefault(key, 0L) == 0) absentTypes = absentTypes.add(BigInteger.ONE);
+                deficitTotal = deficitTotal.add(deficit);
+            }
+        }
+        var counting = new PlanCountComputation(choice.body());
+        while (!counting.step(budget)) {}
+        BigInteger executions = counting.result().values().stream().reduce(BigInteger.ZERO, BigInteger::add).multiply(choice.runs());
+        return new BigInteger[] { missingTypes, absentTypes, deficitTotal, initialTotal, executions };
     }
 
     private PlanStep parallelBody(long copies) {
