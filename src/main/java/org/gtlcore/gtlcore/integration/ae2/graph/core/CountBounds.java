@@ -7,6 +7,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 /** Work-queue integer bound propagation over joint material and branch constraints. */
 final class CountBounds implements AutoCloseable {
 
+    private static final int MAX_ELIMINATION_TERMS = 16;
+
     private final List<ExactLinearProgram.Constraint> rows;
     private final List<ExactLinearProgram.Constraint> originalRows;
     private final int assumptionStart;
@@ -17,6 +19,7 @@ final class CountBounds implements AutoCloseable {
     private final BitSet queued = new BitSet();
     private long memory, work;
     private long allowance;
+    private final long continuationLimit;
     private boolean complete, blocked;
     private boolean combined;
     private final boolean explain;
@@ -102,6 +105,7 @@ final class CountBounds implements AutoCloseable {
         // A wide/deep DAG may need several waves of propagation. Allocate by
         // sparse model size, while retaining a local ceiling for slow cycles.
         allowance = Math.min(262_144L, Math.max(50_000L, 64L * incidences));
+        continuationLimit = Math.min(2_000_000L, Math.max(allowance, 512L * incidences));
         if (!budget.tryReserve(bytes)) {
             complete = true;
             return;
@@ -377,6 +381,16 @@ final class CountBounds implements AutoCloseable {
                     return false;
                 }
             }
+            if (allowance < continuationLimit && budget.remainingWork() >= 8192) {
+                // Keep the already tightened bounds and pending rows. Large
+                // sparse feedback graphs can need more than the first cheap
+                // wave; recreating propagation in another strategy loses that
+                // progress. Used work remains charged to the shared order.
+                long extra = Math.min(continuationLimit - allowance, budget.remainingWork() / 8);
+                allowance += extra;
+                budget.note("count_bounds_resume", "work=" + work + "; allowance=" + allowance + "; pending_rows=" + queue.size());
+                return false;
+            }
             budget.note("count_bounds", "work_limit; terms=" + work + "; pending_rows=" + queue.size());
             return finish(false);
         }
@@ -477,17 +491,21 @@ final class CountBounds implements AutoCloseable {
         // from a scheduling failure or a cutoff.
         Set<Integer> variables = new LinkedHashSet<>();
         for (int row : queue) variables.addAll(rows.get(row).terms().keySet());
-        if (variables.size() > 128) return false;
+        // A large surrounding DAG must not hide a small conversion cycle.
+        // Bound the sparse elimination work, rather than rejecting every
+        // pending component as soon as their combined variable count is large.
+        long started = budget.nodes();
         Set<ExactLinearProgram.Constraint> known = new HashSet<>(rows);
         int added = 0;
         for (int round = 0; round < 3; round++) {
             int before = added;
             for (int variable : variables) {
+                if (budget.nodes() - started >= 65_536) return added > 0;
                 List<Integer> positive = new ArrayList<>(), negative = new ArrayList<>();
                 for (int row : affected.get(variable)) {
                     budget.check();
                     var terms = rows.get(row).terms();
-                    if (terms.size() < 2 || terms.size() > 4) continue;
+                    if (terms.size() < 2 || terms.size() > MAX_ELIMINATION_TERMS) continue;
                     (terms.get(variable).signum() > 0 ? positive : negative).add(row);
                 }
                 if ((long) positive.size() * negative.size() > 16) continue;
@@ -532,7 +550,7 @@ final class CountBounds implements AutoCloseable {
             terms.merge(term.getKey(), term.getValue().multiply(a), BigInteger::add);
         }
         terms.values().removeIf(value -> value.signum() == 0);
-        if (terms.size() > 4) return null;
+        if (terms.size() > MAX_ELIMINATION_TERMS) return null;
         BigInteger upper = first.upper().multiply(b).add(second.upper().multiply(a));
         gcd = BigInteger.ZERO;
         for (BigInteger value : terms.values()) {

@@ -91,6 +91,17 @@ final class LinearMacroCompilation<K> {
         return combined;
     }
 
+    Map<String, BigInteger> counts(String id) {
+        var body = bodies.get(id);
+        if (body == null) return Map.of(id, BigInteger.ONE);
+        Map<String, BigInteger> result = new LinkedHashMap<>();
+        for (var recipe : body) {
+            budget.check();
+            result.merge(recipe.id(), BigInteger.ONE, BigInteger::add);
+        }
+        return Map.copyOf(result);
+    }
+
     PlanStep expand(PlanStep step) {
         return expand(step, new IdentityHashMap<>());
     }

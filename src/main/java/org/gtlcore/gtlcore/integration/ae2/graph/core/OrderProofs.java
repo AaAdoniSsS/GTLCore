@@ -92,8 +92,12 @@ final class OrderProofs<K> implements AutoCloseable {
 
     /** Propagate a learned clause before allocation creates a forbidden batch. */
     BigInteger maximumAdditional(Map<String, BigInteger> counts, String recipe, BigInteger maximum) {
-        Integer selected = ids.get(recipe);
-        if (selected == null || !hasCountConflicts()) return maximum;
+        return maximumAdditional(counts, Map.of(recipe, BigInteger.ONE), maximum);
+    }
+
+    /** A compiled block uses the same recipe coordinates as every other strategy. */
+    BigInteger maximumAdditional(Map<String, BigInteger> counts, Map<String, BigInteger> block, BigInteger maximum) {
+        if (!hasCountConflicts()) return maximum;
         BigInteger[] lower = new BigInteger[model.recipes.size()], upper = new BigInteger[lower.length];
         for (int i = 0; i < lower.length; i++) lower[i] = counts.getOrDefault(model.recipes.get(i).id(), BigInteger.ZERO);
         for (var conflict : conflicts.snapshot()) {
@@ -101,8 +105,13 @@ final class OrderProofs<K> implements AutoCloseable {
             if (implication == null) continue;
             if (implication.row() == null) return BigInteger.ZERO;
             var row = implication.row();
-            BigInteger coefficient = row.terms().get(selected);
-            if (coefficient == null || coefficient.signum() <= 0 || row.terms().values().stream().anyMatch(v -> v.signum() < 0)) continue;
+            if (row.terms().values().stream().anyMatch(v -> v.signum() < 0)) continue;
+            BigInteger coefficient = BigInteger.ZERO;
+            for (var term : row.terms().entrySet()) {
+                budget.check();
+                coefficient = coefficient.add(term.getValue().multiply(block.getOrDefault(model.recipes.get(term.getKey()).id(), BigInteger.ZERO)));
+            }
+            if (coefficient.signum() <= 0) continue;
             // These are final count constraints. A negative coefficient could
             // be repaired by a later source, so only nonnegative rows bound a
             // monotone execution prefix without upper bounds on its suffix.

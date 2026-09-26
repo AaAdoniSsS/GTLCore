@@ -10,7 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /** Explicit traversal/fold stack: yielding never recomputes a sequence prefix. */
-public final class SummaryComputation<K> {
+public final class SummaryComputation<K> implements AutoCloseable {
 
     private final Map<String, GraphRecipe<K>> recipes;
     private final PlanningBudget budget;
@@ -37,9 +37,7 @@ public final class SummaryComputation<K> {
         try {
             return advance();
         } catch (RuntimeException | Error failure) {
-            shared.clear();
-            budget.release(sharedBytes);
-            sharedBytes = 0;
+            close();
             throw failure;
         }
     }
@@ -203,6 +201,15 @@ public final class SummaryComputation<K> {
     public SequenceSummary<K> result() {
         if (result == null) throw new IllegalStateException("Summary is incomplete");
         return result;
+    }
+
+    /** Release a suspended fold when its owning strategy is abandoned. */
+    @Override
+    public void close() {
+        shared.clear();
+        stack.clear();
+        budget.release(sharedBytes);
+        sharedBytes = 0;
     }
 
     private final class Frame {

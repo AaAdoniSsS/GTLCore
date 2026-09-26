@@ -28,7 +28,7 @@ final class IntegerCountSearch<K> implements AutoCloseable {
     private CompletableFuture<List<IntegerCountBranch<K>>> running;
     private List<IntegerCountBranch<K>> dispatched = List.of();
     private Incumbent<K> best;
-    private boolean complete, infeasible, unresolved, repairScheduled;
+    private boolean complete, infeasible, unresolved, repairScheduled, paused;
     private long work, improvementUntil = Long.MAX_VALUE, firstWitnessWork = -1, firstWitnessNanos;
     private int branches, rounds, suspensions, boundPrunes, choicePrunes, peakWidth;
 
@@ -81,7 +81,7 @@ final class IntegerCountSearch<K> implements AutoCloseable {
     }
 
     boolean step(PlanningScheduler.Slice slice) {
-        if (complete) return true;
+        if (complete || paused) return true;
         if (running != null) {
             if (!running.isDone()) return false;
             harvest(true);
@@ -92,7 +92,15 @@ final class IntegerCountSearch<K> implements AutoCloseable {
         // discarding it at the general branch-search quota and redoing sources.
         if (work >= allowance && best == null && pending.size() == 1 && pending.peekFirst().matching != null)
             allowance = preprocessingAllowance;
-        if (work >= allowance || work >= improvementUntil) return finish(false);
+        if (work >= allowance || work >= improvementUntil) {
+            if (best == null && (!pending.isEmpty() || !deferred.isEmpty())) {
+                paused = true;
+                if (proofs != null) proofs.publish(model, choiceConflicts.snapshot());
+                budget.note("integer_counts_pause", "work=" + work + "; branches=" + branches + "; pending=" + (pending.size() + deferred.size()));
+                return true;
+            }
+            return finish(false);
+        }
         if (pending.isEmpty() && deferred.isEmpty()) return finish(!unresolved && best == null);
         if (best == null && !repairScheduled && work >= 32_768) enqueueRepair();
         int width = slice == null ? 1 : Math.min(16, slice.parallelism());
@@ -124,6 +132,19 @@ final class IntegerCountSearch<K> implements AutoCloseable {
 
     CompletableFuture<?> waitingFor() {
         return running;
+    }
+
+    boolean paused() {
+        return paused;
+    }
+
+    /** The coordinator returns unused order work, never refunds work already charged. */
+    void resume() {
+        if (!paused || complete) throw new IllegalStateException("Count search is not suspended");
+        allowance = work + Math.max(1, Math.min(2_000_000, budget.remainingWork() / 2));
+        paused = false;
+        if (proofs != null) choiceConflicts.add(proofs.forModel(model));
+        budget.note("integer_counts_resume", "work=" + work + "; allowance=" + allowance + "; branches=" + branches);
     }
 
     private List<IntegerCountBranch<K>> take(int width, int residentLimit) {
@@ -285,10 +306,9 @@ final class IntegerCountSearch<K> implements AutoCloseable {
     }
 
     private void enqueue(List<ExactLinearProgram.Constraint> constraints, IntegerCountBranch<K> parent) {
-        if (branches >= 256 || pending.size() + deferred.size() >= 256) {
-            unresolved = true;
-            return;
-        }
+        // Pending assumptions are lightweight and explicitly memory charged.
+        // Only a bounded number of workspaces are resident; the cumulative
+        // number of already closed branches is not a reason to drop siblings.
         var branch = new IntegerCountBranch<>(model, execution, target, amount, stock, seeds, external, preserve, force, budget, started, constraints);
         branches++;
         if (branch.state != IntegerCountBranch.State.OPEN) {

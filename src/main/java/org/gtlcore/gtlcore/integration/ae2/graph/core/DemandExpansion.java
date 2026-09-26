@@ -156,7 +156,7 @@ final class DemandExpansion<K> {
                     truncate(frame.prefixSummary ? frame.originalPath : frame.unitPath);
                     if (frame.peeledPrefix != null) frame.peeledPrefix.forEach(this::append);
                     if (frame.body instanceof PlanStep.Batch batch)
-                    append(PlanStep.batch(batch.recipe(), BigInteger.valueOf(batch.runs()).multiply(extra.add(BigInteger.ONE))));
+                        append(PlanStep.batch(batch.recipe(), BigInteger.valueOf(batch.runs()).multiply(extra.add(BigInteger.ONE))));
                     else append(PlanStep.repeat(frame.body, extra.add(BigInteger.ONE)));
                 }
             }
@@ -293,7 +293,8 @@ final class DemandExpansion<K> {
             budget.check();
             K key = input.getKey();
             if (amount(key).compareTo(input.getValue()) < 0 &&
-                    recipe.outputs().getOrDefault(key, 0L) > recipe.inputs().getOrDefault(key, 0L)) return true;
+                    recipe.outputs().getOrDefault(key, 0L) > recipe.inputs().getOrDefault(key, 0L))
+                return true;
         }
         return false;
     }
@@ -379,6 +380,7 @@ final class DemandExpansion<K> {
     }
 
     void close() {
+        for (Frame frame : frames) if (frame.summary != null) frame.summary.close();
         budget.release(memory);
         memory = 0;
     }

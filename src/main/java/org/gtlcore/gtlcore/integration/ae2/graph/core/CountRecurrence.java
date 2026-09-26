@@ -47,6 +47,8 @@ final class CountRecurrence<K> implements AutoCloseable {
         BigInteger ratio = period == null ? BigInteger.ZERO : period.divide(next);
         for (int i = 0; i < counts.length; i++) if (!included.get(i) && counts[i].equals(next)) {
             Set<BigInteger> cuts = new LinkedHashSet<>(List.of(ratio.divide(BigInteger.TWO), ratio, BigInteger.ZERO));
+            BigInteger interior = insertion(recipes.get(i), ratio);
+            if (interior != null) cuts.add(interior);
             for (BigInteger before : cuts) {
                 budget.check();
                 BigInteger after = ratio.subtract(before);
@@ -74,6 +76,42 @@ final class CountRecurrence<K> implements AutoCloseable {
             if (!model.external.contains(entry.getKey()) && entry.getValue().compareTo(BigInteger.valueOf(model.stock.getOrDefault(entry.getKey(), 0L))) > 0) return false;
         }
         return true;
+    }
+
+    /** Exact feasible interval for S^a ; R ; S^(n-a), including shared inputs. */
+    private BigInteger insertion(SequenceSummary<K> middle, BigInteger times) {
+        if (times.compareTo(BigInteger.TWO) < 0) return null;
+        BigInteger[] interval = { BigInteger.ONE, times.subtract(BigInteger.ONE) };
+        Set<K> keys = summary.keys();
+        keys.addAll(middle.keys());
+        for (K key : keys) if (!model.external.contains(key)) {
+            budget.check();
+            BigInteger stock = BigInteger.valueOf(model.stock.getOrDefault(key, 0L));
+            BigInteger delta = summary.delta(key), loss = delta.negate().max(BigInteger.ZERO);
+            // Prefix, insertion, suffix requirements are affine in a whenever
+            // both copies of S are nonempty. Endpoints are tried separately.
+            if (!constrain(interval, loss, stock.subtract(summary.required(key)).add(loss)) ||
+                    !constrain(interval, delta.negate(), stock.subtract(middle.required(key))) ||
+                    !constrain(interval, loss.add(delta).negate(), stock.subtract(summary.required(key))
+                            .subtract(loss.multiply(times.subtract(BigInteger.ONE))).add(middle.delta(key))))
+                return null;
+        }
+        return interval[0];
+    }
+
+    private static boolean constrain(BigInteger[] interval, BigInteger coefficient, BigInteger upper) {
+        if (coefficient.signum() == 0) return upper.signum() >= 0;
+        if (coefficient.signum() > 0) {
+            BigInteger[] qr = upper.divideAndRemainder(coefficient);
+            BigInteger floor = qr[0].subtract(qr[1].signum() < 0 ? BigInteger.ONE : BigInteger.ZERO);
+            interval[1] = interval[1].min(floor);
+        } else {
+            BigInteger positive = coefficient.negate(), value = upper.negate();
+            BigInteger[] qr = value.divideAndRemainder(positive);
+            BigInteger ceil = qr[0].add(qr[1].signum() > 0 ? BigInteger.ONE : BigInteger.ZERO);
+            interval[0] = interval[0].max(ceil);
+        }
+        return interval[0].compareTo(interval[1]) <= 0;
     }
 
     private SequenceSummary<K> scale(SequenceSummary<K> source, BigInteger times) {

@@ -77,7 +77,7 @@ final class IntegerCountBranch<K> implements AutoCloseable {
         this.budget = budget;
         this.started = started;
         this.current = List.copyOf(current);
-        long bytes = 512L + 192L * current.size();
+        long bytes = 512L + current.stream().mapToLong(row -> 192L + 48L * row.terms().size()).sum();
         if (budget.tryReserve(bytes)) memory = bytes;
         else state = State.UNRESOLVED;
     }
@@ -212,6 +212,15 @@ final class IntegerCountBranch<K> implements AutoCloseable {
             scheduling.close();
             scheduling = null;
             if (status == CountSchedule.Result.DEAD) {
+                // This fixed vector was exhausted or rejected by a checked
+                // optimistic startup proof. Share the exact exclusion; an
+                // UNKNOWN scheduling result must never create this clause.
+                var fixed = new ArrayList<ExactLinearProgram.Constraint>();
+                for (int i = 0; i < counts.length; i++) {
+                    fixed.add(bound(i, counts[i], false));
+                    if (counts[i].signum() > 0) fixed.add(bound(i, counts[i], true));
+                }
+                learnedChoices.add(new CountConflict(fixed));
                 needsRepair = true;
                 supportSearch = new CountSupportSearch<>(model, counts, budget);
             } else if (status == CountSchedule.Result.UNKNOWN) unresolved();
@@ -500,6 +509,8 @@ final class IntegerCountBranch<K> implements AutoCloseable {
         if (scheduling != null) scheduling.close();
         if (supportSearch != null) supportSearch.close();
         if (program != null) program.close();
+        if (assembling != null) assembling.close();
+        if (verifying != null) verifying.close();
         linear = null;
         propagating = null;
         partition = null;

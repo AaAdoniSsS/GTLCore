@@ -2,10 +2,10 @@ package org.gtlcore.gtlcore.integration.ae2.graph.core;
 
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.HashSet;
 
 /** A compact, exact fixed-count program. Its prefix requirements still need funding. */
 final class CountProgram<K> implements AutoCloseable {
@@ -72,12 +72,22 @@ final class CountProgram<K> implements AutoCloseable {
         return computation.step();
     }
 
-    PlanStep program() { return program; }
-    SequenceSummary<K> summary() { return computation.result(); }
-    boolean available() { return available; }
+    PlanStep program() {
+        return program;
+    }
+
+    SequenceSummary<K> summary() {
+        return computation.result();
+    }
+
+    boolean available() {
+        return available;
+    }
 
     @Override
     public void close() {
+        if (computation != null) computation.close();
+        computation = null;
         budget.release(memory);
         memory = 0;
     }

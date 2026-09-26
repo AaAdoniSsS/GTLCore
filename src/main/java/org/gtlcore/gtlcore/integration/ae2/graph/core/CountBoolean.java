@@ -133,7 +133,7 @@ final class CountBoolean implements AutoCloseable {
                 }
                 if (values[id] < 0) {
                     live++;
-                    if (candidate < 0 || activity[id] > activity[candidate]) candidate = id;
+                    if (candidate < 0 || activity[id] > activity[candidate] || activity[id] == activity[candidate] && id < candidate) candidate = id;
                 }
             }
             if (!satisfied && candidate >= 0 && live < smallest) {

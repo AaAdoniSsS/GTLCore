@@ -379,6 +379,8 @@ final class CountSchedule<K> implements AutoCloseable {
 
     @Override
     public void close() {
+        if (summarizing != null) summarizing.close();
+        summarizing = null;
         if (recurrence != null) {
             recurrence.close();
             recurrence = null;

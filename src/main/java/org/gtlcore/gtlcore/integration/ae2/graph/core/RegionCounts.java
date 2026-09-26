@@ -150,6 +150,8 @@ final class RegionCounts<K> implements AutoCloseable {
 
     @Override
     public void close() {
+        if (computation != null) computation.close();
+        computation = null;
         if (recurrence != null) recurrence.close();
         if (bounds != null) bounds.close();
         if (schedule != null) schedule.close();

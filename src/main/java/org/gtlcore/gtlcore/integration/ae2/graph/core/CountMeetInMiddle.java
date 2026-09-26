@@ -59,6 +59,8 @@ final class CountMeetInMiddle implements AutoCloseable {
     private long entryBytes;
     private Entry[] ranged;
     private BigInteger[] queryLow, queryHigh;
+    private int[] pointWidths;
+    private int pointStates, pointCursor;
     private long memory, work;
     private int phase, rowIndex, split, leftStates, rightStates, trials, rangeCursor = -1;
     private boolean complete, infeasible, equalities;
@@ -106,7 +108,7 @@ final class CountMeetInMiddle implements AutoCloseable {
                 case 1 -> {
                     if (!enumeratingLeft.step()) return false;
                     if (enumeratingLeft.done) {
-                        if (!equalities) {
+                        if (!equalities && pointWidths == null) {
                             ranged = new Entry[left.size()];
                             int i = 0;
                             for (var entry : left.entrySet()) ranged[i++] = new Entry(entry.getKey().toArray(BigInteger[]::new), entry.getValue());
@@ -132,13 +134,20 @@ final class CountMeetInMiddle implements AutoCloseable {
                     if (enumeratingRight.done) return finish(true, "exhaustive_infeasible");
                     sum = enumeratingRight.values;
                     Integer matched;
-                    if (equalities) {
+                    if (equalities || pointWidths != null) {
                         BigInteger[] complement = new BigInteger[sum.length];
+                        int option = pointCursor;
                         for (int d = 0; d < sum.length; d++) {
                             charge();
-                            complement[d] = goalHigh[d].subtract(sum[d]);
+                            if (pointWidths == null) complement[d] = goalHigh[d].subtract(sum[d]);
+                            else {
+                                complement[d] = goalLow[d].add(BigInteger.valueOf(option % pointWidths[d])).subtract(sum[d]);
+                                option /= pointWidths[d];
+                            }
                         }
                         matched = left.get(List.of(complement));
+                        if (pointWidths != null && matched == null && ++pointCursor < pointStates) return false;
+                        pointCursor = 0;
                     } else {
                         if (rangeCursor < 0) beginRange();
                         // Yield between candidates; broad intervals obey the same
@@ -327,12 +336,29 @@ final class CountMeetInMiddle implements AutoCloseable {
         goalLow = lows.toArray(BigInteger[]::new);
         goalHigh = highs.toArray(BigInteger[]::new);
         equalities = Arrays.equals(goalLow, goalHigh);
+        if (!equalities) preparePointRange();
         sum = new BigInteger[dims];
         Arrays.fill(sum, BigInteger.ZERO);
         enumeratingLeft = new Enumeration(0, split, split, domains.size());
         enumeratingRight = new Enumeration(split, domains.size(), 0, split);
         phase = 1;
         return false;
+    }
+
+    /** Small integer boxes need a few hash lookups, not a sort of every left state. */
+    private void preparePointRange() {
+        int[] widths = new int[goalLow.length];
+        int states = 1;
+        for (int d = 0; d < widths.length; d++) {
+            charge();
+            if (goalLow[d] == null || goalHigh[d] == null) return;
+            BigInteger width = goalHigh[d].subtract(goalLow[d]).add(BigInteger.ONE);
+            if (width.signum() <= 0 || width.compareTo(BigInteger.valueOf(64 / states)) > 0) return;
+            widths[d] = width.intValueExact();
+            states *= widths[d];
+        }
+        pointWidths = widths;
+        pointStates = states;
     }
 
     private boolean fits() {

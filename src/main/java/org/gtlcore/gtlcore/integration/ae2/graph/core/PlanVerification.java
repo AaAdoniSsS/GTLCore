@@ -7,7 +7,7 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 
 /** Resumable final witness verification, including every prefix with exact totals. */
-public final class PlanVerification<K> {
+public final class PlanVerification<K> implements AutoCloseable {
 
     private final GraphPlan<K> plan;
     private final PlanningBudget budget;
@@ -76,5 +76,10 @@ public final class PlanVerification<K> {
             }
         }
         return phase == 4;
+    }
+
+    @Override
+    public void close() {
+        computation.close();
     }
 }

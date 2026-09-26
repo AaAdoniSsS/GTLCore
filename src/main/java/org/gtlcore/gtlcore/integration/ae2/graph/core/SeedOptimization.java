@@ -29,6 +29,14 @@ final class SeedOptimization<K> implements AutoCloseable {
     private BackwardCoverability<K> searching;
     private PlanVerification<K> verifying;
     private PlanStep program;
+    private SeedSupport<K> support;
+    private final List<ExactLinearProgram.Constraint> supportRows = new ArrayList<>();
+    private final Set<BitSet> supportCuts = new HashSet<>();
+    private CountBoolean selecting;
+    private BitSet selected;
+    private boolean enumerateSupports;
+    private int supportPrunes;
+    private int supportLowerBound;
     private int phase, cardinality, quantityIndex, trials, lowerBound;
     private int unresolvedCardinality = Integer.MAX_VALUE;
     private int[] combination;
@@ -94,13 +102,25 @@ final class SeedOptimization<K> implements AutoCloseable {
                 original.missingExact().forEach((key, value) -> raw.merge(key, value, BigInteger::add));
                 for (K key : produced) if (summary.delta(key).signum() >= 0) raw.remove(key);
                 mandatory.keySet().forEach(raw::remove);
+                var base = new LinkedHashMap<>(raw);
+                mandatory.forEach((key, value) -> base.put(key, BigInteger.valueOf(Math.max(value, stock.getOrDefault(key, 0L)))));
+                Map<K, BigInteger> loans = new LinkedHashMap<>();
+                choices.forEach(key -> loans.put(key, original.feasible() ? BigInteger.valueOf(stock.getOrDefault(key, 0L)) : ExactAmounts.LONG_MAX));
+                support = new SeedSupport<>(List.copyOf(recipes.values()), choices, base, loans, external, mandatory.keySet(),
+                        original.target(), original.amount(), force, budget);
                 combination = new int[0];
                 phase = 2;
             }
             case 2 -> {
+                if (supportLowerBound > cardinality) {
+                    cardinality = supportLowerBound;
+                    nextLevel = false;
+                    combination = new int[cardinality];
+                    for (int i = 0; i < cardinality; i++) combination[i] = i;
+                }
                 int bestFree = (int) best.seeds().keySet().stream().filter(key -> !mandatory.containsKey(key)).count();
                 if (cardinality >= bestFree) {
-                    cardinalityProven = unresolvedCardinality >= bestFree;
+                    cardinalityProven = unresolvedCardinality >= bestFree || supportLowerBound >= bestFree;
                     if (cardinalityProven) lowerBound = best.seeds().size();
                     quantityKeys = new ArrayList<>(best.seeds().keySet());
                     phase = 5;
@@ -114,13 +134,53 @@ final class SeedOptimization<K> implements AutoCloseable {
                     for (int i = 0; i < combination.length; i++) combination[i] = i;
                     return false;
                 }
+                if (cardinality > 0 && !enumerateSupports) {
+                    if (selecting == null) {
+                        var rows = new ArrayList<>(supportRows);
+                        Map<Integer, BigInteger> positive = new LinkedHashMap<>(), negative = new LinkedHashMap<>();
+                        for (int i = 0; i < choices.size(); i++) {
+                            positive.put(i, BigInteger.ONE);
+                            negative.put(i, BigInteger.ONE.negate());
+                        }
+                        rows.add(new ExactLinearProgram.Constraint(positive, BigInteger.valueOf(cardinality)));
+                        rows.add(new ExactLinearProgram.Constraint(negative, BigInteger.valueOf(-cardinality)));
+                        BigInteger[] lower = new BigInteger[choices.size()], upper = new BigInteger[choices.size()];
+                        Arrays.fill(lower, BigInteger.ZERO);
+                        Arrays.fill(upper, BigInteger.ONE);
+                        selecting = new CountBoolean(rows, lower, upper, budget);
+                    }
+                    if (!selecting.step()) return false;
+                    BigInteger[] witness = selecting.counts();
+                    boolean closed = selecting.infeasible();
+                    selecting.close();
+                    selecting = null;
+                    if (witness == null) {
+                        if (closed) nextLevel = true;
+                        else {
+                            enumerateSupports = true;
+                            combination = new int[cardinality];
+                            for (int i = 0; i < cardinality; i++) combination[i] = i;
+                        }
+                        return false;
+                    }
+                    combination = java.util.stream.IntStream.range(0, witness.length).filter(i -> witness[i].signum() > 0).toArray();
+                }
+                selected = new BitSet();
+                for (int i : combination) selected.set(i);
+                BitSet cut = support.conflict(selected);
+                if (cut != null) {
+                    addSupportCut(cut);
+                    supportPrunes++;
+                    if (cardinality == 0 || enumerateSupports) advanceCombination();
+                    return false;
+                }
                 supplied = new LinkedHashMap<>(raw);
                 mandatory.forEach((key, value) -> supplied.put(key, BigInteger.valueOf(Math.max(value, stock.getOrDefault(key, 0L)))));
                 for (int i : combination) {
                     K key = choices.get(i);
                     supplied.put(key, original.feasible() ? BigInteger.valueOf(stock.getOrDefault(key, 0L)) : ExactAmounts.LONG_MAX);
                 }
-                advanceCombination();
+                if (cardinality == 0 || enumerateSupports) advanceCombination();
                 beginSearch();
             }
             case 3 -> {
@@ -132,7 +192,18 @@ final class SeedOptimization<K> implements AutoCloseable {
                     summarizing = new SummaryComputation<>(program, recipes, budget);
                     phase = 4;
                 } else if (quantityKeys == null) {
-                    if (result != BackwardCoverability.Result.CLOSED) unresolvedCardinality = Math.min(unresolvedCardinality, cardinality);
+                    if (result != BackwardCoverability.Result.CLOSED) {
+                        unresolvedCardinality = Math.min(unresolvedCardinality, cardinality);
+                        excludeSupport();
+                    } else {
+                        // If the largest allowed loan in this support cannot
+                        // work, neither can any subset. Every future solution
+                        // must add at least one loan outside this support.
+                        BitSet outside = new BitSet();
+                        outside.set(0, choices.size());
+                        outside.andNot(selected);
+                        addSupportCut(outside);
+                    }
                     phase = 2;
                 } else {
                     if (result == BackwardCoverability.Result.CLOSED) low = middle.add(BigInteger.ONE);
@@ -175,7 +246,10 @@ final class SeedOptimization<K> implements AutoCloseable {
                 candidate = assemble(summarizing.result());
                 summarizing = null;
                 if (candidate == null) {
-                    if (quantityKeys == null) unresolvedCardinality = Math.min(unresolvedCardinality, cardinality);
+                    if (quantityKeys == null) {
+                        unresolvedCardinality = Math.min(unresolvedCardinality, cardinality);
+                        excludeSupport();
+                    }
                     amountsProven = false;
                     if (quantityKeys != null) {
                         quantityIndex++;
@@ -213,6 +287,7 @@ final class SeedOptimization<K> implements AutoCloseable {
     }
 
     private void beginSearch() {
+        if (quantityKeys == null) budget.note("seed_trial", "types=" + cardinality + "; selected=" + supplied.keySet().stream().filter(key -> !raw.containsKey(key)).toList());
         Map<K, BigInteger> goals = new LinkedHashMap<>();
         supplied.forEach((key, value) -> {
             if (!raw.containsKey(key)) goals.put(key, value);
@@ -235,6 +310,40 @@ final class SeedOptimization<K> implements AutoCloseable {
         }
         combination[i]++;
         for (int j = i + 1; j < combination.length; j++) combination[j] = combination[j - 1] + 1;
+    }
+
+    private void addSupportCut(BitSet cut) {
+        if (!supportCuts.add((BitSet) cut.clone())) return;
+        Map<Integer, BigInteger> terms = new LinkedHashMap<>();
+        for (int i = cut.nextSetBit(0); i >= 0; i = cut.nextSetBit(i + 1)) terms.put(i, BigInteger.ONE.negate());
+        supportRows.add(new ExactLinearProgram.Constraint(terms, BigInteger.ONE.negate()));
+        long bytes = 192L + 96L * terms.size();
+        budget.reserve(bytes);
+        memory += bytes;
+        // Pairwise disjoint necessary supports demand distinct seed types.
+        // This is a checked lower bound, not an estimate from a failed search.
+        BitSet occupied = new BitSet();
+        int packed = 0;
+        for (var clause : supportCuts.stream().sorted(Comparator.comparingInt(BitSet::cardinality)).toList()) {
+            budget.check();
+            if (!clause.isEmpty() && !clause.intersects(occupied)) {
+                occupied.or(clause);
+                packed++;
+            }
+        }
+        supportLowerBound = Math.max(supportLowerBound, packed);
+        lowerBound = Math.max(lowerBound, mandatory.size() + supportLowerBound);
+    }
+
+    private void excludeSupport() {
+        // Search-only blocking of an unresolved trial. The unresolved
+        // cardinality remains visible, so master exhaustion cannot certify it.
+        Map<Integer, BigInteger> terms = new LinkedHashMap<>();
+        for (int i = 0; i < choices.size(); i++) terms.put(i, selected.get(i) ? BigInteger.ONE : BigInteger.ONE.negate());
+        supportRows.add(new ExactLinearProgram.Constraint(terms, BigInteger.valueOf(selected.cardinality() - 1L)));
+        long bytes = 192L + 96L * terms.size();
+        budget.reserve(bytes);
+        memory += bytes;
     }
 
     private GraphPlan<K> assemble(SequenceSummary<K> value) {
@@ -281,6 +390,7 @@ final class SeedOptimization<K> implements AutoCloseable {
         budget.note("global_seeds", detail + "; types=" + original.seeds().size() + "->" + best.seeds().size() +
                 "; lower_bound=" + lowerBound + "; cardinality_proven=" + cardinalityProven + "; amounts_proven=" + amountsProven +
                 "; all_source_recipes=" + recipes.size() + "; trials=" + trials + "; work=" + (budget.nodes() - started));
+        budget.note("seed_support", "checked_cuts=" + supportCuts.size() + "; startup_prunes=" + supportPrunes + "; enumerating=" + enumerateSupports);
         close();
         return true;
     }
@@ -303,6 +413,10 @@ final class SeedOptimization<K> implements AutoCloseable {
 
     @Override
     public void close() {
+        if (summarizing != null) summarizing.close();
+        summarizing = null;
+        if (selecting != null) selecting.close();
+        selecting = null;
         if (searching != null) searching.close();
         searching = null;
         budget.release(memory);

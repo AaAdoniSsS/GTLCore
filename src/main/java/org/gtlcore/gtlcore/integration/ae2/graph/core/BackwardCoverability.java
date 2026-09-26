@@ -64,8 +64,8 @@ final class BackwardCoverability<K> implements AutoCloseable {
             result = Result.UNKNOWN;
             return;
         }
-        for (var recipe : recipes) actions.add(new Action<>(new PlanStep.Batch(recipe.id(), 1), SequenceSummary.recipe(recipe)));
         actions.addAll(macros);
+        for (var recipe : recipes) actions.add(new Action<>(new PlanStep.Batch(recipe.id(), 1), SequenceSummary.recipe(recipe)));
         try {
             remember(new Node(goal, null, null, 0));
         } catch (LocalLimit limit) {
@@ -121,6 +121,9 @@ final class BackwardCoverability<K> implements AutoCloseable {
                 remember(new Node(predecessor(active.required(), repeated), active, PlanStep.repeat(action.program(), times), active.depth() + 1));
             }
             remember(new Node(predecessor(active.required(), action.summary()), active, action.program(), active.depth() + 1));
+            // A funded predecessor is already a concrete executable witness.
+            // Do not make it wait behind exponentially many unrelated prefixes.
+            if (!pending.isEmpty() && leq(pending.peekFirst().required(), initial)) active = null;
             return false;
         } catch (LocalLimit limit) {
             return finish(Result.UNKNOWN);
@@ -206,7 +209,8 @@ final class BackwardCoverability<K> implements AutoCloseable {
         memory += bytes;
         basis.removeIf(old -> leq(node.required(), old.required()));
         basis.add(node);
-        pending.addLast(node);
+        if (leq(node.required(), initial)) pending.addFirst(node);
+        else pending.addLast(node);
     }
 
     private boolean leq(List<BigInteger> left, List<BigInteger> right) {

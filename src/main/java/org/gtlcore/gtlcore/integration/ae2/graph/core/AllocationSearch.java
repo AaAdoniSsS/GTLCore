@@ -26,6 +26,9 @@ final class AllocationSearch<K> {
     private final Map<String, GraphRecipe<K>> relevant = new LinkedHashMap<>();
     private final List<GraphRecipe<K>> recipes = new ArrayList<>();
     private final List<SequenceSummary<K>> summaries = new ArrayList<>();
+    private final Map<String, Map<String, BigInteger>> actionCounts = new HashMap<>();
+    private PartialOrder<K> partialOrder;
+    private long orderedAway;
     private final Set<K> producedKeys = new HashSet<>();
     // This search models the available network plus hypothetical recipe deltas,
     // not the CPU's physical inventory. Stock at Long.MAX_VALUE must not forbid
@@ -35,7 +38,7 @@ final class AllocationSearch<K> {
     private final List<Change<K>> undo = new ArrayList<>();
     private final List<PlanStep> path = new ArrayList<>();
     private final Deque<Frame> stack = new ArrayDeque<>();
-    private final Set<Stamp> visited = new HashSet<>();
+    private final Map<Stamp, List<BitSet>> visited = new HashMap<>();
     private final Map<K, Integer> keyIds = new HashMap<>();
     private Iterator<GraphRecipe<K>> discovering;
     private K discoveringKey;
@@ -92,6 +95,7 @@ final class AllocationSearch<K> {
             if (index < recipes.size()) {
                 var recipe = recipes.get(index++);
                 summaries.add(SequenceSummary.recipe(recipe));
+                actionCounts.put(recipe.id(), macros == null ? Map.of(recipe.id(), BigInteger.ONE) : macros.counts(recipe.id()));
                 producedKeys.addAll(recipe.executionOutputs().keySet());
                 for (K key : recipe.inputs().keySet()) keyIds.computeIfAbsent(key, ignored -> keyIds.size());
                 for (K key : recipe.outputs().keySet()) keyIds.computeIfAbsent(key, ignored -> keyIds.size());
@@ -119,8 +123,13 @@ final class AllocationSearch<K> {
                     if (external.contains(key)) available = available.max(goals.getOrDefault(key, BigInteger.ZERO));
                     set(key, available, false);
                 }
-                stack.push(new Frame(0, 0));
-                visit();
+                // Sleep sets preserve an executable representative of adjacent
+                // independent permutations without assuming a fixed multiset.
+                // Bound the optional pair cache, not the admissible recipe graph.
+                if (recipes.size() <= 256 && recipes.stream().noneMatch(GraphRecipe::batchSensitiveInputs))
+                    partialOrder = new PartialOrder<>(summaries, budget);
+                stack.push(new Frame(0, 0, new BitSet()));
+                visit(new BitSet());
                 Map<K, BigInteger> required = new LinkedHashMap<>();
                 BigInteger targetGoal = BigInteger.valueOf(amount).add(BigInteger.valueOf(force ?
                         Math.max(stock.getOrDefault(target, 0L), requiredSeeds.getOrDefault(target, 0L)) : requiredSeeds.getOrDefault(target, 0L)));
@@ -195,6 +204,12 @@ final class AllocationSearch<K> {
             return false;
         }
         int recipeIndex = frame.recipe;
+        if (frame.sleeping.get(recipeIndex)) {
+            orderedAway++;
+            frame.recipe++;
+            frame.nextRuns = 0;
+            return false;
+        }
         if (frame.nextRuns == 0) {
             frame.maximum = maximum(recipeIndex);
             frame.nextRuns = frame.maximum;
@@ -203,6 +218,7 @@ final class AllocationSearch<K> {
         // Enumerate all small allocations, and the useful maximum / half / one
         // breakpoints for large ones. The latter is deliberately not exhaustive.
         if (runs <= 1) {
+            frame.sleeping.set(recipeIndex);
             frame.recipe++;
             frame.nextRuns = 0;
         } else frame.nextRuns = frame.maximum <= 32 ? runs - 1 : runs > 2 ? runs / 2 : 1;
@@ -215,7 +231,8 @@ final class AllocationSearch<K> {
                     .add(entry.getValue().multiply(BigInteger.valueOf(runs)));
             set(entry.getKey(), next, true);
         }
-        if (!visit()) {
+        BitSet sleeping = partialOrder == null ? new BitSet() : partialOrder.after(frame.sleeping, recipeIndex);
+        if (!visit(sleeping)) {
             rollback(mark);
             return false;
         }
@@ -228,7 +245,7 @@ final class AllocationSearch<K> {
             finish();
             return true;
         }
-        stack.push(new Frame(mark, size));
+        stack.push(new Frame(mark, size, sleeping));
         return false;
     }
 
@@ -282,8 +299,8 @@ final class AllocationSearch<K> {
         // objective. A catalyst-returning productive recipe has nonzero other keys.
         if (summary.delta().values().stream().allMatch(value -> value.signum() == 0)) return 0;
         bound = bound.min(useful.max(BigInteger.ONE));
-        if (proofs != null && macros == null && proofs.hasCountConflicts())
-            bound = proofs.maximumAdditional(cumulativeCounts(), recipes.get(index).id(), bound);
+        if (proofs != null && proofs.hasCountConflicts())
+            bound = proofs.maximumAdditional(cumulativeCounts(), actionCounts.get(recipes.get(index).id()), bound);
         return ExactAmounts.capped(bound);
     }
 
@@ -312,11 +329,16 @@ final class AllocationSearch<K> {
         }
     }
 
-    private boolean visit() {
+    private boolean visit(BitSet sleeping) {
         // This is only a negative search heuristic. Neither a hash nor search
         // exhaustion is ever accepted as a material witness or an impossibility proof.
-        if (!visited.add(new Stamp(hash1, hash2))) return false;
-        reserve(64);
+        var labels = visited.computeIfAbsent(new Stamp(hash1, hash2), ignored -> new ArrayList<>());
+        if (labels.stream().anyMatch(old -> PartialOrder.subset(old, sleeping))) return false;
+        // Reaching the same marking with fewer sleeping actions can expose a
+        // continuation that the old representative was forbidden to explore.
+        labels.removeIf(old -> PartialOrder.subset(sleeping, old));
+        labels.add((BitSet) sleeping.clone());
+        reserve(96L + sleeping.toLongArray().length * 8L);
         return true;
     }
 
@@ -332,6 +354,7 @@ final class AllocationSearch<K> {
     }
 
     private void finish() {
+        if (phase != 3 && orderedAway > 0) budget.note("allocation_partial_order", "sleep_pruned=" + orderedAway);
         phase = 3;
         budget.release(memory);
         memory = 0;
@@ -344,6 +367,7 @@ final class AllocationSearch<K> {
 
     void discard() {
         if (expansion != null) expansion.close();
+        if (checking != null) checking.close();
         finish();
     }
 
@@ -362,10 +386,12 @@ final class AllocationSearch<K> {
         int recipe;
         long maximum, nextRuns;
         boolean checkedGoal;
+        final BitSet sleeping;
 
-        Frame(int mark, int pathSize) {
+        Frame(int mark, int pathSize, BitSet sleeping) {
             this.mark = mark;
             this.pathSize = pathSize;
+            this.sleeping = sleeping;
         }
     }
 
@@ -399,13 +425,13 @@ final class AllocationSearch<K> {
     }
 
     private boolean backjump() {
-        if (proofs == null || macros != null || !proofs.hasCountConflicts()) return false;
+        if (proofs == null || !proofs.hasCountConflicts()) return false;
         Map<String, BigInteger> counts = cumulativeCounts();
         if (!proofs.rejectedPrefix(counts)) return false;
         int firstForbidden = path.size();
         while (firstForbidden > 0) {
             var batch = (PlanStep.Batch) path.get(firstForbidden - 1);
-            counts.merge(batch.recipe(), BigInteger.valueOf(batch.runs()).negate(), BigInteger::add);
+            addCounts(counts, batch, BigInteger.valueOf(batch.runs()).negate());
             if (!proofs.rejectedPrefix(counts)) break;
             firstForbidden--;
         }
@@ -430,13 +456,20 @@ final class AllocationSearch<K> {
         for (PlanStep step : path) {
             budget.check();
             var batch = (PlanStep.Batch) step;
-            counts.merge(batch.recipe(), BigInteger.valueOf(batch.runs()), BigInteger::add);
+            addCounts(counts, batch, BigInteger.valueOf(batch.runs()));
         }
         return counts;
     }
 
+    private void addCounts(Map<String, BigInteger> counts, PlanStep.Batch batch, BigInteger times) {
+        for (var entry : actionCounts.get(batch.recipe()).entrySet()) {
+            budget.check();
+            counts.merge(entry.getKey(), entry.getValue().multiply(times), BigInteger::add);
+        }
+    }
+
     /** Shared material/seed assembly for every native executable witness. */
-    static final class Candidate<K> {
+    static final class Candidate<K> implements AutoCloseable {
 
         final Map<String, GraphRecipe<K>> relevant;
         final K target;
@@ -462,6 +495,11 @@ final class AllocationSearch<K> {
         K checkingKey;
         int stage;
         GraphPlan<K> plan;
+
+        @Override
+        public void close() {
+            if (computation != null) computation.close();
+        }
 
         Candidate(PlanStep witness, Map<String, GraphRecipe<K>> relevant, K target, long amount, Map<K, Long> stock,
                   Map<K, Long> requiredSeeds, Set<K> external, boolean preserve, boolean force, boolean preview,

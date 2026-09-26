@@ -35,6 +35,9 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
     private PlanVerification<K> verifying;
     private AllocationSearch<K> allocating;
     private IntegerCountSearch<K> countSearch;
+    private IntegerCountSearch<K> parkedCounts;
+    private long countPausedAt;
+    private int countResumePhase = -1;
     private OrderProofs<K> proofs;
     private boolean proofAttempted;
     private SourceExplanation<K> explaining;
@@ -114,6 +117,14 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
     private boolean step(PlanningScheduler.Slice slice) {
         try {
             budget.check();
+            if (parkedCounts != null && (phase == 0 || phase == 5 || phase == 6 || phase == 9) &&
+                    (budget.nodes() - countPausedAt >= 32_768 || phase == 0 && pending.isEmpty() || phase == 9)) {
+                countResumePhase = phase;
+                countSearch = parkedCounts;
+                parkedCounts = null;
+                countSearch.resume();
+                phase = 14;
+            }
             if (quantityDeferred && phase != 4 && phase != 8 && phase != 10 &&
                     !(phase == 3 && candidate.feasible()) &&
                     (phase == 9 || budget.nodes() - quickSearchStarted >= quickSearchAllowance)) {
@@ -361,6 +372,10 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
                     GraphPlan<K> counted = countSearch.result();
                     boolean proved = countSearch.infeasible();
                     budget.note("integer_counts", "witness=" + (counted != null) + "; proven_infeasible=" + proved);
+                    if (countSearch.paused()) {
+                        parkedCounts = countSearch;
+                        countPausedAt = budget.nodes();
+                    }
                     countSearch = null;
                     if (counted != null) {
                         if (allocating != null) allocating.discard();
@@ -376,7 +391,10 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
                         if (best != null && !best.missing().isEmpty()) candidate = best;
                         beginMissingPreview();
                     } else {
-                        if (countBeforeQuantity) {
+                        if (countResumePhase >= 0) {
+                            phase = countResumePhase;
+                            countResumePhase = -1;
+                        } else if (countBeforeQuantity) {
                             countBeforeQuantity = false;
                             phase = 12;
                         } else phase = allocating == null ? 0 : 6;
@@ -592,6 +610,7 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
 
     private GraphPlan<K> failure(GraphPlan.Result reason) {
         if (countSearch != null) countSearch.close();
+        if (parkedCounts != null) parkedCounts.close();
         discardQuantityAnalysis();
         if (reason == GraphPlan.Result.UNKNOWN && frontierTruncated) {
             budget.failureDetail("candidate_frontier=4096; remaining strategies exhausted");
@@ -606,8 +625,11 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
     @Override
     public void close() {
         if (countSearch != null) countSearch.close();
+        if (parkedCounts != null) parkedCounts.close();
         if (allocating != null) allocating.discard();
         if (bootstrap != null && bootstrap.seedWork != null) bootstrap.seedWork.close();
+        if (bootstrap != null && bootstrap.summary != null) bootstrap.summary.close();
+        if (verifying != null) verifying.close();
         discardQuantityAnalysis();
         if (explaining != null) explaining.close();
         explaining = null;

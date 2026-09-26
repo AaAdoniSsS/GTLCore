@@ -353,6 +353,8 @@ final class RegionBootstrap<K> implements AutoCloseable {
 
     @Override
     public void close() {
+        if (computation != null) computation.close();
+        computation = null;
         closeSchedule();
         if (reordered != null) reordered.close();
         budget.release(memory);

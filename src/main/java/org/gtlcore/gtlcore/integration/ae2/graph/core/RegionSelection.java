@@ -95,6 +95,8 @@ public final class RegionSelection<K> {
                 ordering = null;
             }
             phase = 8;
+            if (computation != null) computation.close();
+            computation = null;
             return complete();
         }
         switch (phase) {
