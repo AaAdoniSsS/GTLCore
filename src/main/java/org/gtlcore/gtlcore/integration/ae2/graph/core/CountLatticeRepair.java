@@ -3,7 +3,7 @@ package org.gtlcore.gtlcore.integration.ae2.graph.core;
 import java.math.BigInteger;
 import java.util.*;
 
-/** Exact two-row lattice repair around a relaxation. Only checked witnesses are exported. */
+/** Exact two-row lattice repair around a relaxation, including trial faces of bounded intervals. */
 final class CountLatticeRepair implements AutoCloseable {
 
     private record Entry(int code, BigInteger a, BigInteger b) {}
@@ -51,6 +51,31 @@ final class CountLatticeRepair implements AutoCloseable {
             row.terms().forEach((id, value) -> opposite.put(id, value.negate()));
             if (!row.upper().negate().equals(known.get(opposite))) continue;
             equations.add(row);
+            included.add(row.terms());
+            included.add(opposite);
+        }
+        // A small amount of allowed surplus must not disable lattice repair.
+        // Pick an integer face INSIDE each proved interval. These equalities
+        // are candidate restrictions only; failure never certifies infeasibility.
+        if (equations.size() < 2) for (var row : rows) {
+            if (row.terms().size() < 2 || included.contains(row.terms())) continue;
+            Map<Integer, BigInteger> opposite = new HashMap<>();
+            row.terms().forEach((id, value) -> opposite.put(id, value.negate()));
+            BigInteger reverse = known.get(opposite);
+            if (reverse == null || row.upper().compareTo(reverse.negate()) < 0) continue;
+            BigInteger low = reverse.negate(), high = row.upper(), face;
+            if (attempt == 1) face = low.add(high).shiftRight(1);
+            else if (attempt == 2) face = high;
+            else if (attempt == 3) face = low;
+            else {
+                ExactRational value = ExactRational.ZERO;
+                for (var term : row.terms().entrySet()) {
+                    charge();
+                    value = value.add(point[term.getKey()].multiply(ExactRational.of(term.getValue())));
+                }
+                face = value.floor().max(low).min(high);
+            }
+            equations.add(new ExactLinearProgram.Constraint(row.terms(), face));
             included.add(row.terms());
             included.add(opposite);
         }

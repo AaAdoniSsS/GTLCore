@@ -22,6 +22,7 @@ final class CountMeetInMiddle implements AutoCloseable {
         final boolean group;
         int size;
         boolean zero;
+        int[][] allocations;
 
         Domain(int[] variables, int size, boolean group, boolean zero) {
             this.variables = variables;
@@ -31,12 +32,19 @@ final class CountMeetInMiddle implements AutoCloseable {
         }
 
         BigInteger value(Map<Integer, BigInteger> row, int option) {
+            if (allocations != null) {
+                BigInteger result = BigInteger.ZERO;
+                for (int i = 0; i < variables.length; i++) result = result.add(row.getOrDefault(variables[i], BigInteger.ZERO).multiply(BigInteger.valueOf(allocations[option][i])));
+                return result;
+            }
             if (!group) return row.getOrDefault(variables[0], BigInteger.ZERO).multiply(BigInteger.valueOf(option));
             return zero && option == 0 ? BigInteger.ZERO : row.getOrDefault(variables[option - (zero ? 1 : 0)], BigInteger.ZERO);
         }
 
         void assign(BigInteger[] counts, int option) {
-            if (!group) counts[variables[0]] = counts[variables[0]].add(BigInteger.valueOf(option));
+            if (allocations != null) {
+                for (int i = 0; i < variables.length; i++) counts[variables[i]] = counts[variables[i]].add(BigInteger.valueOf(allocations[option][i]));
+            } else if (!group) counts[variables[0]] = counts[variables[0]].add(BigInteger.valueOf(option));
             else if (!zero || option > 0) {
                 int id = variables[option - (zero ? 1 : 0)];
                 counts[id] = counts[id].add(BigInteger.ONE);
@@ -191,19 +199,32 @@ final class CountMeetInMiddle implements AutoCloseable {
     private boolean prepare() {
         BitSet grouped = new BitSet();
         for (var row : rows.entrySet()) {
-            if (!row.getValue().equals(BigInteger.ONE) || row.getKey().size() < 2) continue;
+            if (row.getValue().signum() <= 0 || row.getValue().compareTo(BigInteger.valueOf(64)) > 0 || row.getKey().size() < 2 ||
+                    row.getValue().compareTo(BigInteger.ONE) > 0 && row.getKey().size() > 8)
+                continue;
             boolean eligible = true;
             for (var term : row.getKey().entrySet()) {
                 charge();
                 int id = term.getKey();
-                if (grouped.get(id) || !term.getValue().equals(BigInteger.ONE) || !upper[id].subtract(lower[id]).equals(BigInteger.ONE)) eligible = false;
+                if (grouped.get(id) || !term.getValue().equals(BigInteger.ONE) || upper[id] == null || upper[id].subtract(lower[id]).compareTo(row.getValue()) < 0) eligible = false;
             }
             if (!eligible) continue;
             Map<Integer, BigInteger> opposite = new TreeMap<>();
             row.getKey().forEach((id, value) -> opposite.put(id, value.negate()));
-            boolean optional = !BigInteger.ONE.negate().equals(rows.get(opposite));
+            boolean optional = !row.getValue().negate().equals(rows.get(opposite));
             int[] ids = row.getKey().keySet().stream().mapToInt(Integer::intValue).toArray();
-            domains.add(new Domain(ids, ids.length + (optional ? 1 : 0), true, optional));
+            if (row.getValue().equals(BigInteger.ONE)) domains.add(new Domain(ids, ids.length + (optional ? 1 : 0), true, optional));
+            else {
+                int capacity = row.getValue().intValueExact();
+                BigInteger reverse = rows.get(opposite);
+                int minimum = reverse == null ? 0 : reverse.negate().max(BigInteger.ZERO).min(BigInteger.valueOf(capacity + 1L)).intValueExact();
+                List<int[]> options = new ArrayList<>();
+                if (!compositions(options, new int[ids.length], 0, capacity, minimum)) continue;
+                if (options.isEmpty()) return finish(true, "group_domain_empty");
+                Domain domain = new Domain(ids, options.size(), true, false);
+                domain.allocations = options.toArray(int[][]::new);
+                domains.add(domain);
+            }
             for (int id : ids) grouped.set(id);
         }
         for (int id = 0; id < lower.length; id++) if (!grouped.get(id) && !lower[id].equals(upper[id])) {
@@ -343,6 +364,25 @@ final class CountMeetInMiddle implements AutoCloseable {
         enumeratingRight = new Enumeration(split, domains.size(), 0, split);
         phase = 1;
         return false;
+    }
+
+    /** Complete small simplex domains; no per-count Boolean expansion. */
+    private boolean compositions(List<int[]> options, int[] values, int position, int remaining, int minimum) {
+        charge();
+        if (position == values.length) {
+            if (minimum > 0) return true;
+            if (options.size() >= 4096) return false;
+            long bytes = 48L + 4L * values.length;
+            if (!budget.tryReserve(bytes)) throw new LocalLimit();
+            memory += bytes;
+            options.add(values.clone());
+            return true;
+        }
+        for (int value = position == values.length - 1 ? Math.max(0, minimum) : 0; value <= remaining; value++) {
+            values[position] = value;
+            if (!compositions(options, values, position + 1, remaining - value, minimum - value)) return false;
+        }
+        return true;
     }
 
     /** Small integer boxes need a few hash lookups, not a sort of every left state. */

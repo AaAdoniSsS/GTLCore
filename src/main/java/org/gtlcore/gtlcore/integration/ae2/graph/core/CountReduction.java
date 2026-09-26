@@ -132,6 +132,7 @@ final class CountReduction implements AutoCloseable {
         saturated = true;
         cursor = 0;
         saturateCovers();
+        saturateLocalPairs();
         BigInteger minimum = BigInteger.ZERO;
         for (int i = 0; i < root.length; i++) {
             charge();
@@ -153,6 +154,68 @@ final class CountReduction implements AutoCloseable {
 
     private boolean binary(int id) {
         return sourceLower[id].signum() == 0 && BigInteger.ONE.equals(sourceUpper[id]);
+    }
+
+    /** Keep tight local material pools visible even when another pool has slack. */
+    private void saturateLocalPairs() {
+        if (Arrays.stream(partners).noneMatch(id -> id >= 0)) return;
+        List<ExactLinearProgram.Constraint> needs = new ArrayList<>();
+        for (var original : source) {
+            if (work >= allowance / 2 || needs.size() >= 128) break;
+            var row = project(original);
+            Map<Integer, BigInteger> negative = new LinkedHashMap<>();
+            BigInteger bound = row.upper();
+            for (var term : row.terms().entrySet()) {
+                charge();
+                if (term.getValue().signum() < 0) negative.put(term.getKey(), term.getValue());
+                else bound = bound.subtract(term.getValue().multiply(sourceLower[term.getKey()]));
+            }
+            // Replacing positive terms by proved lower bounds is a relaxation,
+            // not a trial assignment. Every inferred pair must hold originally.
+            if (bound.signum() < 0 && !negative.isEmpty())
+                needs.add(normalize(new ExactLinearProgram.Constraint(negative, bound)));
+        }
+        Set<ExactLinearProgram.Constraint> distinct = new HashSet<>(source);
+        for (int a = 0; a < needs.size() && work < allowance / 2; a++) {
+            forcePairs(needs.get(a), distinct);
+            for (int b = a + 1; b < needs.size() && work < allowance / 2; b++) {
+                Map<Integer, BigInteger> terms = new LinkedHashMap<>(needs.get(a).terms());
+                for (var term : needs.get(b).terms().entrySet()) {
+                    charge();
+                    terms.merge(term.getKey(), term.getValue(), BigInteger::add);
+                }
+                forcePairs(new ExactLinearProgram.Constraint(terms, needs.get(a).upper().add(needs.get(b).upper())), distinct);
+            }
+        }
+    }
+
+    private void forcePairs(ExactLinearProgram.Constraint row, Set<ExactLinearProgram.Constraint> distinct) {
+        Map<Integer, BigInteger> minimums = new LinkedHashMap<>();
+        BigInteger minimum = BigInteger.ZERO;
+        for (var term : row.terms().entrySet()) {
+            charge();
+            int id = term.getKey(), partner = partners[id];
+            if (partner >= 0) {
+                int group = Math.min(id, partner);
+                if (minimums.containsKey(group)) continue;
+                BigInteger value = term.getValue().min(row.terms().getOrDefault(partner, BigInteger.ZERO));
+                minimums.put(group, value);
+                minimum = minimum.add(value);
+            } else {
+                if (sourceUpper[id] == null) return;
+                minimum = minimum.add(term.getValue().multiply(sourceUpper[id]));
+            }
+        }
+        BigInteger slack = row.upper().subtract(minimum);
+        if (slack.signum() < 0) return; // Ordinary propagation handles contradictions.
+        for (var group : minimums.entrySet()) if (group.getValue().negate().compareTo(slack) > 0) {
+            int id = group.getKey();
+            var equalityHalf = new ExactLinearProgram.Constraint(Map.of(id, BigInteger.ONE.negate(), partners[id], BigInteger.ONE.negate()), BigInteger.ONE.negate());
+            if (distinct.add(equalityHalf)) {
+                source.add(equalityHalf);
+                saturatedPairs++;
+            }
+        }
     }
 
     /**

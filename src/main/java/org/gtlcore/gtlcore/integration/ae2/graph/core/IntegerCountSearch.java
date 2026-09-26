@@ -17,6 +17,7 @@ final class IntegerCountSearch<K> implements AutoCloseable {
     private final Map<K, Long> stock, seeds;
     private final Set<K> external;
     private final boolean preserve, force;
+    private final boolean compileRecovery;
     private final PlanningBudget budget;
     private final Deque<IntegerCountBranch<K>> pending = new ArrayDeque<>(), deferred = new ArrayDeque<>();
     private final Set<ExactLinearProgram.Constraint> materialConflicts = new LinkedHashSet<>();
@@ -43,6 +44,13 @@ final class IntegerCountSearch<K> implements AutoCloseable {
     IntegerCountSearch(GraphCompiler<K> compiler, K target, long amount, Map<K, Long> stock,
                        Map<K, Long> seeds, Set<K> external, Set<String> excluded, boolean preserve, boolean force,
                        PlanningBudget budget, long started, OrderProofs<K> proofs) {
+        this(compiler, target, amount, stock, seeds, external, excluded, preserve, force, budget, started, proofs, true);
+    }
+
+    IntegerCountSearch(GraphCompiler<K> compiler, K target, long amount, Map<K, Long> stock,
+                       Map<K, Long> seeds, Set<K> external, Set<String> excluded, boolean preserve, boolean force,
+                       PlanningBudget budget, long started, OrderProofs<K> proofs, boolean compileRecovery) {
+        this.compileRecovery = compileRecovery;
         this.target = target;
         this.amount = amount;
         this.stock = Map.copyOf(stock);
@@ -288,6 +296,7 @@ final class IntegerCountSearch<K> implements AutoCloseable {
         if (model.keys.size() > 16 || model.recipes.size() > 32) return;
         long before = budget.threadWork();
         var branch = new IntegerCountBranch<>(model, execution, target, amount, stock, seeds, external, preserve, force, budget, started, List.of());
+        branch.compileRecovery = compileRecovery;
         try {
             if (branch.state != IntegerCountBranch.State.OPEN) return;
             branch.initialized = true;
@@ -310,6 +319,7 @@ final class IntegerCountSearch<K> implements AutoCloseable {
         // Only a bounded number of workspaces are resident; the cumulative
         // number of already closed branches is not a reason to drop siblings.
         var branch = new IntegerCountBranch<>(model, execution, target, amount, stock, seeds, external, preserve, force, budget, started, constraints);
+        branch.compileRecovery = compileRecovery;
         branches++;
         if (branch.state != IntegerCountBranch.State.OPEN) {
             unresolved = true;

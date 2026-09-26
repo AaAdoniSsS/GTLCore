@@ -38,6 +38,11 @@ final class IntegerCountBranch<K> implements AutoCloseable {
     CountReduction reduction;
     boolean compiled, reducedLinear;
     CountPartition partition;
+    CountComponents components;
+    CountGroups groups;
+    CountConditioning conditioning;
+    CountRecovery<K> recovery;
+    boolean compileRecovery = true;
     CountMeetInMiddle matching;
     CountLatticeRepair repair;
     ExactRational[] repairPoint;
@@ -256,6 +261,60 @@ final class IntegerCountBranch<K> implements AutoCloseable {
             program = new CountProgram<>(model.recipes, counts, budget);
             return;
         }
+        if (recovery != null) {
+            if (!recovery.step()) return;
+            var body = recovery.witness();
+            recovery.close();
+            recovery = null;
+            if (body != null) {
+                Map<String, BigInteger> used = PlanCountComputation.of(body);
+                counts = model.recipes.stream().map(r -> used.getOrDefault(r.id(), BigInteger.ZERO)).toArray(BigInteger[]::new);
+                beginAssembly(body);
+            } else groups = new CountGroups(reduction.rows(), reduction.lower(), reduction.upper(), budget);
+            return;
+        }
+        if (groups != null) {
+            if (!groups.step()) return;
+            counts = reduction.expand(groups.counts());
+            boolean impossible = groups.infeasible();
+            groups.close();
+            groups = null;
+            if (counts != null) {
+                if (!preprocessingOnly && refineSupport()) state = State.SPLIT;
+                else scheduling = new CountSchedule<>(model, counts, budget);
+            } else if (impossible) {
+                learnedChoices.add(new CountConflict(current));
+                state = State.DEAD;
+            } else components = new CountComponents(reduction.rows(), reduction.lower(), reduction.upper(), budget);
+            return;
+        }
+        if (components != null) {
+            if (!components.step()) return;
+            counts = reduction.expand(components.counts());
+            boolean impossible = components.infeasible();
+            BigInteger[] partial = components.partial();
+            components.close();
+            components = null;
+            if (counts != null) {
+                if (!preprocessingOnly && refineSupport()) state = State.SPLIT;
+                else scheduling = new CountSchedule<>(model, counts, budget);
+            } else if (impossible) {
+                learnedChoices.add(new CountConflict(current));
+                state = State.DEAD;
+            } else conditioning = new CountConditioning(reduction.rows(), reduction.lower(), reduction.upper(), partial, budget);
+            return;
+        }
+        if (conditioning != null) {
+            if (!conditioning.step()) return;
+            counts = reduction.expand(conditioning.counts());
+            conditioning.close();
+            conditioning = null;
+            if (counts != null) {
+                if (!preprocessingOnly && refineSupport()) state = State.SPLIT;
+                else scheduling = new CountSchedule<>(model, counts, budget);
+            } else partition = new CountPartition(reduction.rows(), reduction.lower(), reduction.upper(), budget);
+            return;
+        }
         if (partition != null) {
             if (!partition.step()) return;
             counts = reduction.expand(partition.counts());
@@ -345,7 +404,8 @@ final class IntegerCountBranch<K> implements AutoCloseable {
             compiled = true;
             preprocessingOnly = reduction.variables() > 64 || reduction.rows().size() > 512;
             lowerCost = PlanPreference.compiledLowerBound(model, reduction, lower, seeds, budget);
-            if (current.isEmpty()) partition = new CountPartition(reduction.rows(), reduction.lower(), reduction.upper(), budget);
+            if (current.isEmpty() && compileRecovery) recovery = new CountRecovery<>(this);
+            else if (current.isEmpty()) groups = new CountGroups(reduction.rows(), reduction.lower(), reduction.upper(), budget);
             else if (preprocessingOnly) state = State.UNRESOLVED;
             else beginLinear();
             return;
@@ -504,6 +564,10 @@ final class IntegerCountBranch<K> implements AutoCloseable {
         if (linear != null) linear.close();
         if (propagating != null) propagating.close();
         if (partition != null) partition.close();
+        if (components != null) components.close();
+        if (groups != null) groups.close();
+        if (conditioning != null) conditioning.close();
+        if (recovery != null) recovery.close();
         if (matching != null) matching.close();
         if (binary != null) binary.close();
         if (scheduling != null) scheduling.close();
@@ -514,6 +578,10 @@ final class IntegerCountBranch<K> implements AutoCloseable {
         linear = null;
         propagating = null;
         partition = null;
+        components = null;
+        groups = null;
+        conditioning = null;
+        recovery = null;
         matching = null;
         binary = null;
         scheduling = null;
