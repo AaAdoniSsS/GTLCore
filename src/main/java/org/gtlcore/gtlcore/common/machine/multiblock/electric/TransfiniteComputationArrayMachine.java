@@ -344,8 +344,11 @@ public class TransfiniteComputationArrayMachine extends MultiblockControllerMach
             TransfiniteCraftingCPU cpu = candidates.iterator().next();
             long accepted = cpu.getCraftingLogic().insert(key, amount - inserted, mode);
             if (accepted <= 0) {
-                updateWaitingIndex(cpu, key, false);
-                continue;
+                if (cpu.getCraftingLogic().getWaitingFor(key) <= 0) {
+                    updateWaitingIndex(cpu, key, false);
+                    continue;
+                }
+                break;
             }
             inserted += accepted;
         }
