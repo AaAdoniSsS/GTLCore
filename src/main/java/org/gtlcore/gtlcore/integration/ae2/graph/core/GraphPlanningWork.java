@@ -38,6 +38,7 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
     private MissingStockAnalysis<K> missingAnalysis;
     private QuantityAnalysis<K> quantities;
     private boolean quantityDeferred;
+    private boolean countBeforeQuantity;
     private long quickSearchStarted, quickSearchAllowance;
     private int quantityResumePhase = -1;
     private Boolean quantityBlocked;
@@ -276,6 +277,14 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
                     afterSolve();
                 }
                 case 12 -> {
+                    if (!countAttempted && quantities.hasBinaryChoices()) {
+                        // Bounded integer choices can be solved directly before
+                        // paying for a relaxation that admits fractional choices.
+                        countBeforeQuantity = true;
+                        budget.note("quantity", "binary_choices; try_integer_preprocessing");
+                        startCountSearch();
+                        return false;
+                    }
                     if (quantityResumePhase < 0 && quantities.readyForHeavyAnalysis()) {
                         quantityDeferred = true;
                         quickSearchStarted = budget.nodes();
@@ -330,7 +339,10 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
                                 preserve, forceCraft, excluded, budget, started, true);
                         phase = 13;
                     } else {
-                        phase = allocating == null ? 0 : 6;
+                        if (countBeforeQuantity) {
+                            countBeforeQuantity = false;
+                            phase = 12;
+                        } else phase = allocating == null ? 0 : 6;
                     }
                 }
                 case 15 -> startCountSearch();

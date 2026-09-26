@@ -22,26 +22,30 @@ final class IntegerCountBranch<K> implements AutoCloseable {
     final Map<K, Long> stock, seeds;
     final Set<K> external;
     final boolean preserve, force;
+    final boolean preprocessingOnly;
     final PlanningBudget budget;
     final List<ExactLinearProgram.Constraint> current;
     final List<List<ExactLinearProgram.Constraint>> children = new ArrayList<>();
     final Set<ExactLinearProgram.Constraint> learnedMaterials = new LinkedHashSet<>();
     final List<SupportConflict> supportConflicts = new ArrayList<>();
+    final Set<CountConflict> learnedChoices = new LinkedHashSet<>();
+    private List<CountConflict> knownChoices = List.of();
     List<ExactLinearProgram.Constraint> linearConstraints;
     CountBounds propagating;
+    CountPartition partition;
     ExactLinearProgram linear;
     CountSchedule<K> scheduling;
     CountProgram<K> program;
     AllocationSearch.Candidate<K> assembling;
     PlanVerification<K> verifying;
-    BigInteger[] counts, lower;
+    BigInteger[] counts, lower, upper;
     GraphPlan<K> plan;
     PlanPreference<K> preference, lowerCost;
     State state = State.OPEN;
     PlanningBudget.Exhausted limit;
-    boolean initialized, partitioned, rescue, retried;
+    boolean initialized, partitioned, rescue, retried, choicePruned;
     long memory, workspace, work, schedulingWork;
-    int globalRows;
+    int globalRows, checkedChoices;
 
     IntegerCountBranch(RecipeCountModel<K> model, K target, long amount, Map<K, Long> stock,
                        Map<K, Long> seeds, Set<K> external, boolean preserve, boolean force,
@@ -54,6 +58,7 @@ final class IntegerCountBranch<K> implements AutoCloseable {
         this.external = external;
         this.preserve = preserve;
         this.force = force;
+        preprocessingOnly = model.recipes.size() > 64 || model.keys.size() > 96;
         this.budget = budget;
         this.started = started;
         this.current = List.copyOf(current);
@@ -62,11 +67,17 @@ final class IntegerCountBranch<K> implements AutoCloseable {
         else state = State.UNRESOLVED;
     }
 
-    void run(long quantum, List<ExactLinearProgram.Constraint> materials, List<SupportConflict> support,
+    void run(long quantum, List<ExactLinearProgram.Constraint> materials, List<SupportConflict> support, List<CountConflict> choices,
              PlanPreference<K> incumbent, BooleanSupplier stopped) {
         long before = budget.threadWork();
         try {
             if (state != State.OPEN) return;
+            knownChoices = choices;
+            if (!initialized && rejectsChoices()) {
+                choicePruned = true;
+                state = State.DEAD;
+                return;
+            }
             if (workspace == 0) {
                 if (!budget.tryReserve(2L << 20)) {
                     state = State.UNRESOLVED;
@@ -81,7 +92,7 @@ final class IntegerCountBranch<K> implements AutoCloseable {
                 linearConstraints.addAll(materials);
                 globalRows = linearConstraints.size();
                 linearConstraints.addAll(current);
-                propagating = new CountBounds(model.recipes.size(), linearConstraints, budget);
+                propagating = new CountBounds(model.recipes.size(), linearConstraints, budget, globalRows);
             }
             do {
                 if (stopped.getAsBoolean()) return;
@@ -112,6 +123,13 @@ final class IntegerCountBranch<K> implements AutoCloseable {
     }
 
     private void advance() {
+        if (upper != null) while (checkedChoices < knownChoices.size()) {
+            if (knownChoices.get(checkedChoices++).impliedBy(lower, upper, budget)) {
+                choicePruned = true;
+                state = State.DEAD;
+                return;
+            }
+        }
         if (verifying != null) {
             if (!verifying.step()) return;
             for (BigInteger initial : plan.initialExact().values()) {
@@ -156,7 +174,7 @@ final class IntegerCountBranch<K> implements AutoCloseable {
             scheduling = null;
             if (status == CountSchedule.Result.DEAD) {
                 partitionCounts();
-                state = State.DEAD;
+                state = preprocessingOnly ? State.UNRESOLVED : State.DEAD;
             } else if (status == CountSchedule.Result.UNKNOWN) unresolved();
             return;
         }
@@ -164,19 +182,39 @@ final class IntegerCountBranch<K> implements AutoCloseable {
             program = new CountProgram<>(model.recipes, counts, budget);
             return;
         }
+        if (partition != null) {
+            if (!partition.step()) return;
+            counts = partition.counts();
+            partition.close();
+            partition = null;
+            if (counts != null) {
+                if (!preprocessingOnly && refineSupport()) state = State.SPLIT;
+                else scheduling = new CountSchedule<>(model, counts, budget);
+            } else if (preprocessingOnly) state = State.UNRESOLVED;
+            else linear = new ExactLinearProgram(model.recipes.size(), linearConstraints, model.objective(true), budget);
+            return;
+        }
         if (propagating != null) {
             if (!propagating.step()) return;
             boolean blocked = propagating.blocked();
             lower = propagating.lowerBounds();
+            upper = propagating.upperBounds();
+            BitSet conflict = propagating.conflictingAssumptions();
             var tightened = propagating.tightened();
             propagating.close();
             propagating = null;
             if (blocked) {
+                if (conflict != null) {
+                    List<ExactLinearProgram.Constraint> used = new ArrayList<>();
+                    for (int i = conflict.nextSetBit(0); i >= 0; i = conflict.nextSetBit(i + 1)) used.add(current.get(i));
+                    learnedChoices.add(new CountConflict(used));
+                }
                 state = State.DEAD;
                 return;
             }
             linearConstraints.addAll(tightened);
-            linear = new ExactLinearProgram(model.recipes.size(), linearConstraints, model.objective(true), budget);
+            if (current.isEmpty()) partition = new CountPartition(linearConstraints, lower, upper, budget);
+            else linear = new ExactLinearProgram(model.recipes.size(), linearConstraints, model.objective(true), budget);
             return;
         }
         if (!linear.step()) return;
@@ -186,6 +224,7 @@ final class IntegerCountBranch<K> implements AutoCloseable {
         linear.close();
         linear = null;
         if (status == ExactLinearProgram.Result.INFEASIBLE) {
+            learnedChoices.add(new CountConflict(current));
             state = State.DEAD;
             return;
         }
@@ -215,6 +254,24 @@ final class IntegerCountBranch<K> implements AutoCloseable {
         scheduling = new CountSchedule<>(model, counts, budget);
     }
 
+    private boolean rejectsChoices() {
+        if (knownChoices.isEmpty()) return false;
+        BigInteger[] low = new BigInteger[model.recipes.size()], high = new BigInteger[model.recipes.size()];
+        Arrays.fill(low, BigInteger.ZERO);
+        // Cheap decision bounds can reuse a learned core before rebuilding
+        // propagation or simplex. General assumptions remain in the full model.
+        for (var row : current) {
+            budget.check();
+            if (row.terms().size() != 1) continue;
+            var term = row.terms().entrySet().iterator().next();
+            int id = term.getKey();
+            if (term.getValue().equals(BigInteger.ONE)) high[id] = high[id] == null ? row.upper() : high[id].min(row.upper());
+            else if (term.getValue().equals(BigInteger.ONE.negate())) low[id] = low[id].max(row.upper().negate());
+        }
+        for (var conflict : knownChoices) if (conflict.impliedBy(low, high, budget)) return true;
+        return false;
+    }
+
     private void beginAssembly(PlanStep witness) {
         Map<String, GraphRecipe<K>> recipes = new LinkedHashMap<>();
         model.recipes.forEach(recipe -> recipes.put(recipe.id(), recipe));
@@ -240,10 +297,12 @@ final class IntegerCountBranch<K> implements AutoCloseable {
     void releaseWorkspace() {
         if (linear != null) linear.close();
         if (propagating != null) propagating.close();
+        if (partition != null) partition.close();
         if (scheduling != null) scheduling.close();
         if (program != null) program.close();
         linear = null;
         propagating = null;
+        partition = null;
         scheduling = null;
         program = null;
         assembling = null;
@@ -298,6 +357,9 @@ final class IntegerCountBranch<K> implements AutoCloseable {
     private void partitionCounts() {
         if (partitioned) return;
         partitioned = true;
+        // Large models get optional arithmetic preprocessing, not an enlarged
+        // general branch tree. An undecided candidate remains UNKNOWN.
+        if (preprocessingOnly) return;
         // Disjoint lexicographic siblings cover every OTHER integer vector.
         // An undecided fixed vector stays owned by this retained branch.
         var prefix = new ArrayList<>(current);

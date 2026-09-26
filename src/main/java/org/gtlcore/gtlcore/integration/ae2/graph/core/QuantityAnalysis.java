@@ -22,6 +22,7 @@ final class QuantityAnalysis<K> {
     private final int[] waiting;
     private int phase = -1, index;
     private boolean blocked;
+    private boolean binaryChoices;
     private long memory;
     private RecipeCountModel<K> model;
     private ExactLinearProgram linear;
@@ -158,6 +159,7 @@ final class QuantityAnalysis<K> {
                 budget.note("quantity_bounds", "proven_blocked; recipes=" + model.recipes.size() + "; keys=" + model.keys.size());
                 return finish(true);
             }
+            binaryChoices = model.keys.size() <= 128 && CountPartition.binaryChoices(bounds.lowerBounds(), bounds.upperBounds(), 8);
             bounds.close();
             bounds = null;
             if (model.recipes.size() > 192 || model.keys.size() > 128) return finish(false);
@@ -255,6 +257,10 @@ final class QuantityAnalysis<K> {
 
     boolean readyForHeavyAnalysis() {
         return phase == 8;
+    }
+
+    boolean hasBinaryChoices() {
+        return phase == 8 && binaryChoices;
     }
 
     void discard() {

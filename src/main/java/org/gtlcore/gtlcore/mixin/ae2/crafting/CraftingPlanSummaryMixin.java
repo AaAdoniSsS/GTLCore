@@ -4,7 +4,6 @@ import org.gtlcore.gtlcore.integration.ae2.crafting.CraftingPlanSummaryCraftTime
 import org.gtlcore.gtlcore.integration.ae2.crafting.ICraftingPlanSummaryEntry;
 import org.gtlcore.gtlcore.integration.ae2.graph.AeGraphPlan;
 import org.gtlcore.gtlcore.integration.ae2.graph.GraphPlanSummaryView;
-import org.gtlcore.gtlcore.integration.ae2.graph.core.GraphPlan;
 
 import net.minecraft.network.FriendlyByteBuf;
 
@@ -64,11 +63,13 @@ public class CraftingPlanSummaryMixin implements GraphPlanSummaryView {
         CraftingPlanSummary summary = original.call(grid, actionSource, graph.summaryView());
         ((GraphPlanSummaryView) summary).gtlcore$graphPlanId(graph.id());
         for (var entry : summary.getEntries()) {
-            ((ICraftingPlanSummaryEntry) entry).gtlcore$setGraphSeed(graph.graph().seeds().getOrDefault(entry.getWhat(), 0L));
+            long seed = graph.graph().seeds().getOrDefault(entry.getWhat(), 0L);
+            ((ICraftingPlanSummaryEntry) entry).gtlcore$setGraphSeed(seed);
+            // A missing-seed result describes the order, not every missing
+            // intermediate. Only mark this plan's explicit recovery material;
+            // a recipe producing a missing consumable does not make it a seed.
             ((ICraftingPlanSummaryEntry) entry).gtlcore$setMissingGraphSeed(
-                    graph.graph().result() == GraphPlan.Result.MISSING_SEED &&
-                            graph.graph().missing().containsKey(entry.getWhat()) &&
-                            graph.graph().recipes().values().stream().anyMatch(recipe -> recipe.outputs().containsKey(entry.getWhat())));
+                    seed > 0 && graph.graph().missingExact().containsKey(entry.getWhat()));
         }
         return summary;
     }

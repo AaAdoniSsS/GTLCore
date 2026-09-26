@@ -18,6 +18,7 @@ final class IntegerCountSearch<K> implements AutoCloseable {
     private final Deque<IntegerCountBranch<K>> pending = new ArrayDeque<>(), deferred = new ArrayDeque<>();
     private final Set<ExactLinearProgram.Constraint> materialConflicts = new LinkedHashSet<>();
     private final Set<IntegerCountBranch.SupportConflict> supportConflicts = new LinkedHashSet<>();
+    private final Set<CountConflict> choiceConflicts = new LinkedHashSet<>();
     private final List<Incumbent<K>> frontier = new ArrayList<>();
     private final AtomicBoolean stopped = new AtomicBoolean(), released = new AtomicBoolean();
     private CompletableFuture<List<IntegerCountBranch<K>>> running;
@@ -25,7 +26,7 @@ final class IntegerCountSearch<K> implements AutoCloseable {
     private Incumbent<K> best;
     private boolean complete, infeasible, unresolved;
     private long work, improvementUntil = Long.MAX_VALUE;
-    private int branches, rounds, suspensions, boundPrunes, peakWidth;
+    private int branches, rounds, suspensions, boundPrunes, choicePrunes, peakWidth;
 
     private record Incumbent<K>(GraphPlan<K> plan, PlanPreference<K> cost, long memory) {}
 
@@ -43,12 +44,13 @@ final class IntegerCountSearch<K> implements AutoCloseable {
         this.started = started;
         allowance = Math.min(2_000_000, budget.remainingWork() / 4);
         model = RecipeCountModel.create(compiler, target, amount, this.stock, this.seeds, this.external, excluded, force, budget);
-        if (model == null || model.recipes.size() > 64 || model.keys.size() > 96) {
-            if (model != null) budget.note("integer_counts", "skipped; recipes=" + model.recipes.size() + "/64; keys=" + model.keys.size() + "/96");
+        if (model == null) {
             complete = true;
             close();
             return;
         }
+        if (model.recipes.size() > 64 || model.keys.size() > 96)
+            budget.note("integer_counts", "preprocessing_only; recipes=" + model.recipes.size() + "; keys=" + model.keys.size());
         enqueue(List.of());
     }
 
@@ -73,10 +75,11 @@ final class IntegerCountSearch<K> implements AutoCloseable {
         long quantum = Math.max(1, Math.min(4096, (Math.min(allowance, improvementUntil) - work) / wave.size()));
         var materials = List.copyOf(materialConflicts);
         var support = List.copyOf(supportConflicts);
+        var choices = List.copyOf(choiceConflicts);
         PlanPreference<K> incumbent = best == null ? null : best.cost();
         List<Supplier<IntegerCountBranch<K>>> partitions = new ArrayList<>();
         for (var branch : wave) partitions.add(() -> {
-            branch.run(quantum, materials, support, incumbent, stopped::get);
+            branch.run(quantum, materials, support, choices, incumbent, stopped::get);
             return branch;
         });
         dispatched = wave;
@@ -138,6 +141,7 @@ final class IntegerCountSearch<K> implements AutoCloseable {
         for (var branch : wave) {
             work += branch.work;
             branch.work = 0;
+            if (branch.choicePruned) choicePrunes++;
             if (!continueSearch) {
                 if (branch.state == IntegerCountBranch.State.FOUND) retain(branch);
                 else unresolved = true;
@@ -151,6 +155,10 @@ final class IntegerCountSearch<K> implements AutoCloseable {
             if (supportConflicts.size() < 64) for (var conflict : branch.supportConflicts) {
                 if (supportConflicts.size() == 64) break;
                 supportConflicts.add(conflict);
+            }
+            if (choiceConflicts.size() < 64) for (var conflict : branch.learnedChoices) {
+                if (choiceConflicts.size() == 64) break;
+                choiceConflicts.add(conflict);
             }
             for (var child : branch.children) enqueue(child);
             branch.children.clear();
@@ -245,6 +253,7 @@ final class IntegerCountSearch<K> implements AutoCloseable {
         budget.note("integer_counts", "branches=" + branches + "; slices=" + rounds + "; suspended=" + suspensions +
                 "; peak_width=" + peakWidth + "; work=" + work + "/" + allowance + "; frontier=" + frontier.size() +
                 "; bound_prunes=" + boundPrunes + "; unresolved=" + unresolved + "; witness=" + (best != null));
+        if (!choiceConflicts.isEmpty()) budget.note("count_conflicts", "proven_choice_conflicts=" + choiceConflicts.size() + "; reused=" + choicePrunes);
         close();
         return true;
     }
