@@ -209,10 +209,6 @@ public final class TransfiniteCraftingLogic implements ICraftingJobSuspension, I
         }
         System.arraycopy(this.usedDispatches, 0, this.usedDispatches, 1, this.usedDispatches.length - 1);
         this.usedDispatches[0] = dispatchedCalls;
-        // The fake-craft (written book) auto-cancel must run on every tick, not only while
-        // someone watches the status UI - publishDispatchReasons() early-returns when
-        // collectDispatchReasons is false (no listeners), which gated this check behind
-        // having the plan screen open.
         if (this.job != null && this.job.getTasks().isEmpty() && isWrittenBookOutput(getFinalJobOutput())) {
             finishJob(true);
         }
