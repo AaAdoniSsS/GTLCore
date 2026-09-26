@@ -22,7 +22,9 @@ final class CountSchedule<K> implements AutoCloseable {
     private final Map<K, BigInteger> held = new LinkedHashMap<>();
     private final List<PlanStep> program = new ArrayList<>(), pass = new ArrayList<>();
     private final Deque<State> pending = new ArrayDeque<>();
-    private final Set<List<Integer>> seen = new HashSet<>();
+    private final Map<List<BigInteger>, List<BitSet>> seen = new HashMap<>();
+    private PartialOrder<K> partialOrder;
+    private int labels;
     private BigInteger[] remaining, used;
     private SummaryComputation<K> summarizing;
     private PlanStep passBody, witness;
@@ -181,7 +183,7 @@ final class CountSchedule<K> implements AutoCloseable {
     }
 
     private boolean blockedStartup() {
-        if (model.recipes.stream().anyMatch(recipe -> !recipe.configurationInputs().isEmpty())) return false;
+        if (model.recipes.stream().anyMatch(recipe -> !recipe.configurationInputs().isEmpty() || !recipe.reusableInputs().isEmpty())) return false;
         Map<K, BigInteger> upper = new HashMap<>();
         model.stock.forEach((key, value) -> upper.put(key, BigInteger.valueOf(value)));
         BitSet available = new BitSet();
@@ -216,17 +218,14 @@ final class CountSchedule<K> implements AutoCloseable {
         }
         // Only exhaustive exploration may turn a scheduling failure into a
         // counterexample. A greedy failure, depth cap, or memory cap never does.
-        if (model.recipes.stream().anyMatch(recipe -> !recipe.configurationInputs().isEmpty())) return finish(Result.UNKNOWN);
+        if (model.recipes.stream().anyMatch(recipe -> !recipe.configurationInputs().isEmpty() || !recipe.reusableInputs().isEmpty())) return finish(Result.UNKNOWN);
         components = independentComponents();
-        int[] sizes = new int[original.length];
-        BigInteger[] totals = new BigInteger[original.length];
-        Arrays.fill(totals, BigInteger.ZERO);
+        BitSet activeComponents = new BitSet();
         for (int i = 0; i < original.length; i++) if (original[i].signum() > 0) {
-            if (sizes[components[i]]++ == 0) independentComponents++;
-            totals[components[i]] = totals[components[i]].add(original[i]);
-            if (sizes[components[i]] > 12 || totals[components[i]].compareTo(BigInteger.valueOf(24)) > 0) return finish(Result.UNKNOWN);
+            activeComponents.set(components[i]);
         }
-        long bytes = 8192L * (96 + 8L * original.length);
+        independentComponents = activeComponents.cardinality();
+        long bytes = 4096 + 64L * original.length + (long) original.length * original.length / 4;
         if (!budget.tryReserve(bytes)) {
             if (!early) return finish(Result.UNKNOWN);
             independentComponents = 0;
@@ -234,9 +233,10 @@ final class CountSchedule<K> implements AutoCloseable {
             return false;
         }
         memory += bytes;
-        List<Integer> counts = Arrays.stream(original).map(BigInteger::intValueExact).toList();
-        pending.add(new State(counts, null, -1));
-        seen.add(counts);
+        partialOrder = new PartialOrder<>(summaries, budget);
+        List<BigInteger> counts = List.copyOf(Arrays.asList(original));
+        if (!remember(counts, new BitSet())) return finish(Result.UNKNOWN);
+        pending.add(new State(counts, new BitSet(), null, -1));
         exact = true;
         return false;
     }
@@ -257,7 +257,7 @@ final class CountSchedule<K> implements AutoCloseable {
     private boolean exactStep() {
         if (pending.isEmpty()) return finish(Result.DEAD);
         State state = pending.removeLast();
-        if (state.counts.stream().allMatch(value -> value == 0)) {
+        if (state.counts.stream().allMatch(value -> value.signum() == 0)) {
             var path = new ArrayList<PlanStep>();
             for (State current = state; current.parent != null; current = current.parent)
                 path.add(new PlanStep.Batch(model.recipes.get(current.recipe).id(), 1));
@@ -267,28 +267,62 @@ final class CountSchedule<K> implements AutoCloseable {
         }
         held.clear();
         model.stock.forEach((key, value) -> held.put(key, BigInteger.valueOf(value)));
-        for (int i = 0; i < original.length; i++) apply(summaries.get(i), original[i].subtract(BigInteger.valueOf(state.counts.get(i))));
+        for (int i = 0; i < original.length; i++) apply(summaries.get(i), original[i].subtract(state.counts.get(i)));
         int component = -1;
-        for (int i = 0; i < original.length; i++) if (state.counts.get(i) > 0) {
+        for (int i = 0; i < original.length; i++) if (state.counts.get(i).signum() > 0) {
             component = components[i];
             break;
         }
-        for (int i = 0; i < original.length; i++) if (state.counts.get(i) > 0) {
+        BitSet sleeping = (BitSet) state.sleeping.clone();
+        BitSet available = new BitSet(), active = new BitSet();
+        for (int i = 0; i < original.length; i++) if (state.counts.get(i).signum() > 0 && components[i] == component) {
+            active.set(i);
+            if (limit(summaries.get(i), BigInteger.ONE).signum() > 0) available.set(i);
+        }
+        BitSet persistent = partialOrder.persistent(active, available, held, model.external);
+        var children = new ArrayList<State>();
+        for (int i = 0; i < original.length; i++) if (state.counts.get(i).signum() > 0) {
             if (components[i] != component) {
                 orderedAway++;
                 continue;
             }
-            if (limit(summaries.get(i), BigInteger.ONE).signum() == 0) continue;
+            if (!available.get(i)) continue;
+            if (sleeping.get(i) || !persistent.get(i)) {
+                orderedAway++;
+                continue;
+            }
             var next = new ArrayList<>(state.counts);
-            next.set(i, next.get(i) - 1);
+            next.set(i, next.get(i).subtract(BigInteger.ONE));
             var frozen = List.copyOf(next);
-            if (seen.add(frozen)) pending.add(new State(frozen, state, i));
-            if (seen.size() >= 8192) return finish(Result.UNKNOWN);
+            BitSet childSleep = partialOrder.after(sleeping, i);
+            sleeping.set(i);
+            if (remember(frozen, childSleep)) children.add(new State(frozen, childSleep, state, i));
+            if (labels >= 8192 || result != null) return finish(Result.UNKNOWN);
         }
+        // Explore the earlier alternative before its sleeping equivalents.
+        for (int i = children.size() - 1; i >= 0; i--) pending.addLast(children.get(i));
         return false;
     }
 
-    private record State(List<Integer> counts, State parent, int recipe) {}
+    private boolean remember(List<BigInteger> counts, BitSet sleeping) {
+        List<BitSet> previous = seen.get(counts);
+        if (previous != null && previous.stream().anyMatch(old -> PartialOrder.subset(old, sleeping))) return false;
+        long bytes = 160 + 48L * original.length;
+        if (!budget.tryReserve(bytes)) {
+            result = Result.UNKNOWN;
+            return false;
+        }
+        memory += bytes;
+        labels++;
+        // A marking reached with MORE sleeping actions must not suppress a
+        // later arrival that can explore additional orders.
+        if (previous == null) seen.put(counts, previous = new ArrayList<>());
+        previous.removeIf(old -> PartialOrder.subset(sleeping, old));
+        previous.add((BitSet) sleeping.clone());
+        return true;
+    }
+
+    private record State(List<BigInteger> counts, BitSet sleeping, State parent, int recipe) {}
 
     private int[] independentComponents() {
         int[] root = new int[original.length];
@@ -328,7 +362,7 @@ final class CountSchedule<K> implements AutoCloseable {
 
     private boolean finish(Result value) {
         if (exact) budget.note("count_schedule_por", "components=" + independentComponents +
-                "; states=" + seen.size() + "; independent_interleavings_skipped=" + orderedAway + "; result=" + value);
+                "; states=" + seen.size() + "; sleep_labels=" + labels + "; independent_interleavings_skipped=" + orderedAway + "; result=" + value);
         result = value;
         close();
         return true;

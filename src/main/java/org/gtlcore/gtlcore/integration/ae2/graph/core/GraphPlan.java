@@ -15,6 +15,7 @@ public final class GraphPlan<K> {
     private final Map<K, BigInteger> initial, missing;
     private final Map<K, Long> seeds;
     private final Result result;
+    private final SeedOptimality seedOptimality;
     private volatile Map<K, Long> initialView, missingView;
     private volatile Map<String, BigInteger> exactTimes;
 
@@ -67,6 +68,25 @@ public final class GraphPlan<K> {
         return result;
     }
 
+    /** Other material/operation objectives may remain unproven even when this is certified. */
+    public record SeedOptimality(int lowerTypeBound, int types, boolean cardinalityProven,
+                                 boolean quantitiesParetoProven, boolean fundedPreview) {
+
+        public SeedOptimality {
+            if (lowerTypeBound < 0 || lowerTypeBound > types) throw new IllegalArgumentException("Invalid seed bound");
+        }
+    }
+
+    public SeedOptimality seedOptimality() {
+        return seedOptimality;
+    }
+
+    public GraphPlan<K> withSeedOptimality(SeedOptimality proof) {
+        if (proof == null) return this;
+        return new GraphPlan<>(target, amount, preserveSeeds, steps, recipes, initial, seeds, missing, result,
+                searchNodes, planningNanos, proof);
+    }
+
     public long searchNodes() {
         return searchNodes;
     }
@@ -87,13 +107,22 @@ public final class GraphPlan<K> {
         QUEUE_LIMIT,
         UNKNOWN,
         UNSUPPORTED_PATTERN_SEMANTICS,
-        AMOUNT_LIMIT
+        AMOUNT_LIMIT,
+        /** The captured order is impossible; no verified refill program is available. */
+        INFEASIBLE
     }
 
     public GraphPlan(K target, long amount, boolean preserveSeeds, PlanStep steps,
                      Map<String, GraphRecipe<K>> recipes, Map<K, ? extends Number> initial,
                      Map<K, Long> seeds, Map<K, ? extends Number> missing, Result result,
                      long searchNodes, long planningNanos) {
+        this(target, amount, preserveSeeds, steps, recipes, initial, seeds, missing, result, searchNodes, planningNanos, null);
+    }
+
+    private GraphPlan(K target, long amount, boolean preserveSeeds, PlanStep steps,
+                      Map<String, GraphRecipe<K>> recipes, Map<K, ? extends Number> initial,
+                      Map<K, Long> seeds, Map<K, ? extends Number> missing, Result result,
+                      long searchNodes, long planningNanos, SeedOptimality seedOptimality) {
         if (amount <= 0) throw new IllegalArgumentException("Non-positive request");
         this.target = target;
         this.amount = amount;
@@ -104,6 +133,7 @@ public final class GraphPlan<K> {
         this.seeds = GraphRecipe.amounts(seeds);
         this.missing = ExactAmounts.copy(missing);
         this.result = result;
+        this.seedOptimality = seedOptimality;
         this.searchNodes = searchNodes;
         this.planningNanos = planningNanos;
     }

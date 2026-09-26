@@ -61,7 +61,8 @@ final class CountPartition implements AutoCloseable {
     }
 
     static boolean binaryChoices(BigInteger[] lower, BigInteger[] upper, int minimumChoices) {
-        if (lower.length > 192) return false;
+        // This classifies domains, not solver size. In particular the sparse
+        // front end must recognize choices before complementary sources merge.
         int choices = 0, trials = 0;
         for (int i = 0; i < lower.length; i++) {
             if (upper[i] == null || lower[i].signum() < 0 || lower[i].compareTo(upper[i]) > 0) return false;
@@ -216,10 +217,10 @@ final class CountPartition implements AutoCloseable {
                     least = least.add(partners[i] < 0 ? conserved[i] : conserved[i].min(conserved[partners[i]]));
                 for (int i = 0; i < lower.length; i++) if (partners[i] > i &&
                         (!least.equals(conservedUpper) || conserved[i].min(conserved[partners[i]]).signum() == 0)) {
-                    partners[partners[i]] = -1;
-                    partners[i] = -1;
-                    pairs--;
-                }
+                            partners[partners[i]] = -1;
+                            partners[i] = -1;
+                            pairs--;
+                        }
                 for (int i = 0; i < lower.length; i++) if (!lower[i].equals(upper[i]) && (partners[i] < 0 || partners[i] > i)) {
                     groups[i] = representatives.size();
                     if (partners[i] >= 0) groups[partners[i]] = groups[i];
@@ -300,7 +301,10 @@ final class CountPartition implements AutoCloseable {
         return parts[1].signum() < 0 ? parts[0].subtract(BigInteger.ONE) : parts[0];
     }
 
-    private void charge() { budget.check(); work++; }
+    private void charge() {
+        budget.check();
+        work++;
+    }
 
     private boolean finish(BigInteger[] result) {
         counts = result;
@@ -309,7 +313,9 @@ final class CountPartition implements AutoCloseable {
         return true;
     }
 
-    BigInteger[] counts() { return complete && counts != null ? counts.clone() : null; }
+    BigInteger[] counts() {
+        return complete && counts != null ? counts.clone() : null;
+    }
 
     @Override
     public void close() {

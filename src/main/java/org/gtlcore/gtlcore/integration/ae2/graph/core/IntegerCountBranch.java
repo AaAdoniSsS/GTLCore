@@ -38,6 +38,7 @@ final class IntegerCountBranch<K> implements AutoCloseable {
     CountReduction reduction;
     boolean compiled, reducedLinear;
     CountPartition partition;
+    CountMeetInMiddle matching;
     CountBoolean binary;
     ExactLinearProgram linear;
     ExactLinearProgram.Basis inheritedBasis, sharedBasis;
@@ -251,17 +252,36 @@ final class IntegerCountBranch<K> implements AutoCloseable {
             if (counts != null) {
                 if (!preprocessingOnly && refineSupport()) state = State.SPLIT;
                 else scheduling = new CountSchedule<>(model, counts, budget);
+            } else matching = new CountMeetInMiddle(reduction.rows(), reduction.lower(), reduction.upper(), budget);
+            return;
+        }
+        if (matching != null) {
+            if (!matching.step()) return;
+            counts = reduction.expand(matching.counts());
+            boolean impossible = matching.infeasible();
+            matching.close();
+            matching = null;
+            if (counts != null) {
+                if (!preprocessingOnly && refineSupport()) state = State.SPLIT;
+                else scheduling = new CountSchedule<>(model, counts, budget);
+            } else if (impossible) {
+                learnedChoices.add(new CountConflict(current));
+                state = State.DEAD;
             } else binary = new CountBoolean(reduction.rows(), reduction.lower(), reduction.upper(), budget);
             return;
         }
         if (binary != null) {
             if (!binary.step()) return;
             counts = reduction.expand(binary.counts());
+            boolean impossible = binary.infeasible();
             binary.close();
             binary = null;
             if (counts != null) {
                 if (!preprocessingOnly && refineSupport()) state = State.SPLIT;
                 else scheduling = new CountSchedule<>(model, counts, budget);
+            } else if (impossible) {
+                learnedChoices.add(new CountConflict(current));
+                state = State.DEAD;
             } else if (preprocessingOnly) state = State.UNRESOLVED;
             else beginLinear();
             return;
@@ -426,6 +446,7 @@ final class IntegerCountBranch<K> implements AutoCloseable {
         if (linear != null) linear.close();
         if (propagating != null) propagating.close();
         if (partition != null) partition.close();
+        if (matching != null) matching.close();
         if (binary != null) binary.close();
         if (scheduling != null) scheduling.close();
         if (supportSearch != null) supportSearch.close();
@@ -433,6 +454,7 @@ final class IntegerCountBranch<K> implements AutoCloseable {
         linear = null;
         propagating = null;
         partition = null;
+        matching = null;
         binary = null;
         scheduling = null;
         supportSearch = null;

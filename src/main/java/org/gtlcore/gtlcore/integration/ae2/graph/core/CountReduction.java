@@ -16,12 +16,15 @@ final class CountReduction implements AutoCloseable {
     private final BigInteger[] offset;
     private final List<Equality> proof = new ArrayList<>();
     private final Map<Map<Integer, BigInteger>, ExactLinearProgram.Constraint> known = new LinkedHashMap<>();
+    private final int[] partners;
+    private final BigInteger[] conserved;
+    private BigInteger conservedUpper = BigInteger.ZERO;
     private List<ExactLinearProgram.Constraint> rows;
     private BigInteger[] lower, upper;
     private int[] representatives;
     private long memory, work, allowance;
-    private int cursor;
-    private boolean complete, changed;
+    private int cursor, saturatedPairs;
+    private boolean complete, changed, saturated;
 
     CountReduction(List<ExactLinearProgram.Constraint> source, BigInteger[] lower, BigInteger[] upper, PlanningBudget budget) {
         this.source = new ArrayList<>(source);
@@ -31,6 +34,10 @@ final class CountReduction implements AutoCloseable {
         root = new int[lower.length];
         sign = new int[lower.length];
         offset = new BigInteger[lower.length];
+        partners = new int[lower.length];
+        Arrays.fill(partners, -1);
+        conserved = new BigInteger[lower.length];
+        Arrays.fill(conserved, BigInteger.ZERO);
         for (int i = 0; i < lower.length; i++) {
             root[i] = lower[i].equals(upper[i]) ? -1 : i;
             sign[i] = 1;
@@ -53,6 +60,10 @@ final class CountReduction implements AutoCloseable {
             // Keep all choices when compilation runs out of its local budget.
             identity();
             return true;
+        }
+        if (!saturated) {
+            saturate();
+            return false;
         }
         if (cursor == source.size()) {
             if (changed) {
@@ -89,6 +100,58 @@ final class CountReduction implements AutoCloseable {
         }
         changed = true;
         return false;
+    }
+
+    /**
+     * A nonnegative sum of necessary rows can saturate disjoint at-most-one
+     * pairs. Each pair attaining a strictly negative minimum must select one
+     * source. Export that equality to every downstream solver, without fixing
+     * any trial count or assuming the other coupled rows are independent.
+     */
+    private void saturate() {
+        if (cursor < source.size()) {
+            var row = normalize(project(source.get(cursor++)));
+            if (row.upper().signum() < 0 && row.terms().values().stream().allMatch(v -> v.signum() < 0)) {
+                conservedUpper = conservedUpper.add(row.upper());
+                for (var term : row.terms().entrySet()) {
+                    charge();
+                    int id = term.getKey();
+                    conserved[id] = conserved[id].add(term.getValue());
+                }
+            }
+            if (row.terms().size() != 2 || !row.upper().equals(BigInteger.ONE)) return;
+            var ids = row.terms().keySet().iterator();
+            int a = ids.next(), b = ids.next();
+            if (partners[a] >= 0 || partners[b] >= 0 || !binary(a) || !binary(b) ||
+                    !row.terms().get(a).equals(BigInteger.ONE) || !row.terms().get(b).equals(BigInteger.ONE))
+                return;
+            partners[a] = b;
+            partners[b] = a;
+            return;
+        }
+        saturated = true;
+        cursor = 0;
+        BigInteger minimum = BigInteger.ZERO;
+        for (int i = 0; i < root.length; i++) {
+            charge();
+            if (root[i] < 0 || partners[i] >= 0 && partners[i] < i) continue;
+            if (partners[i] >= 0) minimum = minimum.add(conserved[i].min(conserved[partners[i]]).min(BigInteger.ZERO));
+            else if (conserved[i].signum() != 0) {
+                if (sourceUpper[i] == null) return;
+                minimum = minimum.add(conserved[i].multiply(sourceUpper[i]));
+            }
+        }
+        if (!minimum.equals(conservedUpper)) return;
+        for (int i = 0; i < root.length; i++) if (partners[i] > i && conserved[i].min(conserved[partners[i]]).signum() < 0) {
+            charge();
+            source.add(new ExactLinearProgram.Constraint(Map.of(i, BigInteger.ONE.negate(), partners[i], BigInteger.ONE.negate()),
+                    BigInteger.ONE.negate()));
+            saturatedPairs++;
+        }
+    }
+
+    private boolean binary(int id) {
+        return sourceLower[id].signum() == 0 && BigInteger.ONE.equals(sourceUpper[id]);
     }
 
     private ExactLinearProgram.Constraint project(ExactLinearProgram.Constraint row) {
@@ -143,7 +206,7 @@ final class CountReduction implements AutoCloseable {
         }
         complete = true;
         budget.note("count_compile", "variables=" + root.length + "->" + representatives.length +
-                "; rows=" + source.size() + "->" + rows.size() + "; equalities=" + proof.size());
+                "; rows=" + source.size() + "->" + rows.size() + "; equalities=" + proof.size() + "; saturated_pairs=" + saturatedPairs);
     }
 
     private void identity() {

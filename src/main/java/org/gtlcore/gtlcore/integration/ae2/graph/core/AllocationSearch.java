@@ -48,6 +48,12 @@ final class AllocationSearch<K> {
     private final boolean preview;
     private final List<GraphCompiler.QuantityCertificate<K>> certificates;
     private long allocationStarted;
+    private OrderProofs<K> proofs;
+
+    AllocationSearch<K> proofs(OrderProofs<K> value) {
+        if (!preview) proofs = value;
+        return this;
+    }
 
     AllocationSearch(GraphCompiler<K> compiler, K target, long amount, Map<K, Long> stock, Set<K> external, Map<K, Long> requiredSeeds,
                      boolean preserve, boolean force, Set<String> excluded, PlanningBudget budget, long started) {
@@ -169,6 +175,7 @@ final class AllocationSearch<K> {
         Frame frame = stack.peek();
         if (!frame.checkedGoal) {
             frame.checkedGoal = true;
+            if (backjump()) return false;
             if (provenResourceConflict()) frame.recipe = recipes.size();
             BigInteger goal = BigInteger.valueOf(amount);
             if (force) goal = goal.add(BigInteger.valueOf(stock.getOrDefault(target, 0L)));
@@ -386,6 +393,37 @@ final class AllocationSearch<K> {
             if (applicable && available.compareTo(required) < 0) return true;
         }
         return false;
+    }
+
+    private boolean backjump() {
+        if (proofs == null || macros != null) return false;
+        Map<String, BigInteger> counts = new LinkedHashMap<>();
+        for (PlanStep step : path) {
+            var batch = (PlanStep.Batch) step;
+            counts.merge(batch.recipe(), BigInteger.valueOf(batch.runs()), BigInteger::add);
+        }
+        if (!proofs.rejectedPrefix(counts)) return false;
+        int firstForbidden = path.size();
+        while (firstForbidden > 0) {
+            var batch = (PlanStep.Batch) path.get(firstForbidden - 1);
+            counts.merge(batch.recipe(), BigInteger.valueOf(batch.runs()).negate(), BigInteger::add);
+            if (!proofs.rejectedPrefix(counts)) break;
+            firstForbidden--;
+        }
+        int previousDepth = stack.size();
+        // Every suffix of this prefix is impossible under a shared, proved
+        // count clause. Skip directly to its last relevant execution decision.
+        while (!stack.isEmpty() && path.size() >= firstForbidden) {
+            Frame frame = stack.pop();
+            rollback(frame.mark);
+            while (path.size() > frame.pathSize) path.remove(path.size() - 1);
+            if (!stack.isEmpty()) {
+                memory -= 96;
+                budget.release(96);
+            }
+        }
+        budget.note("allocation_backjump", "levels=" + previousDepth + "->" + stack.size());
+        return true;
     }
 
     /** Shared material/seed assembly for every native executable witness. */

@@ -42,7 +42,7 @@ final class CountBoolean implements AutoCloseable {
     private final long allowance;
     private long memory, work;
     private int rowIndex, level, decisions, conflicts, pinned;
-    private boolean complete;
+    private boolean complete, infeasible;
     private BigInteger[] counts;
 
     CountBoolean(List<ExactLinearProgram.Constraint> constraints, BigInteger[] lower,
@@ -59,7 +59,7 @@ final class CountBoolean implements AutoCloseable {
         negativeActivity = new double[lower.length];
         Arrays.fill(values, -1);
         allowance = Math.min(262_144, budget.remainingWork() / 8);
-        if (!CountPartition.binaryChoices(lower, upper, 1) || allowance < 1024) {
+        if (lower.length > 1024 || !CountPartition.binaryChoices(lower, upper, 1) || allowance < 1024) {
             complete = true;
             return;
         }
@@ -225,7 +225,11 @@ final class CountBoolean implements AutoCloseable {
     private void learn(BitSet explanation) {
         conflicts++;
         if (explanation.isEmpty()) {
-            finish("candidate_face_blocked");
+            // The empty explanation closes the searched Boolean domain. Only
+            // a full domain (no trial-fixed positive counts) closes this branch
+            // of the original integer model as well.
+            infeasible = pinned == 0;
+            finish(infeasible ? "proven_infeasible" : "candidate_face_blocked");
             return;
         }
         if (conflicts > 512) {
@@ -296,6 +300,10 @@ final class CountBoolean implements AutoCloseable {
 
     BigInteger[] counts() {
         return counts == null ? null : counts.clone();
+    }
+
+    boolean infeasible() {
+        return complete && infeasible;
     }
 
     @Override

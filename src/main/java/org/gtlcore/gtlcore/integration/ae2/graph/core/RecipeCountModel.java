@@ -22,12 +22,18 @@ final class RecipeCountModel<K> implements AutoCloseable {
                                           PlanningBudget budget) {
         // Sparse preprocessing is sized by incidences, independently of the
         // much smaller dense-simplex limits in the integer branch strategy.
-        return create(compiler, target, amount, stock, seeds, external, excluded, force, budget, 8192, 192);
+        return create(compiler, target, amount, stock, seeds, external, excluded, force, budget, 8192, 8192);
     }
 
     static <K> RecipeCountModel<K> forBounds(GraphCompiler<K> compiler, K target, long amount, Map<K, Long> stock,
                                              Map<K, Long> seeds, Set<K> external, Set<String> excluded, PlanningBudget budget) {
         return create(compiler, target, amount, stock, seeds, external, excluded, false, budget, 8192, 8192);
+    }
+
+    static <K> RecipeCountModel<K> forProofs(GraphCompiler<K> compiler, K target, long amount, Map<K, Long> stock,
+                                             Map<K, Long> seeds, Set<K> external, Set<String> excluded, boolean force,
+                                             PlanningBudget budget) {
+        return create(compiler, target, amount, stock, seeds, external, excluded, force, budget, 8192, 8192);
     }
 
     private static <K> RecipeCountModel<K> create(GraphCompiler<K> compiler, K target, long amount, Map<K, Long> stock,

@@ -21,6 +21,7 @@ final class IntegerCountSearch<K> implements AutoCloseable {
     private final Set<ExactLinearProgram.Constraint> materialConflicts = new LinkedHashSet<>();
     private final Set<CountGuard> supportConflicts = new LinkedHashSet<>();
     private final CountConflictPool choiceConflicts;
+    private final OrderProofs<K> proofs;
     private final List<Incumbent<K>> frontier = new ArrayList<>();
     private final AtomicBoolean stopped = new AtomicBoolean(), released = new AtomicBoolean();
     private CompletableFuture<List<IntegerCountBranch<K>>> running;
@@ -35,6 +36,12 @@ final class IntegerCountSearch<K> implements AutoCloseable {
     IntegerCountSearch(GraphCompiler<K> compiler, K target, long amount, Map<K, Long> stock,
                        Map<K, Long> seeds, Set<K> external, Set<String> excluded, boolean preserve, boolean force,
                        PlanningBudget budget, long started) {
+        this(compiler, target, amount, stock, seeds, external, excluded, preserve, force, budget, started, null);
+    }
+
+    IntegerCountSearch(GraphCompiler<K> compiler, K target, long amount, Map<K, Long> stock,
+                       Map<K, Long> seeds, Set<K> external, Set<String> excluded, boolean preserve, boolean force,
+                       PlanningBudget budget, long started, OrderProofs<K> proofs) {
         this.target = target;
         this.amount = amount;
         this.stock = Map.copyOf(stock);
@@ -43,6 +50,7 @@ final class IntegerCountSearch<K> implements AutoCloseable {
         this.preserve = preserve;
         this.force = force;
         this.budget = budget;
+        this.proofs = proofs;
         choiceConflicts = new CountConflictPool(budget);
         this.started = started;
         allowance = Math.min(2_000_000, budget.remainingWork() / 4);
@@ -58,6 +66,10 @@ final class IntegerCountSearch<K> implements AutoCloseable {
             complete = true;
             close();
             return;
+        }
+        if (proofs != null) {
+            proofs.adopt(model);
+            choiceConflicts.add(proofs.forModel(model));
         }
         enqueue(List.of());
     }
@@ -310,6 +322,7 @@ final class IntegerCountSearch<K> implements AutoCloseable {
                 "; first_work=" + firstWitnessWork + "; improvement_work=" + (firstWitnessWork < 0 ? 0 : work - firstWitnessWork) +
                 "; improvement_ms=" + (firstWitnessWork < 0 ? 0 : (System.nanoTime() - firstWitnessNanos) / 1_000_000.0));
         choiceConflicts.report();
+        if (proofs != null) proofs.publish(model, choiceConflicts.snapshot());
         close();
         return true;
     }
@@ -330,7 +343,7 @@ final class IntegerCountSearch<K> implements AutoCloseable {
         pending.clear();
         deferred.clear();
         dispatched = List.of();
-        if (model != null) model.close();
+        if (model != null && (proofs == null || proofs.model != model)) model.close();
         if (execution != null) execution.close();
         choiceConflicts.close();
         frontier.forEach(candidate -> budget.release(candidate.memory()));

@@ -15,8 +15,12 @@ public final class GraphPlanner<K> {
     public GraphPlan<K> plan(K target, long amount, Map<K, Long> stock, boolean preserve,
                              boolean forceCraft, PlanningBudget budget) {
         GraphPlanningWork<K> work = begin(target, amount, stock, preserve, forceCraft, budget);
-        while (!work.step()) { /* Drive the same continuation used by background workers. */ }
-        return work.result();
+        try {
+            while (!work.step()) { /* Drive the same continuation used by background workers. */ }
+            return work.result();
+        } finally {
+            work.close();
+        }
     }
 
     public GraphPlanningWork<K> begin(K target, long amount, Map<K, Long> stock, boolean preserve,
