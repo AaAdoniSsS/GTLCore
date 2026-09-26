@@ -2,6 +2,7 @@ package org.gtlcore.gtlcore.integration.ae2.graph.core;
 
 import java.math.BigInteger;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Bounded two-phase rational simplex for sparse Ax <= b, x >= 0. Bland's
@@ -36,14 +37,69 @@ final class ExactLinearProgram implements AutoCloseable {
     private long memory, work;
     private Result result;
     private ExactRational[] point, certificate;
+    private final boolean keepBasis;
+    private boolean hot;
+    private Basis savedBasis;
+
+    /** Completed tableau owned by a reference-counted immutable ancestor. */
+    static final class Basis implements AutoCloseable {
+
+        final List<Constraint> constraints;
+        final BigInteger[] objective;
+        final ExactRational[][] table;
+        final int[] basic, nonbasic;
+        final int variables;
+        private final PlanningBudget budget;
+        private final long memory;
+        private final AtomicInteger owners = new AtomicInteger(1);
+
+        Basis(ExactLinearProgram source) {
+            constraints = source.constraints;
+            objective = source.objective;
+            table = source.table;
+            basic = source.basic;
+            nonbasic = source.nonbasic;
+            variables = source.variables;
+            budget = source.budget;
+            memory = source.memory;
+        }
+
+        Basis retain() {
+            owners.incrementAndGet();
+            return this;
+        }
+
+        @Override
+        public void close() {
+            if (owners.decrementAndGet() == 0) budget.release(memory);
+        }
+    }
 
     ExactLinearProgram(int variables, List<Constraint> constraints, BigInteger[] objective, PlanningBudget budget) {
+        this(variables, constraints, objective, budget, null, false);
+    }
+
+    ExactLinearProgram(int variables, List<Constraint> constraints, BigInteger[] objective, PlanningBudget budget, Basis ancestor, boolean keepBasis) {
         this.variables = variables;
-        this.constraints = List.copyOf(constraints);
+        if (ancestor != null && (ancestor.variables != variables || !Arrays.equals(ancestor.objective, objective))) ancestor = null;
+        if (ancestor != null && !retainsConstraints(constraints, ancestor.constraints, budget)) ancestor = null;
+        List<Constraint> combined = constraints;
+        if (ancestor != null) {
+            var union = new ArrayList<>(ancestor.constraints);
+            var known = new HashSet<>(ancestor.constraints);
+            for (var row : constraints) if (known.add(row)) union.add(row);
+            combined = List.copyOf(union);
+            if (combined.size() > 512 || (combined.size() + 2L) * (variables + 2L) > 65_536) {
+                ancestor = null;
+                combined = constraints;
+            }
+        }
+        this.constraints = List.copyOf(combined);
         this.objective = objective.clone();
         this.budget = budget;
+        this.keepBasis = keepBasis;
         allowance = Math.min(500_000, budget.remainingWork() / 4);
-        rows = constraints.size();
+        rows = this.constraints.size();
         long cells = (rows + 2L) * (variables + 2L);
         long bytes = cells * 768L + 64L * (rows + variables + 2L);
         if (allowance < 1024 || variables > 384 || rows > 512 || cells > 65_536 || !budget.tryReserve(bytes)) {
@@ -56,14 +112,18 @@ final class ExactLinearProgram implements AutoCloseable {
             for (ExactRational[] row : table) Arrays.fill(row, ExactRational.ZERO);
             basic = new int[rows];
             nonbasic = new int[variables + 1];
+            if (ancestor != null) {
+                warm(ancestor);
+                return;
+            }
             for (int i = 0; i < rows; i++) {
                 basic[i] = variables + i;
-                for (var term : constraints.get(i).terms().entrySet()) {
+                for (var term : this.constraints.get(i).terms().entrySet()) {
                     budget.check();
                     table[i][term.getKey()] = ExactRational.of(term.getValue());
                 }
                 table[i][variables] = ExactRational.ONE.negate();
-                table[i][variables + 1] = ExactRational.of(constraints.get(i).upper());
+                table[i][variables + 1] = ExactRational.of(this.constraints.get(i).upper());
             }
             for (int j = 0; j < variables; j++) {
                 nonbasic[j] = j;
@@ -81,6 +141,53 @@ final class ExactLinearProgram implements AutoCloseable {
         }
     }
 
+    private static boolean retainsConstraints(List<Constraint> rows, List<Constraint> ancestor, PlanningBudget budget) {
+        Map<Map<Integer, BigInteger>, BigInteger> limits = new HashMap<>();
+        for (var row : rows) {
+            budget.check();
+            limits.merge(row.terms(), row.upper(), BigInteger::min);
+        }
+        for (var row : ancestor) {
+            budget.check();
+            if (row.terms().isEmpty() && row.upper().signum() >= 0) continue;
+            BigInteger limit = limits.get(row.terms());
+            if (limit == null || limit.compareTo(row.upper()) > 0) return false;
+        }
+        return true;
+    }
+
+    private void warm(Basis ancestor) {
+        int oldRows = ancestor.constraints.size();
+        System.arraycopy(ancestor.nonbasic, 0, nonbasic, 0, nonbasic.length);
+        System.arraycopy(ancestor.basic, 0, basic, 0, ancestor.basic.length);
+        for (int i = 0; i < oldRows; i++) {
+            charge();
+            System.arraycopy(ancestor.table[i], 0, table[i], 0, variables + 2);
+        }
+        System.arraycopy(ancestor.table[oldRows], 0, table[rows], 0, variables + 2);
+        int[] basicRow = new int[variables], nonbasicColumn = new int[variables];
+        Arrays.fill(basicRow, -1);
+        Arrays.fill(nonbasicColumn, -1);
+        for (int i = 0; i < oldRows; i++) if (basic[i] >= 0 && basic[i] < variables) basicRow[basic[i]] = i;
+        for (int j = 0; j <= variables; j++) if (nonbasic[j] >= 0 && nonbasic[j] < variables) nonbasicColumn[nonbasic[j]] = j;
+        for (int i = oldRows; i < rows; i++) {
+            basic[i] = variables + i;
+            table[i][variables + 1] = ExactRational.of(constraints.get(i).upper());
+            for (var term : constraints.get(i).terms().entrySet()) {
+                ExactRational value = ExactRational.of(term.getValue());
+                int r = basicRow[term.getKey()];
+                if (r >= 0) for (int j = 0; j < variables + 2; j++) {
+                    charge();
+                    table[i][j] = table[i][j].subtract(value.multiply(table[r][j]));
+                }
+                else table[i][nonbasicColumn[term.getKey()]] = table[i][nonbasicColumn[term.getKey()]].add(value);
+            }
+        }
+        hot = true;
+        phase = 4;
+        budget.note("count_lp_reuse", "ancestor_rows=" + oldRows + "; added_rows=" + (rows - oldRows));
+    }
+
     boolean step() {
         budget.check();
         if (result != null) return true;
@@ -90,6 +197,7 @@ final class ExactLinearProgram implements AutoCloseable {
                 updatePivot();
                 return false;
             }
+            if (phase == 4) return dualStep();
             if (phase == 0) {
                 int worst = -1;
                 for (int i = 0; i < rows; i++) if (worst < 0 || table[i][variables + 1].compareTo(table[worst][variables + 1]) < 0) worst = i;
@@ -149,6 +257,36 @@ final class ExactLinearProgram implements AutoCloseable {
         } catch (ExactRational.PrecisionLimit limit) {
             return finish(Result.UNKNOWN);
         }
+    }
+
+    private boolean dualStep() {
+        int leaving = -1;
+        for (int i = 0; i < rows; i++) {
+            charge();
+            if (table[i][variables + 1].signum() < 0 && (leaving < 0 || basic[i] < basic[leaving])) leaving = i;
+        }
+        if (leaving < 0) {
+            point = primal();
+            return finish(validPoint() && validOptimum() ? Result.OPTIMAL : Result.UNKNOWN);
+        }
+        int entering = -1;
+        ExactRational ratio = null;
+        for (int j = 0; j <= variables; j++) {
+            charge();
+            if (nonbasic[j] == -1 || table[leaving][j].signum() >= 0) continue;
+            ExactRational next = table[rows][j].divide(table[leaving][j].negate());
+            if (entering < 0 || next.compareTo(ratio) < 0 || next.compareTo(ratio) == 0 && nonbasic[j] < nonbasic[entering]) {
+                entering = j;
+                ratio = next;
+            }
+        }
+        if (entering < 0) {
+            certificate = dual(leaving);
+            if (basic[leaving] >= variables) certificate[basic[leaving] - variables] = ExactRational.ONE;
+            return finish(validCertificate() ? Result.INFEASIBLE : Result.UNKNOWN);
+        }
+        pivot(leaving, entering);
+        return false;
     }
 
     private void pivot(int row, int column) {
@@ -250,8 +388,22 @@ final class ExactLinearProgram implements AutoCloseable {
 
     private boolean finish(Result value) {
         result = value;
-        close();
+        if (keepBasis && value == Result.OPTIMAL && Arrays.stream(basic).noneMatch(id -> id == -1)) {
+            savedBasis = new Basis(this);
+            table = null;
+            memory = 0;
+        } else releaseTable();
         return true;
+    }
+
+    Basis takeBasis() {
+        Basis result = savedBasis;
+        savedBasis = null;
+        return result;
+    }
+
+    boolean hot() {
+        return hot;
     }
 
     Result result() {
@@ -268,6 +420,14 @@ final class ExactLinearProgram implements AutoCloseable {
 
     @Override
     public void close() {
+        if (savedBasis != null) {
+            savedBasis.close();
+            savedBasis = null;
+        }
+        releaseTable();
+    }
+
+    private void releaseTable() {
         table = null;
         budget.release(memory);
         memory = 0;

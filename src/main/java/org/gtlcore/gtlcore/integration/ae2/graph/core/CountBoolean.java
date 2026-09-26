@@ -11,7 +11,22 @@ import java.util.*;
  */
 final class CountBoolean implements AutoCloseable {
 
-    private record Row(int[] variables, BigInteger[] coefficients, BigInteger upper) {}
+    private record Row(int[] variables, BigInteger[] coefficients, BigInteger upper, Integer cardinality) {
+
+        Row(int[] variables, BigInteger[] coefficients, BigInteger upper) {
+            this(variables, coefficients, upper, cardinality(coefficients, upper));
+        }
+
+        private static Integer cardinality(BigInteger[] coefficients, BigInteger upper) {
+            int negative = 0;
+            for (BigInteger coefficient : coefficients) {
+                if (!coefficient.abs().equals(BigInteger.ONE)) return null;
+                if (coefficient.signum() < 0) negative++;
+            }
+            return upper.add(BigInteger.valueOf(negative)).max(BigInteger.ONE.negate())
+                    .min(BigInteger.valueOf(coefficients.length + 1L)).intValueExact();
+        }
+    }
 
     private final List<ExactLinearProgram.Constraint> original;
     private final List<Row> rows = new ArrayList<>();
@@ -23,7 +38,7 @@ final class CountBoolean implements AutoCloseable {
     private final BigInteger[] fixed;
     private final int[] values, levels;
     private final BitSet[] reasons;
-    private final double[] activity, polarity;
+    private final double[] activity, polarity, positiveActivity, negativeActivity;
     private final long allowance;
     private long memory, work;
     private int rowIndex, level, decisions, conflicts, pinned;
@@ -40,6 +55,8 @@ final class CountBoolean implements AutoCloseable {
         reasons = new BitSet[lower.length];
         activity = new double[lower.length];
         polarity = new double[lower.length];
+        positiveActivity = new double[lower.length];
+        negativeActivity = new double[lower.length];
         Arrays.fill(values, -1);
         allowance = Math.min(262_144, budget.remainingWork() / 8);
         if (!CountPartition.binaryChoices(lower, upper, 1) || allowance < 1024) {
@@ -76,7 +93,11 @@ final class CountBoolean implements AutoCloseable {
                 else if (term.getValue().signum() != 0) {
                     variables.add(id);
                     coefficients.add(term.getValue());
-                    activity[id] += 1.0 / Math.max(1, row.terms().size());
+                    // Complementary sources remain one decision after compiling
+                    // them. Score its strongest literal, not their summed degree.
+                    if (term.getValue().signum() > 0) positiveActivity[id] += 1.0 / Math.max(1, row.terms().size());
+                    else negativeActivity[id] += 1.0 / Math.max(1, row.terms().size());
+                    activity[id] = Math.max(positiveActivity[id], negativeActivity[id]);
                     polarity[id] -= term.getValue().signum() / (double) Math.max(1, row.terms().size());
                 }
             }
@@ -120,6 +141,10 @@ final class CountBoolean implements AutoCloseable {
     }
 
     private void propagate(Row row) {
+        if (row.cardinality() != null) {
+            propagateCardinality(row);
+            return;
+        }
         BigInteger minimum = BigInteger.ZERO;
         BitSet explanation = new BitSet();
         for (int i = 0; i < row.variables().length; i++) {
@@ -132,7 +157,7 @@ final class CountBoolean implements AutoCloseable {
         }
         BigInteger slack = row.upper().subtract(minimum);
         if (slack.signum() < 0) {
-            learn(explanation);
+            learn(conflictReason(row));
             return;
         }
         for (int i = 0; i < row.variables().length; i++) {
@@ -142,6 +167,51 @@ final class CountBoolean implements AutoCloseable {
             if (values[id] < 0 && coefficient.abs().compareTo(slack) > 0)
                 assign(id, coefficient.signum() > 0 ? 0 : 1, explanation);
         }
+    }
+
+    private void propagateCardinality(Row row) {
+        int trueCount = 0;
+        BitSet explanation = new BitSet();
+        for (int i = 0; i < row.variables().length; i++) {
+            charge();
+            int id = row.variables()[i];
+            if (values[id] == (row.coefficients()[i].signum() > 0 ? 1 : 0)) {
+                trueCount++;
+                explanation.or(reasons[id]);
+            }
+        }
+        if (trueCount > row.cardinality()) {
+            learn(conflictReason(row));
+            return;
+        }
+        if (trueCount != row.cardinality()) return;
+        for (int i = 0; i < row.variables().length; i++) {
+            charge();
+            int id = row.variables()[i];
+            if (values[id] < 0) assign(id, row.coefficients()[i].signum() > 0 ? 0 : 1, explanation);
+        }
+    }
+
+    /** A subset of expensive assignments already suffices to violate this row. */
+    private BitSet conflictReason(Row row) {
+        BigInteger minimum = BigInteger.ZERO;
+        List<Integer> expensive = new ArrayList<>();
+        for (int i = 0; i < row.variables().length; i++) {
+            charge();
+            BigInteger coefficient = row.coefficients()[i];
+            minimum = minimum.add(coefficient.min(BigInteger.ZERO));
+            if (values[row.variables()[i]] == (coefficient.signum() > 0 ? 1 : 0)) expensive.add(i);
+        }
+        expensive.sort(Comparator.<Integer, BigInteger>comparing(i -> row.coefficients()[i].abs()).reversed()
+                .thenComparingInt(i -> reasons[row.variables()[i]].cardinality()));
+        BitSet reason = new BitSet();
+        for (int i : expensive) {
+            if (minimum.compareTo(row.upper()) > 0) break;
+            charge();
+            minimum = minimum.add(row.coefficients()[i].abs());
+            reason.or(reasons[row.variables()[i]]);
+        }
+        return reason;
     }
 
     private void assign(int variable, int value, BitSet explanation) {
@@ -219,6 +289,7 @@ final class CountBoolean implements AutoCloseable {
     private boolean finish(String detail) {
         complete = true;
         budget.note("count_boolean", detail + "; variables=" + values.length + "; rows=" + original.size() +
+                "; cardinality_rows=" + rows.stream().filter(row -> row.cardinality() != null).count() +
                 "; trial_counts=" + pinned + "; decisions=" + decisions + "; learned=" + conflicts + "; work=" + work);
         return true;
     }

@@ -17,25 +17,33 @@ final class IntegerCountBranch<K> implements AutoCloseable {
     }
 
     final RecipeCountModel<K> model;
+    final CountExecution<K> execution;
     final K target;
     final long amount, started;
     final Map<K, Long> stock, seeds;
     final Set<K> external;
     final boolean preserve, force;
-    final boolean preprocessingOnly;
+    boolean preprocessingOnly;
     final PlanningBudget budget;
     final List<ExactLinearProgram.Constraint> current;
     final List<List<ExactLinearProgram.Constraint>> children = new ArrayList<>();
     final Set<ExactLinearProgram.Constraint> learnedMaterials = new LinkedHashSet<>();
-    final List<SupportConflict> supportConflicts = new ArrayList<>();
+    final List<CountGuard> supportConflicts = new ArrayList<>();
     final Set<CountConflict> learnedChoices = new LinkedHashSet<>();
     private List<CountConflict> knownChoices = List.of();
+    private List<ExactLinearProgram.Constraint> knownMaterials = List.of();
     List<ExactLinearProgram.Constraint> linearConstraints;
     CountBounds propagating;
+    CountBounds.Seed inheritedBounds, sharedBounds;
+    CountReduction reduction;
+    boolean compiled, reducedLinear;
     CountPartition partition;
     CountBoolean binary;
     ExactLinearProgram linear;
+    ExactLinearProgram.Basis inheritedBasis, sharedBasis;
+    CountReduction.Coordinates inheritedCoordinates;
     CountSchedule<K> scheduling;
+    CountSupportSearch<K> supportSearch;
     CountProgram<K> program;
     AllocationSearch.Candidate<K> assembling;
     PlanVerification<K> verifying;
@@ -44,14 +52,16 @@ final class IntegerCountBranch<K> implements AutoCloseable {
     PlanPreference<K> preference, lowerCost;
     State state = State.OPEN;
     PlanningBudget.Exhausted limit;
-    boolean initialized, partitioned, rescue, retried, choicePruned;
+    boolean initialized, partitioned, rescue, retried, choicePruned, needsRepair;
     long memory, workspace, work, schedulingWork;
     int globalRows, checkedChoices;
+    final Set<CountConflict> usedChoices = new LinkedHashSet<>();
 
-    IntegerCountBranch(RecipeCountModel<K> model, K target, long amount, Map<K, Long> stock,
+    IntegerCountBranch(RecipeCountModel<K> model, CountExecution<K> execution, K target, long amount, Map<K, Long> stock,
                        Map<K, Long> seeds, Set<K> external, boolean preserve, boolean force,
                        PlanningBudget budget, long started, List<ExactLinearProgram.Constraint> current) {
         this.model = model;
+        this.execution = execution;
         this.target = target;
         this.amount = amount;
         this.stock = stock;
@@ -68,12 +78,14 @@ final class IntegerCountBranch<K> implements AutoCloseable {
         else state = State.UNRESOLVED;
     }
 
-    void run(long quantum, List<ExactLinearProgram.Constraint> materials, List<SupportConflict> support, List<CountConflict> choices,
+    void run(long quantum, List<ExactLinearProgram.Constraint> materials, List<CountGuard> support, List<CountConflict> choices,
              PlanPreference<K> incumbent, BooleanSupplier stopped) {
         long before = budget.threadWork();
         try {
             if (state != State.OPEN) return;
+            if (!knownChoices.equals(choices)) checkedChoices = 0;
             knownChoices = choices;
+            knownMaterials = materials;
             if (!initialized && rejectsChoices()) {
                 choicePruned = true;
                 state = State.DEAD;
@@ -90,11 +102,28 @@ final class IntegerCountBranch<K> implements AutoCloseable {
                 initialized = true;
                 supportConflicts.addAll(support);
                 linearConstraints = new ArrayList<>(model.constraints);
+                for (int i = 0; i < model.recipes.size(); i++) {
+                    var recipe = model.recipes.get(i);
+                    budget.check();
+                    // A deterministic identity firing leaves the marking
+                    // unchanged. Delete it from any witness without changing
+                    // the enabledness of the surrounding program. Canonicalize
+                    // its count to zero so no-good partitioning cannot spend
+                    // branches adding arbitrarily many useless firings.
+                    if (recipe.configurationInputs().isEmpty() && recipe.reusableInputs().isEmpty() &&
+                            recipe.inputs().equals(recipe.outputs()))
+                        linearConstraints.add(bound(i, BigInteger.ZERO, false));
+                }
                 linearConstraints.addAll(materials);
                 globalRows = linearConstraints.size();
                 linearConstraints.addAll(current);
-                propagating = new CountBounds(model.recipes.size(), linearConstraints, budget, globalRows);
+                propagating = new CountBounds(model.recipes.size(), linearConstraints, budget, globalRows, inheritedBounds);
+                if (inheritedBounds != null) {
+                    inheritedBounds.close();
+                    inheritedBounds = null;
+                }
             }
+            if (propagating != null) propagating.learn(choices);
             do {
                 if (stopped.getAsBoolean()) return;
                 budget.check();
@@ -125,7 +154,9 @@ final class IntegerCountBranch<K> implements AutoCloseable {
 
     private void advance() {
         if (upper != null) while (checkedChoices < knownChoices.size()) {
-            if (knownChoices.get(checkedChoices++).impliedBy(lower, upper, budget)) {
+            var conflict = knownChoices.get(checkedChoices++);
+            if (conflict.impliedBy(lower, upper, budget)) {
+                usedChoices.add(conflict);
                 choicePruned = true;
                 state = State.DEAD;
                 return;
@@ -142,7 +173,10 @@ final class IntegerCountBranch<K> implements AutoCloseable {
             }
             preference = PlanPreference.of(plan, assembling.summary,
                     Arrays.stream(counts).reduce(BigInteger.ZERO, BigInteger::add));
-            partitionCounts();
+            if (lowerCost != null && lowerCost.cannotImprove(preference)) {
+                partitioned = true;
+                budget.note("count_cost_bound", "witness_attains_componentwise_lower_bound; no_improvement_branches");
+            } else partitionCounts();
             state = State.FOUND;
             return;
         }
@@ -174,9 +208,35 @@ final class IntegerCountBranch<K> implements AutoCloseable {
             scheduling.close();
             scheduling = null;
             if (status == CountSchedule.Result.DEAD) {
+                needsRepair = true;
+                supportSearch = new CountSupportSearch<>(model, counts, budget);
+            } else if (status == CountSchedule.Result.UNKNOWN) unresolved();
+            return;
+        }
+        if (supportSearch != null) {
+            if (!supportSearch.step()) return;
+            var status = supportSearch.result();
+            if (status == CountSupportSearch.Result.WITNESS) {
+                // This witness may use different counts than the dead candidate.
+                // It is checked against the immutable order, not accepted as a
+                // solution of this branch's incidental count assumptions.
+                counts = supportSearch.counts();
+                lowerCost = null;
+                beginAssembly(supportSearch.witness());
+            } else if (status == CountSupportSearch.Result.CLOSED) {
+                var cut = supportSearch.cut();
+                learnedMaterials.add(cut);
+                // The checked closed set rules out the entire old support.
+                // All remaining solutions introduce at least one outside source.
+                enqueue(current, cut);
+                partitioned = true;
+                state = State.SPLIT;
+            } else {
                 partitionCounts();
                 state = preprocessingOnly ? State.UNRESOLVED : State.DEAD;
-            } else if (status == CountSchedule.Result.UNKNOWN) unresolved();
+            }
+            supportSearch.close();
+            supportSearch = null;
             return;
         }
         if (rescue) {
@@ -185,25 +245,25 @@ final class IntegerCountBranch<K> implements AutoCloseable {
         }
         if (partition != null) {
             if (!partition.step()) return;
-            counts = partition.counts();
+            counts = reduction.expand(partition.counts());
             partition.close();
             partition = null;
             if (counts != null) {
                 if (!preprocessingOnly && refineSupport()) state = State.SPLIT;
                 else scheduling = new CountSchedule<>(model, counts, budget);
-            } else binary = new CountBoolean(linearConstraints, lower, upper, budget);
+            } else binary = new CountBoolean(reduction.rows(), reduction.lower(), reduction.upper(), budget);
             return;
         }
         if (binary != null) {
             if (!binary.step()) return;
-            counts = binary.counts();
+            counts = reduction.expand(binary.counts());
             binary.close();
             binary = null;
             if (counts != null) {
                 if (!preprocessingOnly && refineSupport()) state = State.SPLIT;
                 else scheduling = new CountSchedule<>(model, counts, budget);
             } else if (preprocessingOnly) state = State.UNRESOLVED;
-            else linear = new ExactLinearProgram(model.recipes.size(), linearConstraints, model.objective(true), budget);
+            else beginLinear();
             return;
         }
         if (propagating != null) {
@@ -213,6 +273,8 @@ final class IntegerCountBranch<K> implements AutoCloseable {
             upper = propagating.upperBounds();
             BitSet conflict = propagating.conflictingAssumptions();
             var tightened = propagating.tightened();
+            usedChoices.addAll(propagating.usedConflicts());
+            if (!blocked) sharedBounds = propagating.snapshot();
             propagating.close();
             propagating = null;
             if (blocked) {
@@ -225,14 +287,24 @@ final class IntegerCountBranch<K> implements AutoCloseable {
                 return;
             }
             linearConstraints.addAll(tightened);
-            if (current.isEmpty()) partition = new CountPartition(linearConstraints, lower, upper, budget);
-            else linear = new ExactLinearProgram(model.recipes.size(), linearConstraints, model.objective(true), budget);
+            reduction = new CountReduction(linearConstraints, lower, upper, budget);
+            return;
+        }
+        if (!compiled) {
+            if (!reduction.step()) return;
+            compiled = true;
+            preprocessingOnly = reduction.variables() > 64 || reduction.rows().size() > 512;
+            lowerCost = PlanPreference.compiledLowerBound(model, reduction, lower, seeds, budget);
+            if (current.isEmpty()) partition = new CountPartition(reduction.rows(), reduction.lower(), reduction.upper(), budget);
+            else if (preprocessingOnly) state = State.UNRESOLVED;
+            else beginLinear();
             return;
         }
         if (!linear.step()) return;
         var status = linear.result();
-        ExactRational[] point = linear.point();
-        if (status == ExactLinearProgram.Result.INFEASIBLE) learnMaterialConflict(linear.certificate());
+        ExactRational[] point = reducedLinear ? reduction.expand(linear.point()) : linear.point();
+        if (status == ExactLinearProgram.Result.INFEASIBLE && !reducedLinear && !linear.hot()) learnMaterialConflict(linear.certificate());
+        sharedBasis = linear.takeBasis();
         linear.close();
         linear = null;
         if (status == ExactLinearProgram.Result.INFEASIBLE) {
@@ -247,12 +319,18 @@ final class IntegerCountBranch<K> implements AutoCloseable {
         ExactRational operations = ExactRational.ZERO;
         for (ExactRational value : point) operations = operations.add(value);
         lowerCost = PlanPreference.lowerBound(model, lower, seeds, operations.ceil(), budget);
-        for (SupportConflict conflict : supportConflicts) if (violates(conflict, point)) {
+        if (refineMaterials(point)) {
+            state = State.SPLIT;
+            return;
+        }
+        for (CountGuard conflict : supportConflicts) if (conflict.violated(point, budget)) {
             branch(conflict);
             state = State.SPLIT;
             return;
         }
-        for (int i = 0; i < point.length; i++) if (!point[i].integral()) {
+        int chosen = fractionalChoice(point);
+        if (chosen >= 0) {
+            int i = chosen;
             enqueue(current, bound(i, point[i].floor(), false));
             enqueue(current, bound(i, point[i].ceil(), true));
             state = State.SPLIT;
@@ -264,6 +342,41 @@ final class IntegerCountBranch<K> implements AutoCloseable {
             return;
         }
         scheduling = new CountSchedule<>(model, counts, budget);
+    }
+
+    private void beginLinear() {
+        // Tiny tableaux are cheap to rebuild. Keep their canonical recipe
+        // ordering instead of paying for basis reuse and changing degenerate ties.
+        boolean reuse = (model.recipes.size() + 2L) * (model.constraints.size() + 2L) > 256;
+        reducedLinear = reuse && reduction.variables() != model.recipes.size();
+        linear = new ExactLinearProgram(reducedLinear ? reduction.variables() : model.recipes.size(),
+                reducedLinear ? reduction.rows() : linearConstraints,
+                reducedLinear ? reduction.objective(model.objective(true)) : model.objective(true), budget,
+                reuse && reduction.coordinates().equals(inheritedCoordinates) ? inheritedBasis : null, reuse);
+        if (inheritedBasis != null) {
+            inheritedBasis.close();
+            inheritedBasis = null;
+        }
+    }
+
+    private int fractionalChoice(ExactRational[] point) {
+        int best = -1, bestActivity = -1;
+        for (int id : reduction.representatives()) if (!point[id].integral()) {
+            int activity = 0;
+            int weight = knownChoices.size();
+            for (var conflict : knownChoices) {
+                for (var row : conflict.assumptions()) {
+                    budget.check();
+                    if (row.terms().containsKey(id)) activity += weight;
+                }
+                weight--;
+            }
+            if (activity > bestActivity) {
+                best = id;
+                bestActivity = activity;
+            }
+        }
+        return best;
     }
 
     private boolean rejectsChoices() {
@@ -280,7 +393,10 @@ final class IntegerCountBranch<K> implements AutoCloseable {
             if (term.getValue().equals(BigInteger.ONE)) high[id] = high[id] == null ? row.upper() : high[id].min(row.upper());
             else if (term.getValue().equals(BigInteger.ONE.negate())) low[id] = low[id].max(row.upper().negate());
         }
-        for (var conflict : knownChoices) if (conflict.impliedBy(low, high, budget)) return true;
+        for (var conflict : knownChoices) if (conflict.impliedBy(low, high, budget)) {
+            usedChoices.add(conflict);
+            return true;
+        }
         return false;
     }
 
@@ -312,12 +428,14 @@ final class IntegerCountBranch<K> implements AutoCloseable {
         if (partition != null) partition.close();
         if (binary != null) binary.close();
         if (scheduling != null) scheduling.close();
+        if (supportSearch != null) supportSearch.close();
         if (program != null) program.close();
         linear = null;
         propagating = null;
         partition = null;
         binary = null;
         scheduling = null;
+        supportSearch = null;
         program = null;
         assembling = null;
         verifying = null;
@@ -326,6 +444,14 @@ final class IntegerCountBranch<K> implements AutoCloseable {
     }
 
     private boolean refineSupport() {
+        var point = Arrays.stream(counts).map(ExactRational::of).toArray(ExactRational[]::new);
+        if (refineMaterials(point)) return true;
+        CountGuard condition = execution.violated(point);
+        if (condition != null) {
+            learn(condition);
+            branch(condition);
+            return true;
+        }
         Set<K> reachable = new HashSet<>(external);
         stock.forEach((key, value) -> { if (value > 0) reachable.add(key); });
         BitSet fired = new BitSet();
@@ -354,10 +480,28 @@ final class IntegerCountBranch<K> implements AutoCloseable {
                         recipe.outputs().keySet().stream().anyMatch(key -> model.ids.containsKey(key) && !reachable.contains(key)))
                     repairs.put(i, BigInteger.ONE.negate());
             }
-            SupportConflict conflict = new SupportConflict(blocked, new ExactLinearProgram.Constraint(repairs, BigInteger.ONE.negate()));
-            if (!supportConflicts.contains(conflict)) supportConflicts.add(conflict);
+            CountGuard conflict = new CountGuard(blocked, new ExactLinearProgram.Constraint(repairs, BigInteger.ONE.negate()));
+            learn(conflict);
             branch(conflict);
             return true;
+        }
+        return false;
+    }
+
+    private boolean refineMaterials(ExactRational[] point) {
+        // A sibling can certify a new boundary while this LP is suspended.
+        // Apply that shared proof before branching on a stale relaxation.
+        for (var row : knownMaterials) {
+            if (linearConstraints.contains(row)) continue;
+            ExactRational sum = ExactRational.ZERO;
+            for (var term : row.terms().entrySet()) {
+                budget.check();
+                sum = sum.add(point[term.getKey()].multiply(ExactRational.of(term.getValue())));
+            }
+            if (sum.compareTo(ExactRational.of(row.upper())) > 0) {
+                enqueue(current, row);
+                return true;
+            }
         }
         return false;
     }
@@ -377,29 +521,25 @@ final class IntegerCountBranch<K> implements AutoCloseable {
         // Disjoint lexicographic siblings cover every OTHER integer vector.
         // An undecided fixed vector stays owned by this retained branch.
         var prefix = new ArrayList<>(current);
-        for (int i = 0; i < counts.length; i++) {
-            if (counts[i].signum() > 0) enqueue(prefix, bound(i, counts[i].subtract(BigInteger.ONE), false));
-            enqueue(prefix, bound(i, counts[i].add(BigInteger.ONE), true));
+        for (int i : reduction.representatives()) {
+            if (counts[i].compareTo(lower[i]) > 0) enqueue(prefix, bound(i, counts[i].subtract(BigInteger.ONE), false));
+            if (upper[i] == null || counts[i].compareTo(upper[i]) < 0) enqueue(prefix, bound(i, counts[i].add(BigInteger.ONE), true));
             prefix.add(bound(i, counts[i], false));
             prefix.add(bound(i, counts[i], true));
         }
     }
 
-    record SupportConflict(int blocked, ExactLinearProgram.Constraint repair) {}
-
-    private boolean violates(SupportConflict conflict, ExactRational[] point) {
-        if (point[conflict.blocked()].signum() == 0) return false;
-        ExactRational repairs = ExactRational.ZERO;
-        for (int variable : conflict.repair().terms().keySet()) repairs = repairs.add(point[variable]);
-        return repairs.compareTo(ExactRational.ONE) < 0;
+    private void learn(CountGuard condition) {
+        if (!supportConflicts.contains(condition)) supportConflicts.add(condition);
+        learnedChoices.add(condition.conflict());
     }
 
-    private void branch(SupportConflict conflict) {
-        enqueue(current, bound(conflict.blocked(), BigInteger.ZERO, false));
-        if (!conflict.repair().terms().isEmpty()) {
+    private void branch(CountGuard conflict) {
+        enqueue(current, bound(conflict.recipe(), BigInteger.ZERO, false));
+        if (!conflict.required().terms().isEmpty()) {
             var required = new ArrayList<>(current);
-            required.add(bound(conflict.blocked(), BigInteger.ONE, true));
-            enqueue(required, conflict.repair());
+            required.add(bound(conflict.recipe(), BigInteger.ONE, true));
+            enqueue(required, conflict.required());
         }
     }
 
@@ -451,6 +591,26 @@ final class IntegerCountBranch<K> implements AutoCloseable {
     @Override
     public void close() {
         releaseWorkspace();
+        if (inheritedBounds != null) {
+            inheritedBounds.close();
+            inheritedBounds = null;
+        }
+        if (sharedBounds != null) {
+            sharedBounds.close();
+            sharedBounds = null;
+        }
+        if (inheritedBasis != null) {
+            inheritedBasis.close();
+            inheritedBasis = null;
+        }
+        if (sharedBasis != null) {
+            sharedBasis.close();
+            sharedBasis = null;
+        }
+        if (reduction != null) {
+            reduction.close();
+            reduction = null;
+        }
         budget.release(memory);
         memory = 0;
     }

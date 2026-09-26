@@ -69,6 +69,36 @@ final class PlanPreference<K> {
         return new PlanPreference<>(Map.of(), consumed, required, ExactAmounts.copy(seeds), required, executions);
     }
 
+    static <K> PlanPreference<K> compiledLowerBound(RecipeCountModel<K> model, CountReduction reduction,
+                                                    BigInteger[] lower, Map<K, Long> seeds, PlanningBudget budget) {
+        if (model.keys.size() > 1024 || model.recipes.stream().anyMatch(recipe -> !recipe.configurationInputs().isEmpty() || !recipe.reusableInputs().isEmpty())) return null;
+        Map<K, Map<Integer, BigInteger>> net = new LinkedHashMap<>();
+        Map<K, BigInteger> peaks = new LinkedHashMap<>(), consumed = new LinkedHashMap<>();
+        int n = model.recipes.size();
+        for (int i = 0; i < n; i++) {
+            var recipe = model.recipes.get(i);
+            Set<K> keys = new LinkedHashSet<>(recipe.inputs().keySet());
+            keys.addAll(recipe.outputs().keySet());
+            for (K key : keys) {
+                budget.check();
+                Map<Integer, BigInteger> costs = net.computeIfAbsent(key, unused -> new LinkedHashMap<>());
+                costs.put(i, BigInteger.valueOf(recipe.inputs().getOrDefault(key, 0L)).subtract(BigInteger.valueOf(recipe.outputs().getOrDefault(key, 0L))));
+                // Any mandatory firing must hold its inputs and subsequently its outputs.
+                if (lower[i].signum() > 0) peaks.merge(key, BigInteger.valueOf(Math.max(recipe.inputs().getOrDefault(key, 0L),
+                        recipe.outputs().getOrDefault(key, 0L))), BigInteger::max);
+            }
+        }
+        net.forEach((key, coefficients) -> {
+            BigInteger minimum = reduction.minimum(coefficients);
+            if (minimum != null && minimum.signum() > 0) consumed.put(key, minimum);
+        });
+        consumed.forEach((key, value) -> peaks.merge(key, value, BigInteger::max));
+        BigInteger[] work = new BigInteger[n];
+        Arrays.fill(work, BigInteger.ONE);
+        BigInteger operations = reduction.minimum(work);
+        return operations == null ? null : new PlanPreference<>(Map.of(), consumed, consumed, ExactAmounts.copy(seeds), peaks, operations);
+    }
+
     /** Used only for proven componentwise lower bounds, never for heuristic scores. */
     boolean cannotImprove(PlanPreference<K> incumbent) {
         for (int i = 0; i < materials.size(); i++) {

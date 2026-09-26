@@ -6,7 +6,11 @@ import java.util.*;
 /** Compressed scheduling of fixed integer counts, with exact small-multiset fallback. */
 final class CountSchedule<K> implements AutoCloseable {
 
-    enum Result { WITNESS, DEAD, UNKNOWN }
+    enum Result {
+        WITNESS,
+        DEAD,
+        UNKNOWN
+    }
 
     private final RecipeCountModel<K> model;
     private final PlanningBudget budget;
@@ -24,6 +28,9 @@ final class CountSchedule<K> implements AutoCloseable {
     private PlanStep passBody, witness;
     private int attempt, cursor, passes;
     private boolean exact, startupChecked;
+    private int[] components;
+    private int independentComponents;
+    private long orderedAway;
     private Result result;
     private long memory;
 
@@ -186,7 +193,8 @@ final class CountSchedule<K> implements AutoCloseable {
                 if (original[i].signum() == 0 || available.get(i)) continue;
                 GraphRecipe<K> recipe = model.recipes.get(i);
                 if (recipe.inputs().entrySet().stream().anyMatch(e -> !model.external.contains(e.getKey()) &&
-                        upper.getOrDefault(e.getKey(), BigInteger.ZERO).compareTo(BigInteger.valueOf(e.getValue())) < 0)) continue;
+                        upper.getOrDefault(e.getKey(), BigInteger.ZERO).compareTo(BigInteger.valueOf(e.getValue())) < 0))
+                    continue;
                 available.set(i);
                 BigInteger count = original[i];
                 // Optimistically grant ALL outputs without consuming any input.
@@ -201,20 +209,49 @@ final class CountSchedule<K> implements AutoCloseable {
     }
 
     private boolean nextAttempt() {
-        if (++attempt < 8 * Math.min(4, model.recipes.size())) {
+        boolean early = ++attempt < 8 * Math.min(4, model.recipes.size());
+        if (early && (attempt != 2 || !smallMultiset())) {
             reset();
             return false;
         }
-        BigInteger total = Arrays.stream(original).reduce(BigInteger.ZERO, BigInteger::add);
         // Only exhaustive exploration may turn a scheduling failure into a
         // counterexample. A greedy failure, depth cap, or memory cap never does.
-        if (total.compareTo(BigInteger.valueOf(24)) > 0 || original.length > 12 ||
-                model.recipes.stream().anyMatch(recipe -> !recipe.configurationInputs().isEmpty())) return finish(Result.UNKNOWN);
+        if (model.recipes.stream().anyMatch(recipe -> !recipe.configurationInputs().isEmpty())) return finish(Result.UNKNOWN);
+        components = independentComponents();
+        int[] sizes = new int[original.length];
+        BigInteger[] totals = new BigInteger[original.length];
+        Arrays.fill(totals, BigInteger.ZERO);
+        for (int i = 0; i < original.length; i++) if (original[i].signum() > 0) {
+            if (sizes[components[i]]++ == 0) independentComponents++;
+            totals[components[i]] = totals[components[i]].add(original[i]);
+            if (sizes[components[i]] > 12 || totals[components[i]].compareTo(BigInteger.valueOf(24)) > 0) return finish(Result.UNKNOWN);
+        }
+        long bytes = 8192L * (96 + 8L * original.length);
+        if (!budget.tryReserve(bytes)) {
+            if (!early) return finish(Result.UNKNOWN);
+            independentComponents = 0;
+            reset();
+            return false;
+        }
+        memory += bytes;
         List<Integer> counts = Arrays.stream(original).map(BigInteger::intValueExact).toList();
         pending.add(new State(counts, null, -1));
         seen.add(counts);
         exact = true;
         return false;
+    }
+
+    private boolean smallMultiset() {
+        if (model.recipes.stream().anyMatch(recipe -> !recipe.configurationInputs().isEmpty())) return false;
+        BigInteger states = BigInteger.ONE, total = BigInteger.ZERO;
+        int active = 0;
+        for (BigInteger count : original) if (count.signum() > 0) {
+            budget.check();
+            states = states.multiply(count.add(BigInteger.ONE));
+            total = total.add(count);
+            if (++active > 12 || total.compareTo(BigInteger.valueOf(24)) > 0 || states.compareTo(BigInteger.valueOf(2048)) > 0) return false;
+        }
+        return true;
     }
 
     private boolean exactStep() {
@@ -231,7 +268,17 @@ final class CountSchedule<K> implements AutoCloseable {
         held.clear();
         model.stock.forEach((key, value) -> held.put(key, BigInteger.valueOf(value)));
         for (int i = 0; i < original.length; i++) apply(summaries.get(i), original[i].subtract(BigInteger.valueOf(state.counts.get(i))));
-        for (int i = 0; i < original.length; i++) if (state.counts.get(i) > 0 && limit(summaries.get(i), BigInteger.ONE).signum() > 0) {
+        int component = -1;
+        for (int i = 0; i < original.length; i++) if (state.counts.get(i) > 0) {
+            component = components[i];
+            break;
+        }
+        for (int i = 0; i < original.length; i++) if (state.counts.get(i) > 0) {
+            if (components[i] != component) {
+                orderedAway++;
+                continue;
+            }
+            if (limit(summaries.get(i), BigInteger.ONE).signum() == 0) continue;
             var next = new ArrayList<>(state.counts);
             next.set(i, next.get(i) - 1);
             var frozen = List.copyOf(next);
@@ -243,10 +290,45 @@ final class CountSchedule<K> implements AutoCloseable {
 
     private record State(List<Integer> counts, State parent, int recipe) {}
 
-    PlanStep witness() { return witness; }
-    Result result() { return result; }
+    private int[] independentComponents() {
+        int[] root = new int[original.length];
+        for (int i = 0; i < root.length; i++) root[i] = i;
+        Map<K, Integer> touched = new HashMap<>();
+        for (int i = 0; i < original.length; i++) if (original[i].signum() > 0) {
+            Set<K> keys = new HashSet<>(model.recipes.get(i).inputs().keySet());
+            keys.addAll(model.recipes.get(i).outputs().keySet());
+            for (K key : keys) {
+                budget.check();
+                Integer other = touched.putIfAbsent(key, i);
+                if (other != null) {
+                    int a = component(root, i), b = component(root, other);
+                    root[Math.max(a, b)] = Math.min(a, b);
+                }
+            }
+        }
+        for (int i = 0; i < root.length; i++) root[i] = component(root, i);
+        return root;
+    }
+
+    private static int component(int[] root, int id) {
+        while (root[id] != id) {
+            root[id] = root[root[id]];
+            id = root[id];
+        }
+        return id;
+    }
+
+    PlanStep witness() {
+        return witness;
+    }
+
+    Result result() {
+        return result;
+    }
 
     private boolean finish(Result value) {
+        if (exact) budget.note("count_schedule_por", "components=" + independentComponents +
+                "; states=" + seen.size() + "; independent_interleavings_skipped=" + orderedAway + "; result=" + value);
         result = value;
         close();
         return true;

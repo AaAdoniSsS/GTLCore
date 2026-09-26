@@ -2,11 +2,14 @@ package org.gtlcore.gtlcore.integration.ae2.graph.core;
 
 import java.math.BigInteger;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /** Work-queue integer bound propagation over joint material and branch constraints. */
 final class CountBounds implements AutoCloseable {
 
     private final List<ExactLinearProgram.Constraint> rows;
+    private final List<ExactLinearProgram.Constraint> originalRows;
+    private final int assumptionStart;
     private final PlanningBudget budget;
     private final BigInteger[] lower, upper;
     private final List<List<Integer>> affected = new ArrayList<>();
@@ -20,13 +23,69 @@ final class CountBounds implements AutoCloseable {
     private final List<BitSet> rowReasons = new ArrayList<>();
     private final BitSet[] lowerReasons, upperReasons;
     private BitSet conflict;
+    private final Set<CountConflict> learned = new LinkedHashSet<>();
+    private final Set<CountConflict> usedConflicts = new LinkedHashSet<>();
+    private final Set<ExactLinearProgram.Constraint> propagatedRows = new HashSet<>();
+    private List<CountConflict> checking = List.of();
+    private int conflictCursor;
+
+    /** Immutable ancestor state; siblings clone arrays, never share mutable propagation. */
+    static final class Seed implements AutoCloseable {
+
+        final List<ExactLinearProgram.Constraint> globals, assumptions, rows;
+        final List<List<Integer>> affected;
+        final List<BitSet> rowReasons;
+        final BigInteger[] lower, upper;
+        final BitSet[] lowerReasons, upperReasons;
+        final List<Integer> pending;
+        private final AtomicInteger owners = new AtomicInteger(1);
+        private final PlanningBudget budget;
+        private final long bytes;
+
+        Seed(CountBounds source, long bytes) {
+            globals = List.copyOf(source.originalRows.subList(0, source.assumptionStart));
+            assumptions = List.copyOf(source.originalRows.subList(source.assumptionStart, source.originalRows.size()));
+            rows = List.copyOf(source.rows);
+            affected = source.affected.stream().map(List::copyOf).toList();
+            rowReasons = Collections.unmodifiableList(new ArrayList<>(source.rowReasons));
+            lower = source.lower.clone();
+            upper = source.upper.clone();
+            lowerReasons = source.lowerReasons.clone();
+            upperReasons = source.upperReasons.clone();
+            pending = List.copyOf(source.queue);
+            budget = source.budget;
+            this.bytes = bytes;
+        }
+
+        boolean compatible(List<ExactLinearProgram.Constraint> next, int start) {
+            return start >= 0 && next.size() - start >= assumptions.size() &&
+                    next.subList(start, start + assumptions.size()).equals(assumptions) &&
+                    new HashSet<>(next.subList(0, start)).containsAll(globals);
+        }
+
+        Seed retain() {
+            owners.incrementAndGet();
+            return this;
+        }
+
+        @Override
+        public void close() {
+            if (owners.decrementAndGet() == 0) budget.release(bytes);
+        }
+    }
 
     CountBounds(int variables, List<ExactLinearProgram.Constraint> rows, PlanningBudget budget) {
         this(variables, rows, budget, -1);
     }
 
     CountBounds(int variables, List<ExactLinearProgram.Constraint> rows, PlanningBudget budget, int assumptionStart) {
+        this(variables, rows, budget, assumptionStart, null);
+    }
+
+    CountBounds(int variables, List<ExactLinearProgram.Constraint> rows, PlanningBudget budget, int assumptionStart, Seed seed) {
         this.rows = new ArrayList<>(rows);
+        originalRows = List.copyOf(rows);
+        this.assumptionStart = assumptionStart;
         this.budget = budget;
         explain = assumptionStart >= 0;
         lower = new BigInteger[variables];
@@ -39,6 +98,7 @@ final class CountBounds implements AutoCloseable {
         for (var row : rows) incidences += row.terms().size();
         bytes += 128L * incidences + 64L * rows.size();
         if (explain) bytes += (rows.size() + 2L * variables) * (32L + 8L * ((rows.size() - assumptionStart + 63) / 64));
+        if (seed != null) bytes += 64L * seed.rows.size() + 16L * seed.affected.stream().mapToLong(List::size).sum();
         // A wide/deep DAG may need several waves of propagation. Allocate by
         // sparse model size, while retaining a local ceiling for slow cycles.
         allowance = Math.min(262_144L, Math.max(50_000L, 64L * incidences));
@@ -48,6 +108,10 @@ final class CountBounds implements AutoCloseable {
         }
         memory = bytes;
         try {
+            if (seed != null && seed.compatible(rows, assumptionStart)) {
+                inherit(seed, rows);
+                return;
+            }
             Map<Map<Integer, BigInteger>, Integer> known = new HashMap<>();
             BitSet redundant = new BitSet();
             for (int r = 0; r < rows.size(); r++) {
@@ -84,25 +148,111 @@ final class CountBounds implements AutoCloseable {
                 for (int variable : this.rows.get(r).terms().keySet()) affected.get(variable).add(r);
                 enqueue(r);
             }
+            combinePairs(known);
         } catch (RuntimeException | Error failure) {
             close();
             throw failure;
         }
     }
 
+    /** Cancel an entire two-variable form, e.g. a+b<=1 and f-a-b<=0 imply f<=1. */
+    private void combinePairs(Map<Map<Integer, BigInteger>, Integer> known) {
+        int originalSize = rows.size(), added = 0;
+        Set<ExactLinearProgram.Constraint> distinct = new HashSet<>(rows);
+        for (int r = 0; r < originalSize && added < 256 && work < allowance / 2; r++) {
+            var row = rows.get(r);
+            if (row.terms().size() < 3 || row.terms().size() > 4) continue;
+            var terms = new ArrayList<>(row.terms().entrySet());
+            for (int i = 0; i < terms.size(); i++) for (int j = i + 1; j < terms.size(); j++) {
+                charge();
+                var a = terms.get(i);
+                var b = terms.get(j);
+                BigInteger gcd = a.getValue().gcd(b.getValue());
+                Map<Integer, BigInteger> opposite = Map.of(a.getKey(), a.getValue().negate().divide(gcd),
+                        b.getKey(), b.getValue().negate().divide(gcd));
+                Integer paired = known.get(opposite);
+                if (paired == null) continue;
+                Map<Integer, BigInteger> remaining = new LinkedHashMap<>(row.terms());
+                remaining.remove(a.getKey());
+                remaining.remove(b.getKey());
+                var consequence = normalized(new ExactLinearProgram.Constraint(remaining, row.upper().add(rows.get(paired).upper().multiply(gcd))));
+                if (!distinct.add(consequence)) continue;
+                long bytes = 192L + 128L * remaining.size();
+                if (!budget.tryReserve(bytes)) return;
+                memory += bytes;
+                BitSet reason = explain ? new BitSet() : null;
+                if (explain) {
+                    union(reason, rowReasons.get(r));
+                    union(reason, rowReasons.get(paired));
+                }
+                append(consequence, reason);
+                if (++added == 256) return;
+            }
+        }
+    }
+
+    private void inherit(Seed seed, List<ExactLinearProgram.Constraint> input) {
+        rows.clear();
+        rows.addAll(seed.rows);
+        rowReasons.addAll(seed.rowReasons);
+        System.arraycopy(seed.lower, 0, lower, 0, lower.length);
+        System.arraycopy(seed.upper, 0, upper, 0, upper.length);
+        System.arraycopy(seed.lowerReasons, 0, lowerReasons, 0, lower.length);
+        System.arraycopy(seed.upperReasons, 0, upperReasons, 0, lower.length);
+        for (var indices : seed.affected) affected.add(new ArrayList<>(indices));
+        seed.pending.forEach(this::enqueue);
+        Set<ExactLinearProgram.Constraint> globals = new HashSet<>(seed.globals);
+        for (int i = 0; i < assumptionStart; i++) if (!globals.contains(input.get(i))) append(input.get(i), null);
+        for (int i = assumptionStart + seed.assumptions.size(); i < input.size(); i++) {
+            BitSet reason = new BitSet();
+            reason.set(i - assumptionStart);
+            append(input.get(i), reason);
+        }
+        budget.note("count_bounds_reuse", "inherited_rows=" + seed.rows.size() + "; queued=" + queue.size());
+    }
+
+    Seed snapshot() {
+        if (!explain || blocked || affected.size() != lower.length || rowReasons.size() != rows.size()) return null;
+        long entries = rows.stream().mapToLong(row -> row.terms().size()).sum();
+        long bytes = 512 + 256L * lower.length + 128L * rows.size() + 128L * entries;
+        if (!budget.tryReserve(bytes)) return null;
+        return new Seed(this, bytes);
+    }
+
+    void learn(List<CountConflict> conflicts) {
+        if (complete) return;
+        if (learned.addAll(conflicts)) {
+            checking = List.copyOf(learned);
+            conflictCursor = 0;
+        }
+    }
+
+    Set<CountConflict> usedConflicts() {
+        return Set.copyOf(usedConflicts);
+    }
+
+    private void append(ExactLinearProgram.Constraint row, BitSet reason) {
+        int id = rows.size();
+        var normalized = normalized(row);
+        rows.add(normalized);
+        rowReasons.add(reason);
+        for (int variable : normalized.terms().keySet()) affected.get(variable).add(id);
+        enqueue(id);
+    }
+
     private ExactLinearProgram.Constraint normalized(ExactLinearProgram.Constraint row) {
-        BigInteger gcd = BigInteger.ZERO;
-        for (BigInteger value : row.terms().values()) { charge(); gcd = gcd.gcd(value); }
-        if (gcd.compareTo(BigInteger.ONE) <= 0) return row;
-        Map<Integer, BigInteger> terms = new LinkedHashMap<>();
-        BigInteger divisor = gcd;
-        row.terms().forEach((id, value) -> terms.put(id, value.divide(divisor)));
-        return new ExactLinearProgram.Constraint(terms, floorDiv(row.upper(), divisor));
+        for (BigInteger ignored : row.terms().values()) charge();
+        return CountReduction.normalize(row);
     }
 
     boolean step() {
         budget.check();
         if (complete) return true;
+        if (conflictCursor < checking.size()) {
+            propagateConflict(checking.get(conflictCursor++));
+            if (blocked) return true;
+            return false;
+        }
         if (queue.isEmpty()) return finish(false);
         if (work >= allowance) {
             if (!combined) {
@@ -150,6 +300,7 @@ final class CountBounds implements AutoCloseable {
                 if (upper[variable] == null || next.compareTo(upper[variable]) < 0) {
                     if (explain) upperReasons[variable] = reason(id, variable);
                     upper[variable] = next;
+                    conflictCursor = 0;
                     affected.get(variable).forEach(this::enqueue);
                 }
             } else {
@@ -158,6 +309,7 @@ final class CountBounds implements AutoCloseable {
                 if (next.compareTo(lower[variable]) > 0) {
                     if (explain) lowerReasons[variable] = reason(id, variable);
                     lower[variable] = next;
+                    conflictCursor = 0;
                     affected.get(variable).forEach(this::enqueue);
                 }
             }
@@ -171,6 +323,28 @@ final class CountBounds implements AutoCloseable {
             }
         }
         return false;
+    }
+
+    private void propagateConflict(CountConflict learned) {
+        var consequence = learned.propagate(lower, upper, budget);
+        if (consequence == null) return;
+        usedConflicts.add(learned);
+        BitSet reason = explain ? new BitSet() : null;
+        if (explain) for (var premise : consequence.premises()) for (var term : premise.terms().entrySet()) {
+            charge();
+            union(reason, term.getValue().signum() > 0 ? upperReasons[term.getKey()] : lowerReasons[term.getKey()]);
+        }
+        if (consequence.row() == null) {
+            conflict = reason;
+            finish(true);
+        } else {
+            if (propagatedRows.contains(consequence.row())) return;
+            long bytes = 192L + 128L * consequence.row().terms().size();
+            if (!budget.tryReserve(bytes)) return;
+            memory += bytes;
+            propagatedRows.add(consequence.row());
+            append(consequence.row(), reason);
+        }
     }
 
     private void enqueue(int row) {
@@ -228,7 +402,7 @@ final class CountBounds implements AutoCloseable {
     }
 
     private ExactLinearProgram.Constraint combine(ExactLinearProgram.Constraint first,
-                                                   ExactLinearProgram.Constraint second, int variable) {
+                                                  ExactLinearProgram.Constraint second, int variable) {
         BigInteger a = first.terms().get(variable), b = second.terms().get(variable).negate();
         BigInteger gcd = a.gcd(b);
         a = a.divide(gcd);
@@ -270,15 +444,23 @@ final class CountBounds implements AutoCloseable {
         return result;
     }
 
-    boolean blocked() { return blocked; }
+    boolean blocked() {
+        return blocked;
+    }
 
     /** A candidate only; callers must check every row after a work cutoff. */
-    BigInteger[] lowerBounds() { return lower.clone(); }
+    BigInteger[] lowerBounds() {
+        return lower.clone();
+    }
 
-    BigInteger[] upperBounds() { return upper.clone(); }
+    BigInteger[] upperBounds() {
+        return upper.clone();
+    }
 
     /** Only branch assumptions used in a proof, never an interrupted search. */
-    BitSet conflictingAssumptions() { return blocked && conflict != null ? (BitSet) conflict.clone() : null; }
+    BitSet conflictingAssumptions() {
+        return blocked && conflict != null ? (BitSet) conflict.clone() : null;
+    }
 
     private boolean contradiction(int row) {
         if (explain) conflict = reason(row, -1);
@@ -302,14 +484,19 @@ final class CountBounds implements AutoCloseable {
         return result;
     }
 
-    private static void union(BitSet into, BitSet from) { if (from != null) into.or(from); }
+    private static void union(BitSet into, BitSet from) {
+        if (from != null) into.or(from);
+    }
 
     private static BigInteger floorDiv(BigInteger value, BigInteger divisor) {
         BigInteger[] parts = value.divideAndRemainder(divisor);
         return parts[1].signum() < 0 ? parts[0].subtract(BigInteger.ONE) : parts[0];
     }
 
-    private void charge() { budget.check(); work++; }
+    private void charge() {
+        budget.check();
+        work++;
+    }
 
     private boolean finish(boolean value) {
         complete = true;

@@ -1,5 +1,6 @@
 package org.gtlcore.gtlcore.integration.ae2.graph.core;
 
+import java.math.BigInteger;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -9,6 +10,7 @@ import java.util.function.Supplier;
 final class IntegerCountSearch<K> implements AutoCloseable {
 
     private final RecipeCountModel<K> model;
+    private final CountExecution<K> execution;
     private final K target;
     private final long amount, started, allowance;
     private final Map<K, Long> stock, seeds;
@@ -17,14 +19,14 @@ final class IntegerCountSearch<K> implements AutoCloseable {
     private final PlanningBudget budget;
     private final Deque<IntegerCountBranch<K>> pending = new ArrayDeque<>(), deferred = new ArrayDeque<>();
     private final Set<ExactLinearProgram.Constraint> materialConflicts = new LinkedHashSet<>();
-    private final Set<IntegerCountBranch.SupportConflict> supportConflicts = new LinkedHashSet<>();
-    private final Set<CountConflict> choiceConflicts = new LinkedHashSet<>();
+    private final Set<CountGuard> supportConflicts = new LinkedHashSet<>();
+    private final CountConflictPool choiceConflicts;
     private final List<Incumbent<K>> frontier = new ArrayList<>();
     private final AtomicBoolean stopped = new AtomicBoolean(), released = new AtomicBoolean();
     private CompletableFuture<List<IntegerCountBranch<K>>> running;
     private List<IntegerCountBranch<K>> dispatched = List.of();
     private Incumbent<K> best;
-    private boolean complete, infeasible, unresolved;
+    private boolean complete, infeasible, unresolved, repairScheduled;
     private long work, improvementUntil = Long.MAX_VALUE, firstWitnessWork = -1, firstWitnessNanos;
     private int branches, rounds, suspensions, boundPrunes, choicePrunes, peakWidth;
 
@@ -41,16 +43,22 @@ final class IntegerCountSearch<K> implements AutoCloseable {
         this.preserve = preserve;
         this.force = force;
         this.budget = budget;
+        choiceConflicts = new CountConflictPool(budget);
         this.started = started;
         allowance = Math.min(2_000_000, budget.remainingWork() / 4);
         model = RecipeCountModel.create(compiler, target, amount, this.stock, this.seeds, this.external, excluded, force, budget);
+        try {
+            execution = model == null ? null : new CountExecution<>(model, budget);
+        } catch (RuntimeException | Error failure) {
+            if (model != null) model.close();
+            choiceConflicts.close();
+            throw failure;
+        }
         if (model == null) {
             complete = true;
             close();
             return;
         }
-        if (model.recipes.size() > 64 || model.keys.size() > 96)
-            budget.note("integer_counts", "preprocessing_only; recipes=" + model.recipes.size() + "; keys=" + model.keys.size());
         enqueue(List.of());
     }
 
@@ -67,6 +75,7 @@ final class IntegerCountSearch<K> implements AutoCloseable {
         budget.check();
         if (work >= allowance || work >= improvementUntil) return finish(false);
         if (pending.isEmpty() && deferred.isEmpty()) return finish(!unresolved && best == null);
+        if (best == null && !repairScheduled && work >= 32_768) enqueueRepair();
         int width = slice == null ? 1 : Math.min(16, slice.parallelism());
         int residentLimit = Math.max(4, width);
         List<IntegerCountBranch<K>> wave = take(width, residentLimit);
@@ -75,7 +84,7 @@ final class IntegerCountSearch<K> implements AutoCloseable {
         long quantum = Math.max(1, Math.min(4096, (Math.min(allowance, improvementUntil) - work) / wave.size()));
         var materials = List.copyOf(materialConflicts);
         var support = List.copyOf(supportConflicts);
-        var choices = List.copyOf(choiceConflicts);
+        var choices = choiceConflicts.snapshot();
         PlanPreference<K> incumbent = best == null ? null : best.cost();
         List<Supplier<IntegerCountBranch<K>>> partitions = new ArrayList<>();
         for (var branch : wave) partitions.add(() -> {
@@ -148,19 +157,24 @@ final class IntegerCountSearch<K> implements AutoCloseable {
                 branch.close();
                 continue;
             }
+            if (branch.needsRepair && !repairScheduled) enqueueRepair();
             if (materialConflicts.size() < 64) for (var conflict : branch.learnedMaterials) {
                 if (materialConflicts.size() == 64) break;
-                materialConflicts.add(conflict);
+                if (materialConflicts.add(conflict)) {
+                    Map<Integer, BigInteger> opposite = new LinkedHashMap<>();
+                    conflict.terms().forEach((key, value) -> opposite.put(key, value.negate()));
+                    choiceConflicts.add(List.of(new CountConflict(List.of(new ExactLinearProgram.Constraint(
+                            opposite, conflict.upper().negate().subtract(BigInteger.ONE))))));
+                }
             }
             if (supportConflicts.size() < 64) for (var conflict : branch.supportConflicts) {
                 if (supportConflicts.size() == 64) break;
                 supportConflicts.add(conflict);
             }
-            if (choiceConflicts.size() < 64) for (var conflict : branch.learnedChoices) {
-                if (choiceConflicts.size() == 64) break;
-                choiceConflicts.add(conflict);
-            }
-            for (var child : branch.children) enqueue(child);
+            choiceConflicts.add(branch.learnedChoices);
+            choiceConflicts.used(branch.usedChoices);
+            branch.usedChoices.clear();
+            for (var child : branch.children) enqueue(child, branch);
             branch.children.clear();
             switch (branch.state) {
                 case OPEN -> {
@@ -215,7 +229,10 @@ final class IntegerCountSearch<K> implements AutoCloseable {
             firstWitnessNanos = System.nanoTime();
             budget.note("integer_counts_first", "work=" + work + "; elapsed_ms=" + (firstWitnessNanos - started) / 1_000_000.0 +
                     "; branches=" + branches + "; result=" + branch.plan.result());
-            improvementUntil = Math.min(allowance, work + Math.min(16_384L, Math.max(0, (allowance - work) / 8)));
+            // Cheap witnesses should not pay a fixed, larger optimization bill.
+            // This caps optional improvement only; a verified incumbent is kept.
+            long improvement = Math.min(16_384L, Math.max(1024L, work / 16));
+            improvementUntil = Math.min(allowance, work + Math.min(improvement, Math.max(0, (allowance - work) / 8)));
         } else if (replaces) best = candidate;
         // Incomparable materials remain separate candidates. This bound affects
         // optimization only; it is never used to assert infeasibility.
@@ -223,16 +240,49 @@ final class IntegerCountSearch<K> implements AutoCloseable {
     }
 
     private void enqueue(List<ExactLinearProgram.Constraint> constraints) {
+        enqueue(constraints, null);
+    }
+
+    private void enqueueRepair() {
+        repairScheduled = true;
+        if (model.keys.size() > 16 || model.recipes.size() > 32) return;
+        long before = budget.threadWork();
+        var branch = new IntegerCountBranch<>(model, execution, target, amount, stock, seeds, external, preserve, force, budget, started, List.of());
+        try {
+            if (branch.state != IntegerCountBranch.State.OPEN) return;
+            branch.initialized = true;
+            branch.partitioned = true;
+            branch.supportSearch = CountSupportSearch.allSources(model, budget);
+            if (branch.supportSearch.result() == CountSupportSearch.Result.UNKNOWN) return;
+            // This is an optional witness/proof aid. The existing count branches
+            // retain their original subspaces and prove nothing from its cutoff.
+            pending.addFirst(branch);
+            branches++;
+            branch = null;
+        } finally {
+            if (branch != null) branch.close();
+            work += budget.threadWork() - before;
+        }
+    }
+
+    private void enqueue(List<ExactLinearProgram.Constraint> constraints, IntegerCountBranch<K> parent) {
         if (branches >= 256 || pending.size() + deferred.size() >= 256) {
             unresolved = true;
             return;
         }
-        var branch = new IntegerCountBranch<>(model, target, amount, stock, seeds, external, preserve, force, budget, started, constraints);
+        var branch = new IntegerCountBranch<>(model, execution, target, amount, stock, seeds, external, preserve, force, budget, started, constraints);
         branches++;
         if (branch.state != IntegerCountBranch.State.OPEN) {
             unresolved = true;
             branch.close();
-        } else pending.addLast(branch);
+        } else {
+            if (parent != null && parent.sharedBounds != null) branch.inheritedBounds = parent.sharedBounds.retain();
+            if (parent != null && parent.sharedBasis != null) {
+                branch.inheritedBasis = parent.sharedBasis.retain();
+                branch.inheritedCoordinates = parent.reduction.coordinates();
+            }
+            pending.addLast(branch);
+        }
     }
 
     GraphPlan<K> result() {
@@ -259,7 +309,7 @@ final class IntegerCountSearch<K> implements AutoCloseable {
                 "; bound_prunes=" + boundPrunes + "; unresolved=" + unresolved + "; witness=" + (best != null) +
                 "; first_work=" + firstWitnessWork + "; improvement_work=" + (firstWitnessWork < 0 ? 0 : work - firstWitnessWork) +
                 "; improvement_ms=" + (firstWitnessWork < 0 ? 0 : (System.nanoTime() - firstWitnessNanos) / 1_000_000.0));
-        if (!choiceConflicts.isEmpty()) budget.note("count_conflicts", "proven_choice_conflicts=" + choiceConflicts.size() + "; reused=" + choicePrunes);
+        choiceConflicts.report();
         close();
         return true;
     }
@@ -281,6 +331,8 @@ final class IntegerCountSearch<K> implements AutoCloseable {
         deferred.clear();
         dispatched = List.of();
         if (model != null) model.close();
+        if (execution != null) execution.close();
+        choiceConflicts.close();
         frontier.forEach(candidate -> budget.release(candidate.memory()));
         frontier.clear();
     }
