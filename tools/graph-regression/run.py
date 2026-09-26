@@ -79,7 +79,11 @@ def main():
                                         'org.gtlcore.gtlcore.integration.ae2.graph.core.' + name, *map(str, arguments)],
                                        stdout=log, stderr=subprocess.STDOUT)
         if completed.returncode:
-            print(Path(log.name).read_text(encoding='utf-8'))
+            details = Path(log.name).read_text(encoding='utf-8')
+            print(details)
+            if os.environ.get('GITHUB_ACTIONS') == 'true':
+                tail = details[-6000:].replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+                print('::error title=Graph regression failed::' + name + ': ' + tail)
             raise SystemExit(completed.returncode)
         print(name + ': PASS (' + Path(log.name).name + ')', flush=True)
     if args.suite != 'oracles':

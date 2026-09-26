@@ -12,6 +12,9 @@ network downloads, local saves or third-party solver are required. Results go to
 three deterministic permutations of recipe and slot order; `--suite oracles`
 runs independent integer/BFS/seed/proof checks. `--milliseconds` and `--work`
 control the per-order fixture budget; exhaustion is a test failure, not UNSAT.
+CI retains the 20-million cumulative work limit and disables the per-order wall
+clock limit because shared-runner latency varies. Local runs default to three
+seconds; timing comparisons should use the same machine and runtime.
 
 Fixtures originate from the user-provided September 2026 counterexample packs.
 They cover 145 bounded-source cases, 16 focused cases, six long nested counters
