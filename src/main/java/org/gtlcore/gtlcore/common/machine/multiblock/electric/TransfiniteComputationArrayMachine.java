@@ -344,13 +344,6 @@ public class TransfiniteComputationArrayMachine extends MultiblockControllerMach
             TransfiniteCraftingCPU cpu = candidates.iterator().next();
             long accepted = cpu.getCraftingLogic().insert(key, amount - inserted, mode);
             if (accepted <= 0) {
-                // A zero return does not always mean the CPU stopped waiting: for the final
-                // output the result comes from the requester link, which may refuse the
-                // physical handoff while the claim succeeded. De-indexing here strands every
-                // later return of this key in plain network storage. Only sync the index when
-                // the wait is really over, otherwise keep the CPU indexed and bail out - the
-                // remainder falls through to normal network storage and the next return tries
-                // again, matching how vanilla CPUs behave.
                 if (cpu.getCraftingLogic().getWaitingFor(key) <= 0) {
                     updateWaitingIndex(cpu, key, false);
                     continue;
