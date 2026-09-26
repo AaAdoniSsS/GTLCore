@@ -66,7 +66,7 @@ final class SeedOptimization<K> implements AutoCloseable {
                     for (var recipe : compiler.producers(key)) {
                         budget.check();
                         if (excluded.contains(recipe.id()) || recipes.containsKey(recipe.id())) continue;
-                        if (!recipe.configurationInputs().isEmpty() || !recipe.reusableInputs().isEmpty()) return finish("special_input_semantics");
+                        if (recipe.batchSensitiveInputs()) return finish("batch_sensitive_configuration");
                         long bytes = 192L + 96L * (recipe.inputs().size() + recipe.outputs().size());
                         if (!budget.tryReserve(bytes)) return finish("memory");
                         memory += bytes;

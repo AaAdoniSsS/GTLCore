@@ -1,6 +1,9 @@
 package org.gtlcore.gtlcore.integration.ae2.graph;
 
+import appeng.api.crafting.IPatternDetails;
 import appeng.api.stacks.AEKey;
+
+import java.util.List;
 
 public interface GraphRequestTracker {
 
@@ -11,4 +14,8 @@ public interface GraphRequestTracker {
     }
 
     default void gtlcore$invalidateGraphBinding(String binding) {}
+
+    default Iterable<IPatternDetails> gtlcore$registeredGraphPatterns() {
+        return List.of();
+    }
 }

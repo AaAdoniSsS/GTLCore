@@ -183,7 +183,7 @@ final class CountSchedule<K> implements AutoCloseable {
     }
 
     private boolean blockedStartup() {
-        if (model.recipes.stream().anyMatch(recipe -> !recipe.configurationInputs().isEmpty() || !recipe.reusableInputs().isEmpty())) return false;
+        if (model.recipes.stream().anyMatch(GraphRecipe::batchSensitiveInputs)) return false;
         Map<K, BigInteger> upper = new HashMap<>();
         model.stock.forEach((key, value) -> upper.put(key, BigInteger.valueOf(value)));
         BitSet available = new BitSet();
@@ -218,7 +218,7 @@ final class CountSchedule<K> implements AutoCloseable {
         }
         // Only exhaustive exploration may turn a scheduling failure into a
         // counterexample. A greedy failure, depth cap, or memory cap never does.
-        if (model.recipes.stream().anyMatch(recipe -> !recipe.configurationInputs().isEmpty() || !recipe.reusableInputs().isEmpty())) return finish(Result.UNKNOWN);
+        if (model.recipes.stream().anyMatch(GraphRecipe::batchSensitiveInputs)) return finish(Result.UNKNOWN);
         components = independentComponents();
         BitSet activeComponents = new BitSet();
         for (int i = 0; i < original.length; i++) if (original[i].signum() > 0) {
@@ -242,7 +242,7 @@ final class CountSchedule<K> implements AutoCloseable {
     }
 
     private boolean smallMultiset() {
-        if (model.recipes.stream().anyMatch(recipe -> !recipe.configurationInputs().isEmpty())) return false;
+        if (model.recipes.stream().anyMatch(GraphRecipe::batchSensitiveInputs)) return false;
         BigInteger states = BigInteger.ONE, total = BigInteger.ZERO;
         int active = 0;
         for (BigInteger count : original) if (count.signum() > 0) {

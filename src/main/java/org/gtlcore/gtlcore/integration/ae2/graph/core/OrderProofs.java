@@ -11,7 +11,7 @@ final class OrderProofs<K> implements AutoCloseable {
     private final CountConflictPool conflicts;
     private final List<Map<K, Integer>> sourceCores = new ArrayList<>();
     private final Map<String, Integer> ids = new HashMap<>();
-    private long jumps, imported, memory;
+    private long jumps, imported, propagated, memory;
 
     OrderProofs(RecipeCountModel<K> model, PlanningBudget budget) {
         this.budget = budget;
@@ -86,6 +86,41 @@ final class OrderProofs<K> implements AutoCloseable {
         return false;
     }
 
+    boolean hasCountConflicts() {
+        return model != null && !conflicts.isEmpty();
+    }
+
+    /** Propagate a learned clause before allocation creates a forbidden batch. */
+    BigInteger maximumAdditional(Map<String, BigInteger> counts, String recipe, BigInteger maximum) {
+        Integer selected = ids.get(recipe);
+        if (selected == null || !hasCountConflicts()) return maximum;
+        BigInteger[] lower = new BigInteger[model.recipes.size()], upper = new BigInteger[lower.length];
+        for (int i = 0; i < lower.length; i++) lower[i] = counts.getOrDefault(model.recipes.get(i).id(), BigInteger.ZERO);
+        for (var conflict : conflicts.snapshot()) {
+            var implication = conflict.propagate(lower, upper, budget);
+            if (implication == null) continue;
+            if (implication.row() == null) return BigInteger.ZERO;
+            var row = implication.row();
+            BigInteger coefficient = row.terms().get(selected);
+            if (coefficient == null || coefficient.signum() <= 0 || row.terms().values().stream().anyMatch(v -> v.signum() < 0)) continue;
+            // These are final count constraints. A negative coefficient could
+            // be repaired by a later source, so only nonnegative rows bound a
+            // monotone execution prefix without upper bounds on its suffix.
+            BigInteger minimum = BigInteger.ZERO;
+            for (var term : row.terms().entrySet()) {
+                budget.check();
+                minimum = minimum.add(term.getValue().multiply(lower[term.getKey()]));
+            }
+            BigInteger permitted = row.upper().subtract(minimum).divide(coefficient).max(BigInteger.ZERO);
+            if (permitted.compareTo(maximum) < 0) {
+                conflicts.used(List.of(conflict));
+                propagated++;
+                maximum = permitted;
+            }
+        }
+        return maximum;
+    }
+
     void learnSource(Map<K, Integer> core) {
         if (sourceCores.contains(core)) return;
         long bytes = 128L + 64L * core.size();
@@ -95,7 +130,12 @@ final class OrderProofs<K> implements AutoCloseable {
     }
 
     Map<K, Integer> sourceConflict(Map<K, Integer> assignment) {
-        for (var core : sourceCores) if (core.entrySet().stream().allMatch(e -> e.getValue().equals(assignment.get(e.getKey())))) {
+        return sourceConflict(assignment, false);
+    }
+
+    /** A complete source program uses source zero for every omitted choice. */
+    Map<K, Integer> sourceConflict(Map<K, Integer> assignment, boolean defaultSources) {
+        for (var core : sourceCores) if (core.entrySet().stream().allMatch(e -> e.getValue().equals(defaultSources ? assignment.getOrDefault(e.getKey(), 0) : assignment.get(e.getKey())))) {
             jumps++;
             return core;
         }
@@ -104,7 +144,8 @@ final class OrderProofs<K> implements AutoCloseable {
 
     @Override
     public void close() {
-        budget.note("order_conflicts", "transferred=" + imported + "; source_cores=" + sourceCores.size() + "; backjumps=" + jumps);
+        budget.note("order_conflicts", "transferred=" + imported + "; source_cores=" + sourceCores.size() + "; backjumps=" + jumps +
+                "; allocation_propagations=" + propagated);
         conflicts.close();
         budget.release(memory);
         memory = 0;

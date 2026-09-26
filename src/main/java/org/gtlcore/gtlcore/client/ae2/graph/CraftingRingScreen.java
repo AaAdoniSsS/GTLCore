@@ -26,6 +26,7 @@ import java.util.concurrent.CompletableFuture;
 public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, CraftConfirmScreen> {
 
     private final UUID planId;
+    private final GraphPlan.SeedOptimality seedProof;
     private final List<GraphRingView.Row> rows = new ArrayList<>();
     private GenericStack target;
     private int total = -1, requested = -1, mode, page, nodePage;
@@ -52,6 +53,7 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
     public CraftingRingScreen(CraftConfirmScreen parent) {
         super(parent, "/screens/gtl_crafting_ring.json");
         planId = ((GraphPlanSummaryView) parent.getMenu().getPlan()).gtlcore$graphPlanId();
+        seedProof = ((GraphPlanSummaryView) parent.getMenu().getPlan()).gtlcore$seedOptimality();
         widgets.addButton("back", Component.translatable("gui.back"), this::returnToParent);
         tabs[0] = widgets.addButton("overview", text("overview"), () -> select(0));
         tabs[1] = widgets.addButton("rings", text("rings"), () -> select(1));
@@ -205,6 +207,7 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
         graphics.drawString(font, text("column_material"), 16, 58, MUTED, false);
         graphics.drawString(font, text("column_initial"), 157, 58, MUTED, false);
         graphics.drawString(font, text("column_seed"), 236, 58, MUTED, false);
+        hits.add(new Hit(232, 55, 62, 14, GraphSeedStatus.tooltip(seedProof)));
         graphics.drawString(font, text("column_missing"), 303, 58, MUTED, false);
         int end = Math.min(model.resources().size(), page * 8 + 8);
         for (int i = page * 8; i < end; i++) {
@@ -227,6 +230,7 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
             tooltip.add(text("initial", Long.toString(resource.icon().amount())));
             tooltip.add(text("seed", Long.toString(resource.seed())));
             tooltip.add(text("missing", Long.toString(resource.missing())));
+            if (resource.seed() > 0) tooltip.addAll(GraphSeedStatus.tooltip(seedProof));
         }
         tooltip.add(text("shared"));
         return tooltip;

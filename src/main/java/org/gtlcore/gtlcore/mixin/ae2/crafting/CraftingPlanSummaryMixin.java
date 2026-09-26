@@ -4,6 +4,8 @@ import org.gtlcore.gtlcore.integration.ae2.crafting.CraftingPlanSummaryCraftTime
 import org.gtlcore.gtlcore.integration.ae2.crafting.ICraftingPlanSummaryEntry;
 import org.gtlcore.gtlcore.integration.ae2.graph.AeGraphPlan;
 import org.gtlcore.gtlcore.integration.ae2.graph.GraphPlanSummaryView;
+import org.gtlcore.gtlcore.integration.ae2.graph.GraphSeedStatus;
+import org.gtlcore.gtlcore.integration.ae2.graph.core.GraphPlan;
 
 import net.minecraft.network.FriendlyByteBuf;
 
@@ -30,6 +32,19 @@ public class CraftingPlanSummaryMixin implements GraphPlanSummaryView {
     @Unique
     private UUID gtlcore$graphId;
 
+    @Unique
+    private GraphPlan.SeedOptimality gtlcore$seedProof;
+
+    @Override
+    public GraphPlan.SeedOptimality gtlcore$seedOptimality() {
+        return gtlcore$seedProof;
+    }
+
+    @Override
+    public void gtlcore$seedOptimality(GraphPlan.SeedOptimality proof) {
+        gtlcore$seedProof = proof;
+    }
+
     @Override
     public UUID gtlcore$graphPlanId() {
         return gtlcore$graphId;
@@ -44,13 +59,20 @@ public class CraftingPlanSummaryMixin implements GraphPlanSummaryView {
     private void gtlcore$writeGraphIdentity(FriendlyByteBuf buffer, Operation<Void> original) {
         original.call(buffer);
         buffer.writeBoolean(gtlcore$graphId != null);
-        if (gtlcore$graphId != null) buffer.writeUUID(gtlcore$graphId);
+        if (gtlcore$graphId != null) {
+            buffer.writeUUID(gtlcore$graphId);
+            GraphSeedStatus.write(buffer, gtlcore$seedProof);
+        }
     }
 
     @WrapMethod(method = "read", remap = false)
     private static CraftingPlanSummary gtlcore$readGraphIdentity(FriendlyByteBuf buffer, Operation<CraftingPlanSummary> original) {
         CraftingPlanSummary summary = original.call(buffer);
-        if (buffer.readBoolean()) ((GraphPlanSummaryView) summary).gtlcore$graphPlanId(buffer.readUUID());
+        if (buffer.readBoolean()) {
+            var view = (GraphPlanSummaryView) summary;
+            view.gtlcore$graphPlanId(buffer.readUUID());
+            view.gtlcore$seedOptimality(GraphSeedStatus.read(buffer));
+        }
         return summary;
     }
 
@@ -62,6 +84,7 @@ public class CraftingPlanSummaryMixin implements GraphPlanSummaryView {
         // Only the nested UI call sees this view; the menu and CPU retain the graph plan.
         CraftingPlanSummary summary = original.call(grid, actionSource, graph.summaryView());
         ((GraphPlanSummaryView) summary).gtlcore$graphPlanId(graph.id());
+        ((GraphPlanSummaryView) summary).gtlcore$seedOptimality(graph.graph().seedOptimality());
         for (var entry : summary.getEntries()) {
             long seed = graph.graph().seeds().getOrDefault(entry.getWhat(), 0L);
             ((ICraftingPlanSummaryEntry) entry).gtlcore$setGraphSeed(seed);

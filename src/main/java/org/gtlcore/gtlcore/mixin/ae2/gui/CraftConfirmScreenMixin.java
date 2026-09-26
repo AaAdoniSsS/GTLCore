@@ -2,7 +2,9 @@ package org.gtlcore.gtlcore.mixin.ae2.gui;
 
 import org.gtlcore.gtlcore.client.ae2.graph.CraftingRingButton;
 import org.gtlcore.gtlcore.client.ae2.graph.CraftingRingScreen;
+import org.gtlcore.gtlcore.client.ae2.graph.GraphPlanningErrorScreen;
 import org.gtlcore.gtlcore.integration.ae2.common.IConfirmStartMenu;
+import org.gtlcore.gtlcore.integration.ae2.graph.GraphPlanMenu;
 import org.gtlcore.gtlcore.integration.ae2.graph.GraphPlanSummaryView;
 import org.gtlcore.gtlcore.integration.jei.JeiMissingIngredientBookmarks;
 
@@ -87,6 +89,14 @@ public abstract class CraftConfirmScreenMixin extends AEBaseScreen<CraftConfirmM
         }
         this.gtlcore$favoriteMissing.active = JeiMissingIngredientBookmarks.isAvailable() &&
                 !gtlcore$collectMissingKeys().isEmpty();
+    }
+
+    @Inject(method = "updateBeforeRender", at = @At("HEAD"), cancellable = true, remap = false)
+    private void gtlcore$showPlanningFailure(CallbackInfo ci) {
+        String key = ((GraphPlanMenu) menu).gtlcore$planningFailure();
+        if (key.isEmpty()) return;
+        switchToScreen(new GraphPlanningErrorScreen((CraftConfirmScreen) (Object) this, key));
+        ci.cancel();
     }
 
     @Unique

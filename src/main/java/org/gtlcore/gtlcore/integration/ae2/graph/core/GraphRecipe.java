@@ -98,6 +98,11 @@ public final class GraphRecipe<K> {
         return reusableInputs;
     }
 
+    /** A consumed configuration is charged per push; reusable tokens are exact read arcs. */
+    public boolean batchSensitiveInputs() {
+        return !configurationInputs.equals(reusableInputs);
+    }
+
     /** Real machine returns; excludes the logical self-return of virtual supply tokens. */
     public Map<K, Long> executionOutputs() {
         return executionOutputs;

@@ -2,6 +2,8 @@ package org.gtlcore.gtlcore.mixin.ae2.gui;
 
 import org.gtlcore.gtlcore.integration.ae2.common.IConfirmStartMenu;
 import org.gtlcore.gtlcore.integration.ae2.crafting.ICraftingPlanSummaryEntry;
+import org.gtlcore.gtlcore.integration.ae2.graph.GraphPlanSummaryView;
+import org.gtlcore.gtlcore.integration.ae2.graph.GraphSeedStatus;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
@@ -9,6 +11,7 @@ import net.minecraft.network.chat.Component;
 import appeng.client.gui.AEBaseScreen;
 import appeng.client.gui.me.crafting.AbstractTableRenderer;
 import appeng.client.gui.me.crafting.CraftConfirmTableRenderer;
+import appeng.menu.me.crafting.CraftConfirmMenu;
 import appeng.menu.me.crafting.CraftingPlanSummaryEntry;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -75,6 +78,8 @@ public abstract class CraftConfirmTableRendererMixin extends AbstractTableRender
             lines.add(Component.translatable("gtlcore.ae.graph.preserved_seed", graphEntry.gtlcore$getGraphSeed()).withStyle(ChatFormatting.AQUA));
         if (graphEntry.gtlcore$isMissingGraphSeed())
             lines.add(Component.translatable("gtlcore.ae.graph.missing_seed").withStyle(ChatFormatting.RED));
+        if (screen.getMenu() instanceof CraftConfirmMenu menu && menu.getPlan() instanceof GraphPlanSummaryView view)
+            lines.addAll(GraphSeedStatus.tooltip(view.gtlcore$seedOptimality()));
         cir.setReturnValue(lines);
     }
 

@@ -1,5 +1,6 @@
 package org.gtlcore.gtlcore.integration.ae2.graph;
 
+import org.gtlcore.gtlcore.config.ConfigHolder;
 import org.gtlcore.gtlcore.integration.ae2.crafting.ManualCraftingInventoryLock;
 import org.gtlcore.gtlcore.integration.ae2.graph.core.GraphRecipe;
 import org.gtlcore.gtlcore.integration.ae2.graph.core.PlanningBudget;
@@ -26,7 +27,7 @@ public final class GtlPatternCatalog {
 
     private static final int MAX_VARIANTS = CapturedPattern.MAX_VARIANTS;
 
-    private record Roots(AEKey target, Set<AEKey> recovery) {}
+    private record Roots(AEKey target, Set<AEKey> recovery, boolean discoverByproducts) {}
 
     public record Signature(PatternFingerprint.Values values, int priority) {}
 
@@ -35,10 +36,13 @@ public final class GtlPatternCatalog {
     private static long dataGeneration;
     private long cachedDataGeneration = -1;
     private long invalidationGeneration;
+    private ByproductPatternIndex byproducts;
+    private long byproductRevision = -1;
 
     /** A failed execution preflight disproves the cached catalog, even without a provider event. */
     public void invalidateBinding(String binding) {
         cache.values().removeIf(structure -> structure.catalog().mayContainBinding(binding));
+        byproducts = null;
         invalidationGeneration++;
     }
 
@@ -58,7 +62,8 @@ public final class GtlPatternCatalog {
 
     public Capture begin(IGrid grid, CraftingService service, Level level, IActionSource source, AEKey target,
                          Set<AEKey> recovery, PlanningBudget budget) {
-        return new Capture(grid, service, level, source, new Roots(target, Set.copyOf(recovery)), budget);
+        return new Capture(grid, service, level, source,
+                new Roots(target, Set.copyOf(recovery), ConfigHolder.INSTANCE.ae2GraphDiscoverByproducts), budget);
     }
 
     /** World access is split between ticks; each request keeps its frontier and captured bindings. */
@@ -100,6 +105,9 @@ public final class GtlPatternCatalog {
         private Iterator<AEKey> normalized;
         private IPatternDetails normalizingPattern;
         private Signature normalizingSignature;
+        private ByproductPatternIndex sourceIndex;
+        private ByproductPatternIndex.Build indexing;
+        private long indexingRevision = -1;
 
         Capture(IGrid grid, CraftingService service, Level level, IActionSource source, Roots roots, PlanningBudget budget) {
             if (!level.getServer().isSameThread()) throw new IllegalStateException("Graph snapshot requires server thread");
@@ -116,6 +124,7 @@ public final class GtlPatternCatalog {
             invalidationRevision = invalidationGeneration;
             if (recipeManager != level.getRecipeManager() || cachedDataGeneration != dataRevision) {
                 cache.clear();
+                byproducts = null;
                 recipeManager = level.getRecipeManager();
                 cachedDataGeneration = dataRevision;
             }
@@ -140,6 +149,7 @@ public final class GtlPatternCatalog {
             if (!level.getServer().isSameThread()) throw new IllegalStateException("Graph snapshot escaped server thread");
             budget.check();
             budget.phase(PlanningBudget.Phase.SNAPSHOT);
+            if (!prepareSources()) return false;
             switch (phase) {
                 case 0 -> { // Revalidate only this target's dependency signatures after a provider edit.
                     if (patterns != null && patterns.hasNext()) {
@@ -156,7 +166,7 @@ public final class GtlPatternCatalog {
                     if (keys.hasNext()) {
                         key = keys.next();
                         versions = new ArrayList<>();
-                        patterns = List.copyOf(service.getCraftingFor(key)).iterator();
+                        patterns = sources(key).iterator();
                     } else {
                         phase = 2;
                         keys = structure.inputTemplates().iterator();
@@ -211,7 +221,7 @@ public final class GtlPatternCatalog {
                     if (seen.size() > 100_000) throw new PlanningBudget.Exhausted(PlanningBudget.Limit.GRAPH_LIMIT);
                     budget.reserve(96);
                     versions = new ArrayList<>();
-                    patterns = List.copyOf(service.getCraftingFor(key)).iterator();
+                    patterns = sources(key).iterator();
                 }
                 case 2 -> {
                     if (keys.hasNext()) {
@@ -299,7 +309,7 @@ public final class GtlPatternCatalog {
                     if (keys.hasNext()) {
                         key = keys.next();
                         versions = new ArrayList<>();
-                        patterns = List.copyOf(service.getCraftingFor(key)).iterator();
+                        patterns = sources(key).iterator();
                     } else {
                         phase = 3;
                         keys = Collections.emptyIterator();
@@ -310,6 +320,34 @@ public final class GtlPatternCatalog {
                 }
             }
             return result != null;
+        }
+
+        private boolean prepareSources() {
+            if (!roots.discoverByproducts()) return true;
+            if (dataRevision != dataGeneration) throw new IllegalStateException("GRAPH_DATA_CHANGED_DURING_SNAPSHOT");
+            if (invalidationRevision != invalidationGeneration) throw new IllegalStateException("GRAPH_BINDING_INVALIDATED_DURING_SNAPSHOT");
+            long latest = ((GraphRequestTracker) service).gtlcore$graphProviderGeneration();
+            if (byproducts != null && byproductRevision == latest) {
+                sourceIndex = byproducts;
+                indexing = null;
+                return true;
+            }
+            // Provider updates may occur between tick slices. Discard the
+            // partial index before touching its live registry iterator again.
+            if (indexing == null || indexingRevision != latest) {
+                indexingRevision = latest;
+                indexing = new ByproductPatternIndex.Build(((GraphRequestTracker) service).gtlcore$registeredGraphPatterns());
+            }
+            if (!indexing.step(budget)) return false;
+            sourceIndex = byproducts = indexing.result();
+            byproductRevision = latest;
+            indexing = null;
+            return true;
+        }
+
+        private List<IPatternDetails> sources(AEKey resource) {
+            var primary = service.getCraftingFor(resource);
+            return roots.discoverByproducts() ? sourceIndex.sources(resource, primary) : List.copyOf(primary);
         }
 
         private Signature signature(IPatternDetails pattern) {

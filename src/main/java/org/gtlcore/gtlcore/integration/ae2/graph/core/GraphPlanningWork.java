@@ -168,6 +168,16 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
                     }
                     choices = pending.removeFirst();
                     if (!seen.add(choices)) return false;
+                    // Source explanations were checked with all unmentioned
+                    // choices free. Reusing one does not require rebuilding the
+                    // same rejected dependency graph first.
+                    sourceCore = proofs == null || best == null ? null : proofs.sourceConflict(choices, true);
+                    if (sourceCore != null) {
+                        prepareAlternatives();
+                        budget.note("source_backjump", "before_compile; relevant_decisions=" + sourceCore.size());
+                        phase = 5;
+                        return false;
+                    }
                     graph = compiler.cached(target, requiredSeeds.keySet(), choices, excluded);
                     if (graph == null) compiling = compiler.begin(target, requiredSeeds.keySet(), choices, excluded, budget);
                     phase = 1;

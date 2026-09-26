@@ -54,7 +54,7 @@ final class CountSupportSearch<K> implements AutoCloseable {
         stateLimit = full ? 4096 : 1024;
         for (int i = 0; i < candidate.length; i++) if (candidate[i].signum() > 0) support.add(i);
         if (model.keys.size() > 16 || support.size() > (full ? 32 : 16) || allowance < 512 ||
-                model.recipes.stream().anyMatch(r -> !r.configurationInputs().isEmpty() || !r.reusableInputs().isEmpty())) {
+                model.recipes.stream().anyMatch(GraphRecipe::batchSensitiveInputs)) {
             result = Result.UNKNOWN;
             return;
         }

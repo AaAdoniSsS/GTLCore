@@ -60,7 +60,7 @@ final class BackwardCoverability<K> implements AutoCloseable {
         for (int i = 0; i < keys.size(); i++) positions.put(keys.get(i), i);
         initial = keys.stream().map(key -> stock.getOrDefault(key, BigInteger.ZERO)).toList();
         goal = keys.stream().map(key -> goals.getOrDefault(key, BigInteger.ZERO)).toList();
-        if (recipes.stream().anyMatch(r -> !r.configurationInputs().isEmpty() || !r.reusableInputs().isEmpty())) {
+        if (recipes.stream().anyMatch(GraphRecipe::batchSensitiveInputs)) {
             result = Result.UNKNOWN;
             return;
         }

@@ -36,6 +36,16 @@ public final class GraphJobCodec {
         tag.put("initialExact", exactAmounts(plan.initialExact()));
         tag.put("deferredExternal", exactAmounts(state.deferredExternal()));
         tag.put("seeds", amounts(plan.seeds()));
+        if (plan.seedOptimality() != null) {
+            var proof = plan.seedOptimality();
+            CompoundTag saved = new CompoundTag();
+            saved.putInt("lowerTypes", proof.lowerTypeBound());
+            saved.putInt("types", proof.types());
+            saved.putBoolean("cardinalityProven", proof.cardinalityProven());
+            saved.putBoolean("quantitiesProven", proof.quantitiesParetoProven());
+            saved.putBoolean("fundedPreview", proof.fundedPreview());
+            tag.put("seedOptimality", saved);
+        }
         tag.put("steps", step(plan.steps()));
         ListTag recipes = new ListTag();
         plan.recipes().values().forEach(recipe -> {
@@ -129,6 +139,12 @@ public final class GraphJobCodec {
         GraphPlan<AEKey> plan = new GraphPlan<>(key(tag.getCompound("target")), amount(tag, "amount"),
                 tag.getBoolean("preserve"), step(tag.getCompound("steps"), 0), recipes,
                 schema >= 7 ? exactAmounts(tag, "initialExact") : amounts(tag, "initial"), amounts(tag, "seeds"), Map.of(), GraphPlan.Result.FEASIBLE, 0, 0);
+        if (tag.contains("seedOptimality", Tag.TAG_COMPOUND)) {
+            CompoundTag proof = tag.getCompound("seedOptimality");
+            if (proof.getInt("types") != plan.seeds().size()) throw new IllegalArgumentException("Seed proof differs from saved plan");
+            plan = plan.withSeedOptimality(new GraphPlan.SeedOptimality(proof.getInt("lowerTypes"), proof.getInt("types"),
+                    proof.getBoolean("cardinalityProven"), proof.getBoolean("quantitiesProven"), proof.getBoolean("fundedPreview")));
+        }
         PlanVerifier.verify(plan);
         Map<String, BigInteger> accepted = new LinkedHashMap<>();
         CompoundTag counts = tag.getCompound("acceptedRuns");

@@ -281,7 +281,10 @@ final class AllocationSearch<K> {
         // A transformation with an identically zero vector cannot help a material
         // objective. A catalyst-returning productive recipe has nonzero other keys.
         if (summary.delta().values().stream().allMatch(value -> value.signum() == 0)) return 0;
-        return ExactAmounts.capped(bound.min(useful.max(BigInteger.ONE)));
+        bound = bound.min(useful.max(BigInteger.ONE));
+        if (proofs != null && macros == null && proofs.hasCountConflicts())
+            bound = proofs.maximumAdditional(cumulativeCounts(), recipes.get(index).id(), bound);
+        return ExactAmounts.capped(bound);
     }
 
     private void set(K key, BigInteger value, boolean record) {
@@ -396,12 +399,8 @@ final class AllocationSearch<K> {
     }
 
     private boolean backjump() {
-        if (proofs == null || macros != null) return false;
-        Map<String, BigInteger> counts = new LinkedHashMap<>();
-        for (PlanStep step : path) {
-            var batch = (PlanStep.Batch) step;
-            counts.merge(batch.recipe(), BigInteger.valueOf(batch.runs()), BigInteger::add);
-        }
+        if (proofs == null || macros != null || !proofs.hasCountConflicts()) return false;
+        Map<String, BigInteger> counts = cumulativeCounts();
         if (!proofs.rejectedPrefix(counts)) return false;
         int firstForbidden = path.size();
         while (firstForbidden > 0) {
@@ -424,6 +423,16 @@ final class AllocationSearch<K> {
         }
         budget.note("allocation_backjump", "levels=" + previousDepth + "->" + stack.size());
         return true;
+    }
+
+    private Map<String, BigInteger> cumulativeCounts() {
+        Map<String, BigInteger> counts = new LinkedHashMap<>();
+        for (PlanStep step : path) {
+            budget.check();
+            var batch = (PlanStep.Batch) step;
+            counts.merge(batch.recipe(), BigInteger.valueOf(batch.runs()), BigInteger::add);
+        }
+        return counts;
     }
 
     /** Shared material/seed assembly for every native executable witness. */

@@ -252,7 +252,8 @@ final class IntegerCountBranch<K> implements AutoCloseable {
             if (counts != null) {
                 if (!preprocessingOnly && refineSupport()) state = State.SPLIT;
                 else scheduling = new CountSchedule<>(model, counts, budget);
-            } else matching = new CountMeetInMiddle(reduction.rows(), reduction.lower(), reduction.upper(), budget);
+            } else if (weightedChoices()) matching = new CountMeetInMiddle(reduction.rows(), reduction.lower(), reduction.upper(), budget);
+            else binary = new CountBoolean(reduction.rows(), reduction.lower(), reduction.upper(), budget);
             return;
         }
         if (matching != null) {
@@ -377,6 +378,17 @@ final class IntegerCountBranch<K> implements AutoCloseable {
             inheritedBasis.close();
             inheritedBasis = null;
         }
+    }
+
+    private boolean weightedChoices() {
+        // Cardinality/clause systems are handled directly by Boolean
+        // propagation. Building a multidimensional equality index adds no
+        // useful structure there; reserve it for genuinely weighted choices.
+        for (var row : reduction.rows()) for (var weight : row.terms().values()) {
+            budget.check();
+            if (weight.abs().compareTo(BigInteger.ONE) > 0) return true;
+        }
+        return false;
     }
 
     private int fractionalChoice(ExactRational[] point) {

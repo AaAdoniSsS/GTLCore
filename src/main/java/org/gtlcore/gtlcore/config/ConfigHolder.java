@@ -99,6 +99,9 @@ public class ConfigHolder {
     @Configurable.Comment("config.gtlcore.option.ae2GraphSeedPolicy.comment")
     public AEGraphSeedPolicy ae2GraphSeedPolicy = AEGraphSeedPolicy.PRESERVE;
     @Configurable
+    @Configurable.Comment("config.gtlcore.option.ae2GraphDiscoverByproducts.comment")
+    public boolean ae2GraphDiscoverByproducts = false;
+    @Configurable
     @Configurable.Range(min = 0, max = 4096)
     @Configurable.Comment("config.gtlcore.option.ae2GraphMaxExtraCatalystCopies.comment")
     public int ae2GraphMaxExtraCatalystCopies = 64;

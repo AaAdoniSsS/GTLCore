@@ -60,6 +60,10 @@ final class CountConflictPool implements AutoCloseable {
                 .map(Map.Entry::getKey).toList();
     }
 
+    boolean isEmpty() {
+        return entries.isEmpty();
+    }
+
     void report() {
         if (learned > 0) budget.note("count_conflict_pool", "learned=" + learned + "; used=" + reused +
                 "; retained=" + entries.size() + "; evicted=" + evicted);

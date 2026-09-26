@@ -18,9 +18,9 @@ final class CountExecution<K> implements AutoCloseable {
 
     CountExecution(RecipeCountModel<K> model, PlanningBudget budget) {
         this.budget = budget;
-        // These rules use the exact deterministic marking equation. Special
-        // per-push/reusable inputs retain their own execution semantics.
-        if (model.recipes.stream().anyMatch(r -> !r.configurationInputs().isEmpty() || !r.reusableInputs().isEmpty())) return;
+        // Reusable tokens are exact read arcs. Consumed configuration inputs
+        // depend on push grouping and cannot use a per-firing absence proof.
+        if (model.recipes.stream().anyMatch(GraphRecipe::batchSensitiveInputs)) return;
         long incidences = model.recipes.stream().mapToLong(r -> r.inputs().size() + r.outputs().size()).sum();
         long bytes = 256L + 192L * incidences;
         if (!budget.tryReserve(bytes)) return;

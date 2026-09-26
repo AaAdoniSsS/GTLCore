@@ -322,8 +322,7 @@ public final class CraftingEngineRouter {
         private RuntimeException limitOrUnknown(GraphPlan<AEKey> plan) {
             return switch (plan.result()) {
                 case TIMEOUT, SEARCH_LIMIT, MEMORY_LIMIT, GRAPH_LIMIT, QUEUE_LIMIT -> new PlanningBudget.Exhausted(PlanningBudget.Limit.valueOf(plan.result().name()), budget.failureDetail());
-                default -> new IllegalStateException("Graph crafting: " + plan.result() +
-                        (budget.failureDetail().isEmpty() ? "" : " (" + budget.failureDetail() + ")"));
+                default -> new GraphPlanningFailure(plan.result(), budget.failureDetail());
             };
         }
 

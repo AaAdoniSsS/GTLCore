@@ -15,6 +15,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.Level;
 
 import appeng.api.config.Actionable;
+import appeng.api.crafting.IPatternDetails;
 import appeng.api.networking.IGrid;
 import appeng.api.networking.IGridNode;
 import appeng.api.networking.crafting.CalculationStrategy;
@@ -75,6 +76,11 @@ public abstract class CraftingServiceMixin implements IMaxFastCraftingProviderVe
     @Override
     public long gtlcore$graphProviderGeneration() {
         return ((GraphProviderVersion) this.craftingProviders).gtlcore$providerGeneration();
+    }
+
+    @Override
+    public Iterable<IPatternDetails> gtlcore$registeredGraphPatterns() {
+        return ((GraphProviderVersion) this.craftingProviders).gtlcore$registeredPatterns();
     }
 
     @Inject(method = "beginCraftingCalculation", at = @At("HEAD"), cancellable = true, remap = false)
