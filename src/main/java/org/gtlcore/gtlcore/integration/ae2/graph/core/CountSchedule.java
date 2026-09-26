@@ -34,6 +34,7 @@ final class CountSchedule<K> implements AutoCloseable {
     private int independentComponents;
     private long orderedAway;
     private Result result;
+    private CountRecurrence<K> recurrence;
     private long memory;
 
     CountSchedule(RecipeCountModel<K> model, BigInteger[] counts, PlanningBudget budget) {
@@ -69,6 +70,14 @@ final class CountSchedule<K> implements AutoCloseable {
         if (!startupChecked) {
             startupChecked = true;
             if (blockedStartup()) return finish(Result.DEAD);
+            recurrence = new CountRecurrence<>(model, original, summaries, budget);
+        }
+        if (recurrence != null) {
+            if (!recurrence.step()) return false;
+            witness = recurrence.witness();
+            recurrence.close();
+            recurrence = null;
+            if (witness != null) return finish(Result.WITNESS);
         }
         if (exact) return exactStep();
         if (summarizing != null) {
@@ -370,6 +379,10 @@ final class CountSchedule<K> implements AutoCloseable {
 
     @Override
     public void close() {
+        if (recurrence != null) {
+            recurrence.close();
+            recurrence = null;
+        }
         budget.release(memory);
         memory = 0;
     }

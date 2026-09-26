@@ -4,6 +4,7 @@ import java.math.BigInteger;
 import java.util.ArrayDeque;
 import java.util.Collections;
 import java.util.Deque;
+import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -14,6 +15,8 @@ public final class SummaryComputation<K> {
     private final Map<String, GraphRecipe<K>> recipes;
     private final PlanningBudget budget;
     private final Map<PlanStep, SequenceSummary<K>> known;
+    private final Map<PlanStep, SequenceSummary<K>> shared = new IdentityHashMap<>();
+    private long sharedBytes;
     private final Deque<Frame> stack = new ArrayDeque<>();
     private SequenceSummary<K> result;
 
@@ -31,6 +34,17 @@ public final class SummaryComputation<K> {
     }
 
     public boolean step() {
+        try {
+            return advance();
+        } catch (RuntimeException | Error failure) {
+            shared.clear();
+            budget.release(sharedBytes);
+            sharedBytes = 0;
+            throw failure;
+        }
+    }
+
+    private boolean advance() {
         budget.check();
         if (result != null) return true;
         Frame frame = stack.peek();
@@ -160,9 +174,19 @@ public final class SummaryComputation<K> {
     }
 
     private void complete(SequenceSummary<K> complete) {
-        stack.pop();
-        if (stack.isEmpty()) result = complete;
-        else {
+        Frame finished = stack.pop();
+        if (stack.isEmpty()) {
+            result = complete;
+            shared.clear();
+            budget.release(sharedBytes);
+            sharedBytes = 0;
+        } else {
+            if (!(finished.step instanceof PlanStep.Batch) && !shared.containsKey(finished.step)) {
+                long bytes = 128L + 128L * (complete.required().size() + complete.delta().size() + complete.peak().size());
+                budget.reserve(bytes);
+                sharedBytes += bytes;
+                shared.put(finished.step, complete);
+            }
             Frame parent = stack.peek();
             parent.pending = complete;
             parent.keys = complete.delta().keySet().iterator();
@@ -198,7 +222,8 @@ public final class SummaryComputation<K> {
 
         private Frame(PlanStep step) {
             this.step = step;
-            cached = known.get(step);
+            SequenceSummary<K> previous = shared.get(step);
+            cached = previous == null ? known.get(step) : previous;
         }
     }
 }

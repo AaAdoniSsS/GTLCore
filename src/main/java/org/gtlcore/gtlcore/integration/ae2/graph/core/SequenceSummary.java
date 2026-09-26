@@ -2,6 +2,7 @@ package org.gtlcore.gtlcore.integration.ae2.graph.core;
 
 import java.math.BigInteger;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -78,15 +79,29 @@ public record SequenceSummary<K>(Map<K, BigInteger> required, Map<K, BigInteger>
     }
 
     public static <K> SequenceSummary<K> of(PlanStep step, Map<String, GraphRecipe<K>> recipes) {
+        return of(step, recipes, new IdentityHashMap<>());
+    }
+
+    private static <K> SequenceSummary<K> of(PlanStep step, Map<String, GraphRecipe<K>> recipes,
+                                             Map<PlanStep, SequenceSummary<K>> shared) {
+        SequenceSummary<K> cached = shared.get(step);
+        if (cached != null) return cached;
+        SequenceSummary<K> result = calculate(step, recipes, shared);
+        shared.put(step, result);
+        return result;
+    }
+
+    private static <K> SequenceSummary<K> calculate(PlanStep step, Map<String, GraphRecipe<K>> recipes,
+                                                    Map<PlanStep, SequenceSummary<K>> shared) {
         if (step instanceof PlanStep.Batch batch) {
             GraphRecipe<K> recipe = recipes.get(batch.recipe());
             if (recipe == null) throw new IllegalArgumentException("Unknown recipe " + batch.recipe());
             return recipe(recipe).repeat(batch.runs());
         }
-        if (step instanceof PlanStep.Repeat repeat) return of(repeat.body(), recipes).repeat(repeat.times());
+        if (step instanceof PlanStep.Repeat repeat) return of(repeat.body(), recipes, shared).repeat(repeat.times());
         Map<K, BigInteger> need = new LinkedHashMap<>(), change = new LinkedHashMap<>(), maximum = new LinkedHashMap<>();
         for (PlanStep child : ((PlanStep.Sequence) step).children()) {
-            SequenceSummary<K> next = of(child, recipes);
+            SequenceSummary<K> next = of(child, recipes, shared);
             // Only visit the new child's resources. Copying the accumulated prefix
             // at every aisle/step would turn an ordinary chain into quadratic work.
             for (K key : next.keys()) {

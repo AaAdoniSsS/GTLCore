@@ -12,7 +12,8 @@ final class IntegerCountSearch<K> implements AutoCloseable {
     private final RecipeCountModel<K> model;
     private final CountExecution<K> execution;
     private final K target;
-    private final long amount, started, allowance;
+    private final long amount, started, preprocessingAllowance;
+    private long allowance;
     private final Map<K, Long> stock, seeds;
     private final Set<K> external;
     private final boolean preserve, force;
@@ -54,6 +55,7 @@ final class IntegerCountSearch<K> implements AutoCloseable {
         choiceConflicts = new CountConflictPool(budget);
         this.started = started;
         allowance = Math.min(2_000_000, budget.remainingWork() / 4);
+        preprocessingAllowance = Math.min(16_000_000, budget.remainingWork() / 5 * 4);
         model = RecipeCountModel.create(compiler, target, amount, this.stock, this.seeds, this.external, excluded, force, budget);
         try {
             execution = model == null ? null : new CountExecution<>(model, budget);
@@ -85,6 +87,11 @@ final class IntegerCountSearch<K> implements AutoCloseable {
             harvest(true);
         }
         budget.check();
+        // A live finite-domain enumeration retains its table and prefix stack.
+        // Let it use another bounded slice of the same order budget instead of
+        // discarding it at the general branch-search quota and redoing sources.
+        if (work >= allowance && best == null && pending.size() == 1 && pending.peekFirst().matching != null)
+            allowance = preprocessingAllowance;
         if (work >= allowance || work >= improvementUntil) return finish(false);
         if (pending.isEmpty() && deferred.isEmpty()) return finish(!unresolved && best == null);
         if (best == null && !repairScheduled && work >= 32_768) enqueueRepair();

@@ -149,20 +149,7 @@ public final class GraphPlan<K> {
     public Map<String, BigInteger> patternTimesExact() {
         Map<String, BigInteger> cached = exactTimes;
         if (cached != null) return cached;
-        Map<String, BigInteger> counts = new LinkedHashMap<>();
-        collect(steps, BigInteger.ONE, counts);
-        exactTimes = Collections.unmodifiableMap(counts);
+        exactTimes = PlanCountComputation.of(steps);
         return exactTimes;
-    }
-
-    private static void collect(PlanStep step, BigInteger multiplier, Map<String, BigInteger> counts) {
-        if (step instanceof PlanStep.Batch batch) {
-            BigInteger count = multiplier.multiply(BigInteger.valueOf(batch.runs()));
-            if (count.signum() > 0) counts.merge(batch.recipe(), count, BigInteger::add);
-        } else if (step instanceof PlanStep.Repeat repeat) {
-            if (repeat.times() != 0) collect(repeat.body(), multiplier.multiply(BigInteger.valueOf(repeat.times())), counts);
-        } else {
-            for (PlanStep child : ((PlanStep.Sequence) step).children()) collect(child, multiplier, counts);
-        }
     }
 }

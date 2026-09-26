@@ -149,6 +149,17 @@ final class CountBounds implements AutoCloseable {
                 enqueue(r);
             }
             combinePairs(known);
+            combineCapacityGroups();
+            // Seed the worklist with the narrowest equations. A triangular
+            // count chain can then propagate from its fixed boundary in one
+            // sweep, instead of repeatedly revisiting long prefix equations.
+            var initialOrder = new ArrayList<>(queue);
+            initialOrder.sort(Comparator.comparingInt(id -> {
+                charge();
+                return this.rows.get(id).terms().size();
+            }));
+            queue.clear();
+            queue.addAll(initialOrder);
         } catch (RuntimeException | Error failure) {
             close();
             throw failure;
@@ -189,6 +200,110 @@ final class CountBounds implements AutoCloseable {
                 if (++added == 256) return;
             }
         }
+    }
+
+    /** Nonnegative resource sums and exact cancellation, with integer rounding. */
+    private void combineCapacityGroups() {
+        if (lower.length > 512 || rows.size() > 2048) return;
+        List<Integer> capacities = new ArrayList<>();
+        int[] parent = new int[lower.length];
+        for (int i = 0; i < parent.length; i++) parent[i] = i;
+        int initial = rows.size();
+        Set<ExactLinearProgram.Constraint> known = new HashSet<>(rows);
+        for (int r = 0; r < initial; r++) {
+            var row = rows.get(r);
+            if (row.terms().size() < 2 || row.upper().signum() < 0 || row.terms().values().stream().anyMatch(v -> v.signum() <= 0)) continue;
+            capacities.add(r);
+            int first = row.terms().keySet().iterator().next();
+            for (int id : row.terms().keySet()) {
+                charge();
+                int a = root(parent, first), b = root(parent, id);
+                parent[a] = b;
+            }
+        }
+        Map<Integer, List<Integer>> components = new LinkedHashMap<>();
+        for (int r : capacities) components.computeIfAbsent(root(parent, rows.get(r).terms().keySet().iterator().next()), unused -> new ArrayList<>()).add(r);
+        for (var component : components.values()) {
+            if (component.size() < 2) continue;
+            Map<Integer, BigInteger> terms = new LinkedHashMap<>();
+            BigInteger bound = BigInteger.ZERO;
+            BitSet reason = explain ? new BitSet() : null;
+            for (int r : component) {
+                var row = rows.get(r);
+                bound = bound.add(row.upper());
+                if (explain) union(reason, rowReasons.get(r));
+                for (var term : row.terms().entrySet()) {
+                    charge();
+                    terms.merge(term.getKey(), term.getValue(), BigInteger::add);
+                }
+            }
+            int id = rows.size();
+            if (addConsequence(new ExactLinearProgram.Constraint(terms, bound), reason, known)) capacities.add(id);
+        }
+        // Replace a proportional negative group by its proved upper bound.
+        // This handles f-a-b-c <= 0, a+b+c <= 1 without assuming f=1.
+        int added = 0;
+        for (int r = 0; r < initial && work < allowance / 2; r++) {
+            var source = rows.get(r);
+            if (source.terms().values().stream().noneMatch(v -> v.signum() < 0)) continue;
+            Map<Integer, BigInteger> terms = new LinkedHashMap<>(source.terms());
+            BigInteger bound = source.upper();
+            BitSet reason = explain ? new BitSet() : null;
+            if (explain) union(reason, rowReasons.get(r));
+            boolean changed = false;
+            // Large summed capacities first expose parity/covering bounds;
+            // individual private resource rows still handle multiway sources.
+            for (int c = capacities.size() - 1; c >= 0 && work < allowance / 2; c--) {
+                var cap = rows.get(capacities.get(c));
+                BigInteger numerator = null, denominator = null;
+                boolean matches = true;
+                for (var term : cap.terms().entrySet()) {
+                    charge();
+                    BigInteger value = terms.get(term.getKey());
+                    if (value == null || value.signum() >= 0) {
+                        matches = false;
+                        break;
+                    }
+                    if (numerator == null) {
+                        numerator = value.negate();
+                        denominator = term.getValue();
+                    } else if (!value.negate().multiply(denominator).equals(term.getValue().multiply(numerator))) {
+                        matches = false;
+                        break;
+                    }
+                }
+                if (!matches || numerator == null) continue;
+                BigInteger gcd = numerator.gcd(denominator);
+                BigInteger a = numerator.divide(gcd), b = denominator.divide(gcd);
+                terms.replaceAll((key, value) -> value.multiply(b));
+                cap.terms().keySet().forEach(terms::remove);
+                bound = bound.multiply(b).add(cap.upper().multiply(a));
+                if (explain) union(reason, rowReasons.get(capacities.get(c)));
+                changed = true;
+                if (terms.isEmpty()) break;
+            }
+            if (changed && addConsequence(new ExactLinearProgram.Constraint(terms, bound), reason, known) && ++added >= 128) break;
+        }
+        if (added > 0 && explain && assumptionStart == originalRows.size())
+            budget.note("count_capacity", "verified_group_bounds=" + added);
+    }
+
+    private static int root(int[] parent, int id) {
+        while (parent[id] != id) {
+            parent[id] = parent[parent[id]];
+            id = parent[id];
+        }
+        return id;
+    }
+
+    private boolean addConsequence(ExactLinearProgram.Constraint row, BitSet reason, Set<ExactLinearProgram.Constraint> known) {
+        var reduced = normalized(row);
+        if (!known.add(reduced)) return false;
+        long bytes = 192L + 128L * reduced.terms().size();
+        if (!budget.tryReserve(bytes)) return false;
+        memory += bytes;
+        append(reduced, reason);
+        return true;
     }
 
     private void inherit(Seed seed, List<ExactLinearProgram.Constraint> input) {

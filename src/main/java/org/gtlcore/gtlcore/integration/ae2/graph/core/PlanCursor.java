@@ -205,11 +205,7 @@ public final class PlanCursor {
 
     private static void count(PlanStep step, BigInteger multiplier, Map<String, BigInteger> counts) {
         if (multiplier.signum() == 0) return;
-        if (step instanceof PlanStep.Batch batch) {
-            BigInteger runs = multiplier.multiply(BigInteger.valueOf(batch.runs()));
-            if (runs.signum() > 0) counts.merge(batch.recipe(), runs, BigInteger::add);
-        } else if (step instanceof PlanStep.Repeat repeat) count(repeat.body(), multiplier.multiply(BigInteger.valueOf(repeat.times())), counts);
-        else for (PlanStep child : ((PlanStep.Sequence) step).children()) count(child, multiplier, counts);
+        PlanCountComputation.of(step).forEach((recipe, runs) -> counts.merge(recipe, runs.multiply(multiplier), BigInteger::add));
     }
 
     public record Position(int node, long remaining) {}

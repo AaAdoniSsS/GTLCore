@@ -131,6 +131,7 @@ final class CountReduction implements AutoCloseable {
         }
         saturated = true;
         cursor = 0;
+        saturateCovers();
         BigInteger minimum = BigInteger.ZERO;
         for (int i = 0; i < root.length; i++) {
             charge();
@@ -152,6 +153,47 @@ final class CountReduction implements AutoCloseable {
 
     private boolean binary(int id) {
         return sourceLower[id].signum() == 0 && BigInteger.ONE.equals(sourceUpper[id]);
+    }
+
+    /**
+     * When a demanded cardinality exhausts a sum of resource capacities,
+     * every contributing capacity is tight, including overlapping covers.
+     */
+    private void saturateCovers() {
+        if (source.size() > 2048 || root.length > 512) return;
+        List<ExactLinearProgram.Constraint> capacities = new ArrayList<>(), needs = new ArrayList<>();
+        for (var sourceRow : source) {
+            if (work >= allowance / 2) return;
+            var row = normalize(project(sourceRow));
+            if (row.terms().size() < 2) continue;
+            if (row.upper().equals(BigInteger.ONE) && row.terms().values().stream().allMatch(BigInteger.ONE::equals)) capacities.add(row);
+            else if (row.upper().signum() < 0 && row.terms().values().stream().allMatch(BigInteger.ONE.negate()::equals)) needs.add(row);
+        }
+        Set<ExactLinearProgram.Constraint> distinct = new HashSet<>(source);
+        for (var need : needs) {
+            if (work >= allowance / 2) return;
+            Map<Integer, BigInteger> total = new HashMap<>();
+            List<ExactLinearProgram.Constraint> used = new ArrayList<>();
+            for (var cap : capacities) {
+                charge();
+                if (cap.terms().size() >= need.terms().size() || !need.terms().keySet().containsAll(cap.terms().keySet())) continue;
+                used.add(cap);
+                for (int id : cap.terms().keySet()) {
+                    charge();
+                    total.merge(id, BigInteger.ONE, BigInteger::add);
+                }
+            }
+            if (!total.keySet().equals(need.terms().keySet())) continue;
+            BigInteger factor = total.values().iterator().next();
+            if (total.values().stream().anyMatch(v -> !v.equals(factor)) || !factor.multiply(need.upper().negate()).equals(BigInteger.valueOf(used.size()))) continue;
+            for (var cap : used) {
+                Map<Integer, BigInteger> terms = new LinkedHashMap<>();
+                cap.terms().forEach((key, value) -> terms.put(key, value.negate()));
+                var reverse = new ExactLinearProgram.Constraint(terms, BigInteger.ONE.negate());
+                if (distinct.add(reverse)) source.add(reverse);
+            }
+            budget.note("count_cover", "saturated_capacities=" + used.size());
+        }
     }
 
     private ExactLinearProgram.Constraint project(ExactLinearProgram.Constraint row) {

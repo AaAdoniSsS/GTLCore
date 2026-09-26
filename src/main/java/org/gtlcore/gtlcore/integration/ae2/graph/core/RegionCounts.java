@@ -19,6 +19,7 @@ final class RegionCounts<K> implements AutoCloseable {
     private CountBounds bounds;
     private CountSchedule<K> schedule;
     private CountProgram<K> countedProgram;
+    private CountRecurrence<K> recurrence;
     private SummaryComputation<K> computation;
     private RegionSelection.Choice<K> result;
     private boolean complete;
@@ -67,7 +68,15 @@ final class RegionCounts<K> implements AutoCloseable {
                 }
                 if (sum.compareTo(row.upper()) > 0) return finish("counts_incomplete");
             }
-            countedProgram = new CountProgram<>(recipes, counts, budget);
+            recurrence = new CountRecurrence<>(model, counts, recipes.stream().map(SequenceSummary::recipe).toList(), budget);
+        }
+        if (recurrence != null) {
+            if (!recurrence.step()) return false;
+            body = recurrence.witness();
+            recurrence.close();
+            recurrence = null;
+            if (body != null) computation = new SummaryComputation<>(body, byId, budget);
+            else countedProgram = new CountProgram<>(recipes, counts, budget);
         }
         if (countedProgram != null) {
             if (!countedProgram.step()) return false;
@@ -124,21 +133,24 @@ final class RegionCounts<K> implements AutoCloseable {
         return true;
     }
 
-    RegionSelection.Choice<K> result() { return result; }
+    RegionSelection.Choice<K> result() {
+        return result;
+    }
 
     private Map<K, Long> seedRequirements(SequenceSummary<K> summary) {
         Map<K, Long> seeds = new LinkedHashMap<>();
         if (preserve) for (K key : model.keys) if (!model.external.contains(key) &&
                 summary.delta(key).signum() >= 0 && summary.required(key).signum() > 0) {
-            budget.check();
-            if (summary.required(key).compareTo(ExactAmounts.LONG_MAX) > 0) return null;
-            seeds.put(key, summary.required(key).longValueExact());
-        }
+                    budget.check();
+                    if (summary.required(key).compareTo(ExactAmounts.LONG_MAX) > 0) return null;
+                    seeds.put(key, summary.required(key).longValueExact());
+                }
         return Map.copyOf(seeds);
     }
 
     @Override
     public void close() {
+        if (recurrence != null) recurrence.close();
         if (bounds != null) bounds.close();
         if (schedule != null) schedule.close();
         if (countedProgram != null) countedProgram.close();

@@ -10,16 +10,20 @@ import appeng.api.stacks.AEKey;
 
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /** Versioned logical state. No provider object, world reference, or floating material amount is saved. */
 public final class GraphJobCodec {
 
     public static final String NBT_KEY = "gtlcoreGraphJob";
-    private static final int SCHEMA = 7;
+    private static final int SCHEMA = 8;
     private static final int MAX_ENTRIES = 100_000;
 
     private GraphJobCodec() {}
@@ -236,7 +240,21 @@ public final class GraphJobCodec {
     }
 
     private static CompoundTag step(PlanStep step) {
+        return step(step, new IdentityHashMap<>());
+    }
+
+    private static CompoundTag step(PlanStep step, Map<PlanStep, Integer> nodes) {
         CompoundTag tag = new CompoundTag();
+        Integer reference = nodes.get(step);
+        if (reference != null) {
+            tag.putString("kind", "ref");
+            tag.putInt("node", reference);
+            return tag;
+        }
+        if (nodes.size() >= MAX_ENTRIES) throw new IllegalArgumentException("Graph task too large");
+        int id = nodes.size();
+        nodes.put(step, id);
+        tag.putInt("node", id);
         if (step instanceof PlanStep.Batch batch) {
             tag.putString("kind", "batch");
             tag.putString("recipe", batch.recipe());
@@ -244,28 +262,42 @@ public final class GraphJobCodec {
         } else if (step instanceof PlanStep.Repeat repeat) {
             tag.putString("kind", "repeat");
             tag.putLong("count", repeat.times());
-            tag.put("body", step(repeat.body()));
+            tag.put("body", step(repeat.body(), nodes));
         } else {
             tag.putString("kind", "sequence");
             ListTag children = new ListTag();
-            for (PlanStep child : ((PlanStep.Sequence) step).children()) children.add(step(child));
+            for (PlanStep child : ((PlanStep.Sequence) step).children()) children.add(step(child, nodes));
             tag.put("children", children);
         }
         return tag;
     }
 
     private static PlanStep step(CompoundTag tag, int depth) {
+        return step(tag, depth, new HashMap<>(), new HashSet<>());
+    }
+
+    private static PlanStep step(CompoundTag tag, int depth, Map<Integer, PlanStep> nodes, Set<Integer> defined) {
         if (depth > 128) throw new IllegalArgumentException("Graph plan nesting too deep");
-        return switch (tag.getString("kind")) {
+        if (tag.getString("kind").equals("ref")) {
+            if (!tag.contains("node", Tag.TAG_INT) || !nodes.containsKey(tag.getInt("node")))
+                throw new IllegalArgumentException("Invalid or cyclic graph program reference");
+            return nodes.get(tag.getInt("node"));
+        }
+        Integer id = tag.contains("node", Tag.TAG_INT) ? tag.getInt("node") : null;
+        if (id != null && (id < 0 || id >= MAX_ENTRIES || !defined.add(id)))
+            throw new IllegalArgumentException("Duplicate graph program definition");
+        PlanStep result = switch (tag.getString("kind")) {
             case "batch" -> new PlanStep.Batch(tag.getString("recipe"), amount(tag, "count"));
-            case "repeat" -> new PlanStep.Repeat(step(tag.getCompound("body"), depth + 1), amount(tag, "count"));
+            case "repeat" -> new PlanStep.Repeat(step(tag.getCompound("body"), depth + 1, nodes, defined), amount(tag, "count"));
             case "sequence" -> {
                 List<PlanStep> children = new ArrayList<>();
-                for (Tag entry : list(tag, "children")) children.add(step((CompoundTag) entry, depth + 1));
+                for (Tag entry : list(tag, "children")) children.add(step((CompoundTag) entry, depth + 1, nodes, defined));
                 yield new PlanStep.Sequence(children);
             }
             default -> throw new IllegalArgumentException("Unknown graph step");
         };
+        if (id != null) nodes.put(id, result);
+        return result;
     }
 
     private static ListTag list(CompoundTag tag, String name) {

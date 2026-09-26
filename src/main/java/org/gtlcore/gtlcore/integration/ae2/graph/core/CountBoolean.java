@@ -116,10 +116,36 @@ final class CountBoolean implements AutoCloseable {
             charge();
             if (fixed[i] == null && values[i] < 0 && (next < 0 || activity[i] > activity[next])) next = i;
         }
+        int required = -1, smallest = Integer.MAX_VALUE;
+        for (Row row : rows) {
+            // Branch on the most constrained unmet positive clause. This is
+            // also the exact-cover choice exposed by saturated resource rows.
+            if (row.cardinality() == null || row.cardinality() != row.variables().length - 1 ||
+                    Arrays.stream(row.coefficients()).anyMatch(v -> v.signum() >= 0))
+                continue;
+            int live = 0, candidate = -1;
+            boolean satisfied = false;
+            for (int id : row.variables()) {
+                charge();
+                if (values[id] == 1) {
+                    satisfied = true;
+                    break;
+                }
+                if (values[id] < 0) {
+                    live++;
+                    if (candidate < 0 || activity[id] > activity[candidate]) candidate = id;
+                }
+            }
+            if (!satisfied && candidate >= 0 && live < smallest) {
+                smallest = live;
+                required = candidate;
+            }
+        }
+        if (required >= 0) next = required;
         if (next >= 0) {
             level++;
             decisions++;
-            int value = polarity[next] >= 0 ? 1 : 0;
+            int value = required >= 0 || polarity[next] >= 0 ? 1 : 0;
             BitSet reason = new BitSet();
             reason.set(2 * next + value);
             assign(next, value, reason);

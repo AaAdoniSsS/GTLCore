@@ -3,10 +3,10 @@ package org.gtlcore.gtlcore.integration.ae2.graph.core;
 import java.math.BigInteger;
 import java.util.*;
 
-/** Exact multidimensional binary equalities; range-independent, but state-budgeted. */
+/** Exact finite-domain matching. Every signature includes every remaining constraint. */
 final class CountMeetInMiddle implements AutoCloseable {
 
-    private static final int MAX_HALF = 18, MAX_DIMENSIONS = 8;
+    private static final int MAX_STATES = 1_048_576;
 
     private static final class LocalLimit extends RuntimeException {
 
@@ -15,18 +15,53 @@ final class CountMeetInMiddle implements AutoCloseable {
         }
     }
 
+    /** A scalar interval, or a proved disjoint at-most/exactly-one group. */
+    private static final class Domain {
+
+        final int[] variables;
+        final boolean group;
+        int size;
+        boolean zero;
+
+        Domain(int[] variables, int size, boolean group, boolean zero) {
+            this.variables = variables;
+            this.size = size;
+            this.group = group;
+            this.zero = zero;
+        }
+
+        BigInteger value(Map<Integer, BigInteger> row, int option) {
+            if (!group) return row.getOrDefault(variables[0], BigInteger.ZERO).multiply(BigInteger.valueOf(option));
+            return zero && option == 0 ? BigInteger.ZERO : row.getOrDefault(variables[option - (zero ? 1 : 0)], BigInteger.ZERO);
+        }
+
+        void assign(BigInteger[] counts, int option) {
+            if (!group) counts[variables[0]] = counts[variables[0]].add(BigInteger.valueOf(option));
+            else if (!zero || option > 0) {
+                int id = variables[option - (zero ? 1 : 0)];
+                counts[id] = counts[id].add(BigInteger.ONE);
+            }
+        }
+    }
+
+    private record Entry(BigInteger[] values, int code) {}
+
     private final List<ExactLinearProgram.Constraint> original;
     private final Map<Map<Integer, BigInteger>, BigInteger> rows = new LinkedHashMap<>();
     private final Map<List<BigInteger>, Integer> left = new HashMap<>();
     private final PlanningBudget budget;
     private final BigInteger[] lower, upper;
-    private final int[] choices;
+    private final List<Domain> domains = new ArrayList<>();
     private final long allowance;
-    private BigInteger[][] coefficients;
-    private BigInteger[] goal, sum, counts;
+    private BigInteger[][][] coefficients;
+    private BigInteger[] goalLow, goalHigh, sum, counts;
+    private Enumeration enumeratingLeft, enumeratingRight;
+    private long entryBytes;
+    private Entry[] ranged;
+    private BigInteger[] queryLow, queryHigh;
     private long memory, work;
-    private int phase, rowIndex, split, index, mask, leftStates, rightStates, trials;
-    private boolean complete, infeasible;
+    private int phase, rowIndex, split, leftStates, rightStates, trials, rangeCursor = -1;
+    private boolean complete, infeasible, equalities;
 
     CountMeetInMiddle(List<ExactLinearProgram.Constraint> original, BigInteger[] lower,
                       BigInteger[] upper, PlanningBudget budget) {
@@ -34,30 +69,11 @@ final class CountMeetInMiddle implements AutoCloseable {
         this.lower = lower.clone();
         this.upper = upper.clone();
         this.budget = budget;
-        allowance = Math.min(2_097_152, budget.remainingWork() / 4);
-        List<Integer> free = new ArrayList<>();
-        for (int i = 0; i < lower.length; i++) {
-            if (lower[i].equals(upper[i])) continue;
-            if (lower[i].signum() != 0 || !BigInteger.ONE.equals(upper[i])) complete = true;
-            free.add(i);
-        }
-        // A larger Boolean model may still yield a cheap witness on one face.
-        // Keep this heuristic local: its exhausted domain is NEVER a proof for
-        // the parent model. General search retains all the omitted choices.
-        if (free.size() <= 128) while (free.size() > MAX_HALF * 2) {
-            int id = free.remove(0);
-            this.upper[id] = this.lower[id];
-            trials++;
-        }
-        choices = free.stream().mapToInt(Integer::intValue).toArray();
-        if (complete || choices.length == 0 || choices.length > MAX_HALF * 2 || allowance < 1024) {
-            complete = true;
-            return;
-        }
+        allowance = Math.min(12_000_000, budget.remainingWork() / 3 * 2);
         long entries = original.stream().mapToLong(row -> row.terms().size()).sum();
         long bytes = 1024 + 192L * entries + 256L * original.size() + 256L * lower.length;
-        if (budget.tryReserve(bytes)) memory = bytes;
-        else complete = true;
+        if (allowance < 1024 || !budget.tryReserve(bytes)) complete = true;
+        else memory = bytes;
     }
 
     boolean step() {
@@ -73,12 +89,14 @@ final class CountMeetInMiddle implements AutoCloseable {
                     for (var term : row.terms().entrySet()) {
                         charge();
                         int id = term.getKey();
-                        if (lower[id].equals(upper[id])) bound = bound.subtract(term.getValue().multiply(lower[id]));
-                        else if (term.getValue().signum() != 0) {
-                            terms.put(id, term.getValue());
-                            minimum = minimum.add(term.getValue().min(BigInteger.ZERO));
-                            maximum = maximum.add(term.getValue().max(BigInteger.ZERO));
-                        }
+                        bound = bound.subtract(term.getValue().multiply(lower[id]));
+                        if (lower[id].equals(upper[id]) || term.getValue().signum() == 0) continue;
+                        if (upper[id] == null) return finish(false, "unbounded_domain");
+                        BigInteger width = upper[id].subtract(lower[id]);
+                        if (width.signum() < 0) return finish(true, "empty_domain");
+                        terms.put(id, term.getValue());
+                        minimum = minimum.add(term.getValue().min(BigInteger.ZERO).multiply(width));
+                        maximum = maximum.add(term.getValue().max(BigInteger.ZERO).multiply(width));
                     }
                     if (minimum.compareTo(bound) > 0) return finish(true, "bounds_infeasible");
                     if (maximum.compareTo(bound) <= 0) return false;
@@ -86,31 +104,63 @@ final class CountMeetInMiddle implements AutoCloseable {
                     rows.merge(normalized.terms(), normalized.upper(), BigInteger::min);
                 }
                 case 1 -> {
-                    left.putIfAbsent(List.of(sum.clone()), mask);
-                    if (++index == leftStates) {
-                        index = mask = 0;
-                        Arrays.fill(sum, BigInteger.ZERO);
+                    if (!enumeratingLeft.step()) return false;
+                    if (enumeratingLeft.done) {
+                        if (!equalities) {
+                            ranged = new Entry[left.size()];
+                            int i = 0;
+                            for (var entry : left.entrySet()) ranged[i++] = new Entry(entry.getKey().toArray(BigInteger[]::new), entry.getValue());
+                            Arrays.sort(ranged, (a, b) -> {
+                                charge();
+                                return a.values()[0].compareTo(b.values()[0]);
+                            });
+                            left.clear();
+                        }
                         phase = 2;
-                    } else advanceMask(0);
+                    } else {
+                        List<BigInteger> signature = List.of(enumeratingLeft.values.clone());
+                        if (!left.containsKey(signature)) {
+                            if (!budget.tryReserve(entryBytes)) return finish(false, "memory_limit");
+                            memory += entryBytes;
+                            left.put(signature, enumeratingLeft.code);
+                        }
+                        enumeratingLeft.consume();
+                    }
                 }
                 case 2 -> {
-                    BigInteger[] complement = new BigInteger[goal.length];
-                    for (int d = 0; d < goal.length; d++) {
-                        charge();
-                        complement[d] = goal[d].subtract(sum[d]);
+                    if (!enumeratingRight.step()) return false;
+                    if (enumeratingRight.done) return finish(true, "exhaustive_infeasible");
+                    sum = enumeratingRight.values;
+                    Integer matched;
+                    if (equalities) {
+                        BigInteger[] complement = new BigInteger[sum.length];
+                        for (int d = 0; d < sum.length; d++) {
+                            charge();
+                            complement[d] = goalHigh[d].subtract(sum[d]);
+                        }
+                        matched = left.get(List.of(complement));
+                    } else {
+                        if (rangeCursor < 0) beginRange();
+                        // Yield between candidates; broad intervals obey the same
+                        // scheduler slices and work accounting as exact matching.
+                        if (rangeCursor < ranged.length && (queryHigh[0] == null || ranged[rangeCursor].values()[0].compareTo(queryHigh[0]) <= 0)) {
+                            Entry candidate = ranged[rangeCursor++];
+                            if (!inside(candidate.values())) return false;
+                            matched = candidate.code();
+                        } else matched = null;
                     }
-                    Integer matched = left.get(List.of(complement));
                     if (matched != null) {
                         counts = lower.clone();
-                        for (int i = 0; i < choices.length; i++) counts[choices[i]] = BigInteger.valueOf(i < split ? (matched >>> i) & 1 : (mask >>> (i - split)) & 1);
+                        decode(matched, 0, split);
+                        decode(enumeratingRight.code, split, domains.size());
                         rowIndex = 0;
                         phase = 3;
-                    } else if (++index == rightStates) return finish(true, "exhaustive_infeasible");
-                    else advanceMask(split);
+                    } else {
+                        rangeCursor = -1;
+                        enumeratingRight.consume();
+                    }
                 }
                 case 3 -> {
-                    // Matching uses only proved equalities. Still independently
-                    // replay every untouched row before exporting a witness.
                     if (rowIndex == original.size()) return finish(false, "witness");
                     var row = original.get(rowIndex++);
                     BigInteger total = BigInteger.ZERO;
@@ -118,7 +168,7 @@ final class CountMeetInMiddle implements AutoCloseable {
                         charge();
                         total = total.add(term.getValue().multiply(counts[term.getKey()]));
                     }
-                    if (total.compareTo(row.upper()) > 0) throw new IllegalStateException("Meet-in-middle witness violates original row");
+                    if (total.compareTo(row.upper()) > 0) throw new IllegalStateException("Finite-domain witness violates original row");
                 }
                 default -> throw new IllegalStateException("Invalid count matching phase");
             }
@@ -130,54 +180,353 @@ final class CountMeetInMiddle implements AutoCloseable {
     }
 
     private boolean prepare() {
-        List<Map<Integer, BigInteger>> dimensions = new ArrayList<>();
-        List<BigInteger> targets = new ArrayList<>();
+        BitSet grouped = new BitSet();
         for (var row : rows.entrySet()) {
-            Map<Integer, BigInteger> opposite = new TreeMap<>();
+            if (!row.getValue().equals(BigInteger.ONE) || row.getKey().size() < 2) continue;
+            boolean eligible = true;
             for (var term : row.getKey().entrySet()) {
                 charge();
-                opposite.put(term.getKey(), term.getValue().negate());
+                int id = term.getKey();
+                if (grouped.get(id) || !term.getValue().equals(BigInteger.ONE) || !upper[id].subtract(lower[id]).equals(BigInteger.ONE)) eligible = false;
             }
-            // Keep the general Boolean solver for inequalities. Deduplicating
-            // equal signatures here is sound only when these equalities capture
-            // every remaining nontrivial constraint, including shared resources.
-            if (!row.getValue().negate().equals(rows.get(opposite))) return finish(false, "not_equalities");
-            int first = Collections.min(row.getKey().keySet());
-            if (row.getKey().get(first).signum() < 0) continue;
+            if (!eligible) continue;
+            Map<Integer, BigInteger> opposite = new TreeMap<>();
+            row.getKey().forEach((id, value) -> opposite.put(id, value.negate()));
+            boolean optional = !BigInteger.ONE.negate().equals(rows.get(opposite));
+            int[] ids = row.getKey().keySet().stream().mapToInt(Integer::intValue).toArray();
+            domains.add(new Domain(ids, ids.length + (optional ? 1 : 0), true, optional));
+            for (int id : ids) grouped.set(id);
+        }
+        for (int id = 0; id < lower.length; id++) if (!grouped.get(id) && !lower[id].equals(upper[id])) {
+            if (upper[id] == null) return finish(false, "unbounded_domain");
+            BigInteger size = upper[id].subtract(lower[id]).add(BigInteger.ONE);
+            if (size.signum() <= 0) return finish(true, "empty_domain");
+            if (size.compareTo(BigInteger.valueOf(MAX_STATES)) > 0) return finish(false, "domain_limit");
+            domains.add(new Domain(new int[] { id }, size.intValueExact(), false, false));
+        }
+        if (domains.size() > 128) return finish(false, "domain_limit");
+        // An optional saturated face can supply a witness, but never a proof of
+        // infeasibility for the full domain. Other strategies retain zero choices.
+        if (!fits() || domains.size() >= 8 && domains.stream().anyMatch(domain -> domain.zero)) {
+            for (Domain domain : domains) if (domain.zero) {
+                domain.zero = false;
+                domain.size--;
+                trials++;
+            }
+        }
+        if (!fits()) return finish(false, "state_limit");
+        List<Domain> a = new ArrayList<>(), b = new ArrayList<>();
+        long na = 1, nb = 1;
+        domains.sort(Comparator.comparingInt((Domain domain) -> domain.size).reversed());
+        for (Domain domain : domains) {
+            if (na <= nb) {
+                a.add(domain);
+                na *= domain.size;
+            } else {
+                b.add(domain);
+                nb *= domain.size;
+            }
+        }
+        domains.clear();
+        domains.addAll(a);
+        domains.addAll(b);
+        split = a.size();
+        leftStates = (int) na;
+        rightStates = (int) nb;
+        int width = domains.stream().mapToInt(domain -> domain.size).sum();
+        long projectionBytes = 128L * width * rows.size();
+        if (!budget.tryReserve(projectionBytes)) return finish(false, "projection_memory_limit");
+        memory += projectionBytes;
+        Map<List<BigInteger>, BigInteger> projected = new LinkedHashMap<>();
+        for (var row : rows.entrySet()) {
+            BigInteger bound = row.getValue(), minimum = BigInteger.ZERO, maximum = BigInteger.ZERO;
+            BigInteger[] values = new BigInteger[width];
+            int cursor = 0;
+            for (Domain domain : domains) {
+                BigInteger base = domain.value(row.getKey(), 0), lo = BigInteger.ZERO, hi = BigInteger.ZERO;
+                bound = bound.subtract(base);
+                for (int i = 0; i < domain.size; i++) {
+                    charge();
+                    BigInteger value = domain.value(row.getKey(), i).subtract(base);
+                    values[cursor++] = value;
+                    lo = lo.min(value);
+                    hi = hi.max(value);
+                }
+                minimum = minimum.add(lo);
+                maximum = maximum.add(hi);
+            }
+            if (minimum.compareTo(bound) > 0) return finish(true, "group_bounds_infeasible");
+            if (maximum.compareTo(bound) <= 0) continue;
+            BigInteger gcd = BigInteger.ZERO;
+            for (BigInteger value : values) gcd = gcd.gcd(value);
+            if (gcd.compareTo(BigInteger.ONE) > 0) {
+                for (int i = 0; i < values.length; i++) values[i] = values[i].divide(gcd);
+                BigInteger[] div = bound.divideAndRemainder(gcd);
+                bound = div[1].signum() < 0 ? div[0].subtract(BigInteger.ONE) : div[0];
+            }
+            projected.merge(List.of(values), bound, BigInteger::min);
+        }
+        // A saturated sum of necessary rows forces each row to be tight.
+        // Evaluate its true minimum over the compiled choices, including all
+        // options in each group. This also exposes complementary multiway outputs.
+        BigInteger[] total = new BigInteger[width];
+        Arrays.fill(total, BigInteger.ZERO);
+        BigInteger totalBound = BigInteger.ZERO;
+        for (var row : projected.entrySet()) {
+            totalBound = totalBound.add(row.getValue());
+            for (int i = 0; i < width; i++) {
+                charge();
+                total[i] = total[i].add(row.getKey().get(i));
+            }
+        }
+        BigInteger minimum = BigInteger.ZERO;
+        int position = 0;
+        for (Domain domain : domains) {
+            BigInteger least = total[position];
+            for (int i = 0; i < domain.size; i++) least = least.min(total[position++]);
+            minimum = minimum.add(least);
+        }
+        if (minimum.compareTo(totalBound) > 0) return finish(true, "aggregate_infeasible");
+        if (!projected.isEmpty() && minimum.equals(totalBound)) {
+            for (var row : new ArrayList<>(projected.entrySet()))
+                projected.merge(row.getKey().stream().map(BigInteger::negate).toList(), row.getValue().negate(), BigInteger::min);
+        }
+        List<List<BigInteger>> dimensions = new ArrayList<>();
+        List<BigInteger> lows = new ArrayList<>(), highs = new ArrayList<>();
+        Set<List<BigInteger>> included = new HashSet<>();
+        for (var row : projected.entrySet()) {
+            if (included.contains(row.getKey())) continue;
+            var opposite = row.getKey().stream().map(BigInteger::negate).toList();
+            BigInteger other = projected.get(opposite);
             dimensions.add(row.getKey());
-            targets.add(row.getValue());
+            lows.add(other == null ? null : other.negate());
+            highs.add(row.getValue());
+            included.add(row.getKey());
+            included.add(opposite);
         }
-        if (dimensions.isEmpty() || dimensions.size() > MAX_DIMENSIONS) return finish(false, "dimension_limit");
-        split = choices.length / 2;
-        leftStates = 1 << split;
-        rightStates = 1 << (choices.length - split);
-        coefficients = new BigInteger[choices.length][dimensions.size()];
-        int bits = 1;
-        for (int i = 0; i < choices.length; i++) for (int d = 0; d < dimensions.size(); d++) {
-            charge();
-            coefficients[i][d] = dimensions.get(d).getOrDefault(choices[i], BigInteger.ZERO);
-            bits = Math.max(bits, coefficients[i][d].abs().bitLength());
+        if (dimensions.isEmpty()) {
+            counts = lower.clone();
+            decode(0, 0, domains.size());
+            rowIndex = 0;
+            phase = 3;
+            return false;
         }
-        long bytes = (128L + dimensions.size() * (64L + (bits + MAX_HALF + 7L) / 8)) * leftStates;
+        int dims = dimensions.size(), bits = 1;
+        if (dims > 128) return finish(false, "dimension_workspace_limit");
+        for (var dimension : dimensions) for (BigInteger value : dimension) bits = Math.max(bits, value.abs().bitLength());
+        entryBytes = 160L + dims * (80L + (bits + 31L) / 8);
+        long bytes = 48L * dims * width + 256L * dims * domains.size();
         if (!budget.tryReserve(bytes)) return finish(false, "memory_limit");
         memory += bytes;
-        goal = targets.toArray(BigInteger[]::new);
-        sum = new BigInteger[goal.length];
+        coefficients = new BigInteger[domains.size()][][];
+        int cursor = 0;
+        for (int i = 0; i < domains.size(); i++) {
+            coefficients[i] = new BigInteger[domains.get(i).size][dims];
+            for (int option = 0; option < domains.get(i).size; option++, cursor++) for (int d = 0; d < dims; d++) coefficients[i][option][d] = dimensions.get(d).get(cursor);
+        }
+        goalLow = lows.toArray(BigInteger[]::new);
+        goalHigh = highs.toArray(BigInteger[]::new);
+        equalities = Arrays.equals(goalLow, goalHigh);
+        sum = new BigInteger[dims];
         Arrays.fill(sum, BigInteger.ZERO);
+        enumeratingLeft = new Enumeration(0, split, split, domains.size());
+        enumeratingRight = new Enumeration(split, domains.size(), 0, split);
         phase = 1;
         return false;
     }
 
-    /** Gray enumeration updates just one selected source per combination. */
-    private void advanceMask(int offset) {
-        int next = index ^ (index >>> 1);
-        int bit = Integer.numberOfTrailingZeros(next ^ mask);
-        boolean add = (next & (1 << bit)) != 0;
+    private boolean fits() {
+        long a = 1, b = 1;
+        for (Domain domain : domains.stream().sorted(Comparator.comparingInt((Domain d) -> d.size).reversed()).toList()) {
+            if (a <= b) a *= domain.size;
+            else b *= domain.size;
+            if (a > MAX_STATES || b > MAX_STATES) return false;
+        }
+        return true;
+    }
+
+    /** Enumerate only prefixes whose optimistic suffix still intersects every row. */
+    private final class Enumeration {
+
+        final int start, size;
+        final int[] next, chosen, strides;
+        final BigInteger[][] low, high;
+        final BigInteger[][] reachable;
+        final BigInteger[] values;
+        int depth, code;
+        boolean ready, done;
+
+        Enumeration(int start, int end, int otherStart, int otherEnd) {
+            this.start = start;
+            size = end - start;
+            next = new int[size + 1];
+            chosen = new int[size];
+            strides = new int[size];
+            values = new BigInteger[goalHigh.length];
+            Arrays.fill(values, BigInteger.ZERO);
+            low = new BigInteger[size + 1][values.length];
+            high = new BigInteger[size + 1][values.length];
+            reachable = new BigInteger[size + 1][values.length];
+            Arrays.fill(low[size], BigInteger.ZERO);
+            Arrays.fill(high[size], BigInteger.ZERO);
+            for (int i = otherStart; i < otherEnd; i++) addRange(i, low[size], high[size]);
+            for (int i = size - 1; i >= 0; i--) {
+                low[i] = low[i + 1].clone();
+                high[i] = high[i + 1].clone();
+                addRange(start + i, low[i], high[i]);
+            }
+            if (equalities && domains.stream().allMatch(domain -> domain.size <= 16)) {
+                for (int d = 0; d < values.length; d++) {
+                    BigInteger width = high[0][d].subtract(low[0][d]);
+                    if (width.compareTo(BigInteger.valueOf(32768)) > 0) continue;
+                    long bytes = (size + 1L) * (64 + (width.longValueExact() + 8) / 8);
+                    if (!budget.tryReserve(bytes)) continue;
+                    memory += bytes;
+                    BigInteger set = BigInteger.ONE;
+                    for (int i = otherStart; i < otherEnd; i++) set = extend(set, i, d);
+                    reachable[size][d] = set;
+                    for (int i = size - 1; i >= 0; i--) reachable[i][d] = extend(reachable[i + 1][d], start + i, d);
+                }
+            }
+            int stride = 1;
+            for (int i = 0; i < size; i++) {
+                strides[i] = stride;
+                stride *= domains.get(start + i).size;
+            }
+        }
+
+        void addRange(int i, BigInteger[] lower, BigInteger[] upper) {
+            for (int d = 0; d < values.length; d++) {
+                BigInteger a = BigInteger.ZERO, b = BigInteger.ZERO;
+                for (var option : coefficients[i]) {
+                    charge();
+                    a = a.min(option[d]);
+                    b = b.max(option[d]);
+                }
+                lower[d] = lower[d].add(a);
+                upper[d] = upper[d].add(b);
+            }
+        }
+
+        /** Exact one-row suffix sums; their intersection remains an overapproximation. */
+        BigInteger extend(BigInteger previous, int variable, int dimension) {
+            BigInteger offset = BigInteger.ZERO;
+            for (var option : coefficients[variable]) offset = offset.min(option[dimension]);
+            BigInteger result = BigInteger.ZERO;
+            Set<Integer> shifts = new HashSet<>();
+            for (var option : coefficients[variable]) {
+                charge();
+                int shift = option[dimension].subtract(offset).intValueExact();
+                if (shifts.add(shift)) result = result.or(previous.shiftLeft(shift));
+            }
+            return result;
+        }
+
+        boolean step() {
+            if (done || ready) return true;
+            for (int quantum = 0; quantum < 16; quantum++) {
+                charge();
+                if (depth == size) {
+                    ready = true;
+                    return true;
+                }
+                if (next[depth] == domains.get(start + depth).size) {
+                    if (depth == 0) {
+                        done = true;
+                        return true;
+                    }
+                    depth--;
+                    undo();
+                    continue;
+                }
+                int option = next[depth]++;
+                chosen[depth] = option;
+                code += strides[depth] * option;
+                boolean viable = true;
+                int changed = 0;
+                for (int d = 0; d < values.length; d++) {
+                    charge();
+                    values[d] = values[d].add(coefficients[start + depth][option][d]);
+                    changed++;
+                    if (goalHigh[d] != null && values[d].add(low[depth + 1][d]).compareTo(goalHigh[d]) > 0 ||
+                            goalLow[d] != null && values[d].add(high[depth + 1][d]).compareTo(goalLow[d]) < 0) {
+                        viable = false;
+                        break;
+                    }
+                    BigInteger suffix = reachable[depth + 1][d];
+                    if (suffix != null) {
+                        charge();
+                        BigInteger needed = goalHigh[d].subtract(values[d]).subtract(low[depth + 1][d]);
+                        if (needed.signum() < 0 || needed.compareTo(BigInteger.valueOf(suffix.bitLength())) >= 0 || !suffix.testBit(needed.intValue())) {
+                            viable = false;
+                            break;
+                        }
+                    }
+                }
+                if (!viable) undo(changed);
+                else {
+                    depth++;
+                    next[depth] = 0;
+                }
+            }
+            return false;
+        }
+
+        void consume() {
+            ready = false;
+            if (size == 0) done = true;
+            else {
+                depth--;
+                undo();
+            }
+        }
+
+        void undo() {
+            undo(values.length);
+        }
+
+        void undo(int changed) {
+            int option = chosen[depth];
+            code -= strides[depth] * option;
+            for (int d = 0; d < changed; d++) {
+                charge();
+                values[d] = values[d].subtract(coefficients[start + depth][option][d]);
+            }
+        }
+    }
+
+    private void decode(int code, int start, int end) {
+        for (int i = start; i < end; i++) {
+            Domain domain = domains.get(i);
+            domain.assign(counts, code % domain.size);
+            code /= domain.size;
+        }
+    }
+
+    private void beginRange() {
+        queryLow = new BigInteger[sum.length];
+        queryHigh = new BigInteger[sum.length];
         for (int d = 0; d < sum.length; d++) {
             charge();
-            sum[d] = add ? sum[d].add(coefficients[offset + bit][d]) : sum[d].subtract(coefficients[offset + bit][d]);
+            queryLow[d] = goalLow[d] == null ? null : goalLow[d].subtract(sum[d]);
+            queryHigh[d] = goalHigh[d] == null ? null : goalHigh[d].subtract(sum[d]);
         }
-        mask = next;
+        int lo = 0, hi = ranged.length;
+        while (lo < hi) {
+            charge();
+            int mid = (lo + hi) >>> 1;
+            if (queryLow[0] != null && ranged[mid].values()[0].compareTo(queryLow[0]) < 0) lo = mid + 1;
+            else hi = mid;
+        }
+        rangeCursor = lo;
+    }
+
+    private boolean inside(BigInteger[] values) {
+        for (int d = 0; d < values.length; d++) {
+            charge();
+            if (queryLow[d] != null && values[d].compareTo(queryLow[d]) < 0 || queryHigh[d] != null && values[d].compareTo(queryHigh[d]) > 0) return false;
+        }
+        return true;
     }
 
     private void charge() {
@@ -188,7 +537,7 @@ final class CountMeetInMiddle implements AutoCloseable {
     private boolean finish(boolean impossible, String detail) {
         infeasible = impossible && trials == 0;
         complete = true;
-        budget.note("count_match", detail + "; choices=" + choices.length + "; dimensions=" + (goal == null ? 0 : goal.length) +
+        budget.note("count_match", detail + "; choices=" + domains.size() + "; dimensions=" + (goalHigh == null ? 0 : goalHigh.length) +
                 "; left_states=" + leftStates + "; right_states=" + rightStates + "; trial_counts=" + trials +
                 "; proven_infeasible=" + infeasible + "; work=" + work);
         return true;

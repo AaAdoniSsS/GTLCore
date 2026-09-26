@@ -448,6 +448,7 @@ final class AllocationSearch<K> {
 
         final PlanStep witness;
         final Deque<PlanStep> collecting = new ArrayDeque<>();
+        final Set<PlanStep> collected = Collections.newSetFromMap(new IdentityHashMap<>());
         final Map<String, GraphRecipe<K>> used = new LinkedHashMap<>();
         final Map<K, List<GraphRecipe<K>>> producers = new HashMap<>();
         final Map<K, Long> seeds = new LinkedHashMap<>();
@@ -485,6 +486,7 @@ final class AllocationSearch<K> {
             if (stage == 0) {
                 if (!collecting.isEmpty()) {
                     PlanStep step = collecting.pop();
+                    if (!collected.add(step)) return false;
                     if (step instanceof PlanStep.Repeat repeat) {
                         if (repeat.times() > 0) collecting.push(repeat.body());
                         return false;

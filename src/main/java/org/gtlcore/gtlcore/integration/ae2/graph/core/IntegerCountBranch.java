@@ -39,6 +39,9 @@ final class IntegerCountBranch<K> implements AutoCloseable {
     boolean compiled, reducedLinear;
     CountPartition partition;
     CountMeetInMiddle matching;
+    CountLatticeRepair repair;
+    ExactRational[] repairPoint;
+    int repairAttempts;
     CountBoolean binary;
     ExactLinearProgram linear;
     ExactLinearProgram.Basis inheritedBasis, sharedBasis;
@@ -287,6 +290,23 @@ final class IntegerCountBranch<K> implements AutoCloseable {
             else beginLinear();
             return;
         }
+        if (repair != null) {
+            if (!repair.step()) return;
+            counts = reduction.expand(repair.counts());
+            repair.close();
+            repair = null;
+            if (counts != null) {
+                repairPoint = null;
+                if (refineSupport()) state = State.SPLIT;
+                else scheduling = new CountSchedule<>(model, counts, budget);
+            } else if (++repairAttempts < 4) {
+                beginRepair();
+            } else {
+                branchPoint(repairPoint);
+                repairPoint = null;
+            }
+            return;
+        }
         if (propagating != null) {
             if (!propagating.step()) return;
             boolean blocked = propagating.blocked();
@@ -349,6 +369,20 @@ final class IntegerCountBranch<K> implements AutoCloseable {
             state = State.SPLIT;
             return;
         }
+        if (current.isEmpty() && fractionalChoice(point) >= 0) {
+            repairPoint = point;
+            beginRepair();
+            return;
+        }
+        branchPoint(point);
+    }
+
+    private void beginRepair() {
+        ExactRational[] reduced = Arrays.stream(reduction.representatives()).mapToObj(i -> repairPoint[i]).toArray(ExactRational[]::new);
+        repair = new CountLatticeRepair(reduction.rows(), reduction.lower(), reduction.upper(), reduced, repairAttempts, budget);
+    }
+
+    private void branchPoint(ExactRational[] point) {
         int chosen = fractionalChoice(point);
         if (chosen >= 0) {
             int i = chosen;
@@ -455,6 +489,9 @@ final class IntegerCountBranch<K> implements AutoCloseable {
     }
 
     void releaseWorkspace() {
+        if (repair != null) repair.close();
+        repair = null;
+        repairPoint = null;
         if (linear != null) linear.close();
         if (propagating != null) propagating.close();
         if (partition != null) partition.close();

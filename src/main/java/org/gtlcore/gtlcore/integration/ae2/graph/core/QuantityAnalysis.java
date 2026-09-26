@@ -32,6 +32,18 @@ final class QuantityAnalysis<K> {
     private MissingStockAnalysis<K> startup;
     private final boolean forceCraft;
 
+    private static boolean finiteChoices(BigInteger[] lower, BigInteger[] upper) {
+        int free = 0;
+        for (int i = 0; i < lower.length; i++) {
+            if (upper[i] == null) return false;
+            BigInteger span = upper[i].subtract(lower[i]);
+            if (span.signum() == 0) continue;
+            if (span.signum() < 0 || span.compareTo(BigInteger.valueOf(4096)) > 0) return false;
+            free++;
+        }
+        return free >= 4 && free <= 128;
+    }
+
     QuantityAnalysis(GraphCompiler<K> compiler, K target, long amount, Map<K, Long> stock, Set<K> external,
                      Map<K, Long> required, Set<String> excluded, PlanningBudget budget) {
         this(compiler, target, amount, stock, external, required, excluded, budget, false);
@@ -159,7 +171,8 @@ final class QuantityAnalysis<K> {
                 budget.note("quantity_bounds", "proven_blocked; recipes=" + model.recipes.size() + "; keys=" + model.keys.size());
                 return finish(true);
             }
-            binaryChoices = CountPartition.binaryChoices(bounds.lowerBounds(), bounds.upperBounds(), 8);
+            binaryChoices = CountPartition.binaryChoices(bounds.lowerBounds(), bounds.upperBounds(), 8) ||
+                    finiteChoices(bounds.lowerBounds(), bounds.upperBounds());
             bounds.close();
             bounds = null;
             if ((model.recipes.size() > 192 || model.keys.size() > 128) && !binaryChoices) return finish(false);
