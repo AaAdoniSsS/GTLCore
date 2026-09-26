@@ -31,3 +31,24 @@ bin/
 # fabric
 
 run/
+
+# Local validation only: do not commit tests, fixtures, reports or workflows.
+/.local/
+/AGENTS.md
+/.github/workflows/
+/src/test/
+/src/gametest/
+/test/
+/tests/
+/fixtures/
+/benchmarks/
+/test-results/
+/test-reports/
+/tools/graph-regression/
+/tools/graph-server-probe/
+/tools/*test*
+/tools/*benchmark*
+/tools/*stress*
+/CGSE_*.zip
+/CGE_*.zip
+/GTL_vs_CP_SAT_*.zip

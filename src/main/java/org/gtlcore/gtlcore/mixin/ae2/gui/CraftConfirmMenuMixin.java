@@ -1,5 +1,6 @@
 package org.gtlcore.gtlcore.mixin.ae2.gui;
 
+import org.gtlcore.gtlcore.GTLCore;
 import org.gtlcore.gtlcore.config.ConfigHolder;
 import org.gtlcore.gtlcore.integration.ae2.common.CraftAmountReturnState;
 import org.gtlcore.gtlcore.integration.ae2.common.IConfirmStartMenu;
@@ -8,7 +9,12 @@ import org.gtlcore.gtlcore.integration.ae2.common.ILongCraftConfirmMenu;
 import org.gtlcore.gtlcore.integration.ae2.crafting.ManualCraftingInventoryLock;
 import org.gtlcore.gtlcore.integration.ae2.crafting.transfinite.MissingCraftingPlan;
 import org.gtlcore.gtlcore.integration.ae2.crafting.transfinite.TransfiniteCraftingCPU;
+import org.gtlcore.gtlcore.integration.ae2.graph.AeGraphPlan;
+import org.gtlcore.gtlcore.integration.ae2.graph.GraphPlanMenu;
+import org.gtlcore.gtlcore.integration.ae2.graph.GraphPlanningFailure;
+import org.gtlcore.gtlcore.integration.ae2.graph.GraphPlanningRequest;
 
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.MenuType;
@@ -58,7 +64,42 @@ import java.util.Set;
 import java.util.concurrent.Future;
 
 @Mixin(CraftConfirmMenu.class)
-public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfirmStartMenu, ILongCraftConfirmMenu {
+public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfirmStartMenu, ILongCraftConfirmMenu, GraphPlanMenu {
+
+    @Override
+    public AeGraphPlan gtlcore$graphPlan() {
+        return result instanceof AeGraphPlan graph ? graph : null;
+    }
+
+    @Unique
+    @GuiSync(101)
+    private String gtlcore$planningFailure = "";
+
+    @Override
+    public String gtlcore$planningFailure() {
+        return gtlcore$planningFailure;
+    }
+
+    @Inject(method = "clearError", at = @At("HEAD"), remap = false)
+    private void gtlcore$clearPlanningFailure(CallbackInfo ci) {
+        gtlcore$planningFailure = "";
+    }
+
+    @Override
+    public void gtlcore$retryPlanning() {
+        if (isClientSide()) {
+            clearError();
+            sendClientAction("gtlcore_retry_graph_planning");
+            return;
+        }
+        // A stale or duplicated retry cannot cancel a new calculation or submit
+        // the absent plan. Retain the original long amount and missing strategy.
+        if (gtlcore$planningFailure.isEmpty() || job != null || result != null) return;
+        clearError();
+        if (whatToCraft == null || !gtlcore$planLongAmountJob(whatToCraft,
+                CraftAmountReturnState.displayAmount(gtlcore$longAmount, amount), gtlcore$calculationStrategy))
+            gtlcore$returnToPreviousMenu();
+    }
 
     protected CraftConfirmMenuMixin(MenuType<?> menuType, int id, Inventory playerInventory, Object host) {
         super(menuType, id, playerInventory, host);
@@ -69,6 +110,30 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
 
     @Shadow(remap = false)
     private Future<ICraftingPlan> job;
+
+    @Inject(method = "broadcastChanges", at = @At("HEAD"))
+    private void gtlcore$planningProgress(CallbackInfo ci) {
+        if (!isClientSide() && job instanceof GraphPlanningRequest request && request.isCompletedExceptionally() && !request.isCancelled()) {
+            try {
+                request.join();
+            } catch (java.util.concurrent.CompletionException error) {
+                String key = GraphPlanningFailure.messageKey(error);
+                if (key != null) {
+                    gtlcore$planningFailure = key;
+                    job = null;
+                    result = null;
+                    plan = null;
+                    gtlcore$releaseInventoryReservation();
+                }
+            }
+        }
+        if (job instanceof GraphPlanningRequest request &&
+                request.noticeDue(ConfigHolder.INSTANCE.ae2GraphPlannerNoticeAfterMs) && getPlayer() instanceof ServerPlayer player) {
+            var phase = request.budget().phase().name().toLowerCase(java.util.Locale.ROOT);
+            player.displayClientMessage(Component.translatable("gtlcore.ae.graph.planning_status",
+                    Component.translatable("gtlcore.ae.graph.phase." + phase), request.budget().elapsedNanos() / 1_000_000_000L), true);
+        }
+    }
 
     @Shadow(remap = false)
     private ICraftingPlan result;
@@ -143,6 +208,7 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
 
     @Inject(method = "<init>", at = @At("RETURN"), remap = false)
     private void onConstructed(int id, Inventory ip, ISubMenuHost host, CallbackInfo ci) {
+        registerClientAction("gtlcore_retry_graph_planning", this::gtlcore$retryPlanning);
         var repo = new Repo(() -> 0, new ISortSource() {
 
             @Override
@@ -346,6 +412,10 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
                         submittedPlan, requester, submittedTarget, prioritizePower, source));
         if (submitResult.successful()) {
             this.gtlcore$releaseInventoryReservation();
+        } else if (plan instanceof AeGraphPlan graph && ConfigHolder.INSTANCE.ae2GraphDiagnosticLogging) {
+            GTLCore.LOGGER.warn("[Graph Crafting] confirmation rejected plan={} result={} simulation={} cpu={} error={} detail={}",
+                    graph.id(), graph.graph().result(), submittedPlan.simulation(),
+                    submittedTarget == null ? "auto" : submittedTarget.getClass().getName(), submitResult.errorCode(), submitResult.errorDetail());
         }
         return submitResult;
     }
