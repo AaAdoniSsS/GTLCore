@@ -12,9 +12,9 @@ network downloads, local saves or third-party solver are required. Results go to
 three deterministic permutations of recipe and slot order; `--suite oracles`
 runs independent integer/BFS/seed/proof checks. `--milliseconds` and `--work`
 control the per-order fixture budget; exhaustion is a test failure, not UNSAT.
-CI retains the 20-million cumulative work limit and disables the per-order wall
-clock limit because shared-runner latency varies. Local runs default to three
-seconds; timing comparisons should use the same machine and runtime.
+Local runs default to three seconds and 20 million cumulative work checks.
+Timing comparisons should use the same machine and runtime. Run the script
+explicitly; no remote workflow is installed by this regression suite.
 
 Fixtures originate from the user-provided September 2026 counterexample packs.
 They cover 145 bounded-source cases, 16 focused cases, six long nested counters
@@ -40,9 +40,3 @@ To check an archive in a separate process, after compilation:
 ```text
 java -cp build/graph-regression/classes org.gtlcore.gtlcore.integration.ae2.graph.core.CountProof <archive.cgp>
 ```
-
-The GitHub workflow uses the official action examples for
-[checkout](https://github.com/actions/checkout),
-[Java](https://github.com/actions/setup-java),
-[Python](https://github.com/actions/setup-python) and
-[artifact upload](https://github.com/actions/upload-artifact).
