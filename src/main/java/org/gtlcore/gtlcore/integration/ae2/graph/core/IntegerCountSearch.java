@@ -88,6 +88,28 @@ final class IntegerCountSearch<K> implements AutoCloseable {
         return step(null);
     }
 
+    /** Pull original order clauses into an optional program view. No reverse inference is made. */
+    void importProgramConflicts(RecipeCountModel<K> original, Map<String, PlanStep> programs, List<CountConflict> conflicts) {
+        if (model == null || conflicts.isEmpty() || work != 0) return;
+        Map<String, Integer> positions = new HashMap<>();
+        for (int i = 0; i < original.recipes.size(); i++) positions.put(original.recipes.get(i).id(), i);
+        List<Map<Integer, BigInteger>> terms = new ArrayList<>();
+        for (int i = 0; i < original.recipes.size(); i++) terms.add(new LinkedHashMap<>());
+        for (int i = 0; i < model.recipes.size(); i++) {
+            String id = model.recipes.get(i).id();
+            Map<String, BigInteger> counts = programs.containsKey(id) ? PlanCountComputation.of(programs.get(id)) : Map.of(id, BigInteger.ONE);
+            for (var entry : counts.entrySet()) {
+                budget.check();
+                Integer position = positions.get(entry.getKey());
+                if (position == null) throw new IllegalArgumentException("Unmapped program recipe " + entry.getKey());
+                terms.get(position).put(i, entry.getValue());
+            }
+        }
+        CountMapping mapping = new CountMapping(terms.stream().map(row -> new CountMapping.Expression(row, BigInteger.ZERO)).toList());
+        choiceConflicts.add(mapping.conflicts(conflicts, budget));
+        budget.note("count_program_conflicts", "pulled=" + conflicts.size() + "; scope=optional_program_view");
+    }
+
     boolean step(PlanningScheduler.Slice slice) {
         if (complete || paused) return true;
         if (running != null) {

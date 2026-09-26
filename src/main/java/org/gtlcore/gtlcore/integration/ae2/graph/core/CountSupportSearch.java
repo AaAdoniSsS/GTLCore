@@ -240,6 +240,15 @@ final class CountSupportSearch<K> implements AutoCloseable {
     }
 
     private boolean finish(Result value) {
+        if (value == Result.CLOSED && budget.proofJournal() != null) {
+            List<List<BigInteger>> originalInputs = new ArrayList<>(), originalOutputs = new ArrayList<>();
+            for (var recipe : model.recipes) {
+                originalInputs.add(model.keys.stream().map(key -> model.external.contains(key) ? BigInteger.ZERO : BigInteger.valueOf(recipe.inputs().getOrDefault(key, 0L))).toList());
+                originalOutputs.add(model.keys.stream().map(key -> model.external.contains(key) ? BigInteger.ZERO : BigInteger.valueOf(recipe.outputs().getOrDefault(key, 0L))).toList());
+            }
+            budget.proofJournal().add(new ExecutionProof.Certificate("execution_support:requires_boundary_recipe", ExecutionProof.Kind.FORWARD_BOUNDARY,
+                    initial, List.of(goals), originalInputs, originalOutputs, reached.keySet().stream().toList(), exits.stream().boxed().collect(java.util.stream.Collectors.toSet())));
+        }
         result = value;
         budget.note("count_support", "result=" + value + "; recipes=" + support.size() + "; states=" + reached.size() +
                 "; certified_states=" + certifiedStates + "; exits=" + exits.cardinality() + "; repair=" + repairing + "; work=" + work);

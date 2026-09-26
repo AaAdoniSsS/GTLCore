@@ -238,6 +238,15 @@ final class BackwardCoverability<K> implements AutoCloseable {
     }
 
     private boolean finish(Result value) {
+        if (value == Result.CLOSED && budget.proofJournal() != null) {
+            List<List<BigInteger>> inputs = new ArrayList<>(), outputs = new ArrayList<>();
+            for (var recipe : recipes) {
+                inputs.add(keys.stream().map(key -> BigInteger.valueOf(recipe.inputs().getOrDefault(key, 0L))).toList());
+                outputs.add(keys.stream().map(key -> BigInteger.valueOf(recipe.outputs().getOrDefault(key, 0L))).toList());
+            }
+            budget.proofJournal().add(new ExecutionProof.Certificate("coverability:captured_stock_goals", startupVerifying ? ExecutionProof.Kind.STARTUP_BOX : ExecutionProof.Kind.BACKWARD_CLOSURE,
+                    initial, goal, inputs, outputs, basis.stream().map(Node::required).toList(), startupVerifying ? unbounded.stream().boxed().collect(java.util.stream.Collectors.toSet()) : Set.of()));
+        }
         result = value;
         budget.note("backward_cover", "result=" + value + "; antichain=" + basis.size() + "; expanded=" + expanded + "; work=" + (budget.nodes() - started));
         close();

@@ -387,6 +387,8 @@ final class ExactLinearProgram implements AutoCloseable {
     }
 
     private boolean finish(Result value) {
+        if (value == Result.INFEASIBLE && certificate != null && budget.proofJournal() != null)
+            budget.proofJournal().add(CountProof.certificate("rational_relaxation", variables, constraints, List.of(), certificate, true));
         result = value;
         if (keepBasis && value == Result.OPTIMAL && Arrays.stream(basic).noneMatch(id -> id == -1)) {
             savedBasis = new Basis(this);

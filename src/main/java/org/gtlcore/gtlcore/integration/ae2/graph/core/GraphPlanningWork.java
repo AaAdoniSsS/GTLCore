@@ -43,7 +43,7 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
     private SourceExplanation<K> explaining;
     private Map<K, Integer> sourceCore;
     private Iterator<Map<K, Integer>> repairs;
-    private SeedOptimization<K> seedOptimization;
+    private SeedPortfolio<K> seedOptimization;
     private boolean seedAttempted;
     private MissingStockAnalysis<K> missingAnalysis;
     private QuantityAnalysis<K> quantities;
@@ -477,7 +477,7 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
     private boolean optimizeSeeds(GraphPlan<K> plan) {
         if (seedAttempted || nesting != 0 || !preserve || catalystPolicy.parallelism() != 1 || plan.seeds().isEmpty()) return false;
         seedAttempted = true;
-        seedOptimization = new SeedOptimization<>(compiler, plan, stock, requiredSeeds, external, excluded, forceCraft, budget);
+        seedOptimization = new SeedPortfolio<>(compiler, plan, stock, requiredSeeds, external, excluded, forceCraft, budget);
         phase = 17;
         return true;
     }

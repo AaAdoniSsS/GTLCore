@@ -21,6 +21,7 @@ final class CountGroups implements AutoCloseable {
     private BigInteger[] counts;
     private long memory;
     private boolean prepared, complete, infeasible;
+    private final List<CountConflict> learned = new ArrayList<>();
 
     CountGroups(List<ExactLinearProgram.Constraint> rows, BigInteger[] lower, BigInteger[] upper, PlanningBudget budget) {
         original = rows;
@@ -42,6 +43,12 @@ final class CountGroups implements AutoCloseable {
         if (!solving.step()) return false;
         var result = solving.counts();
         infeasible = solving.infeasible();
+        var columns = new ArrayList<List<Integer>>();
+        for (int i = 0; i <= Arrays.stream(mapping).max().orElse(-1); i++) columns.add(new ArrayList<>());
+        for (int i = 0; i < mapping.length; i++) columns.get(mapping[i]).add(i);
+        BigInteger[] shifts = new BigInteger[lower.length];
+        Arrays.fill(shifts, BigInteger.ZERO);
+        memory += CountMapping.retain(learned, CountMapping.sums(columns, shifts).conflicts(solving.learnedConflicts(), budget), budget);
         solving.close();
         solving = null;
         complete = true;
@@ -197,6 +204,10 @@ final class CountGroups implements AutoCloseable {
 
     boolean infeasible() {
         return infeasible;
+    }
+
+    List<CountConflict> learnedConflicts() {
+        return List.copyOf(learned);
     }
 
     @Override

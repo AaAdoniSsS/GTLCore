@@ -277,6 +277,7 @@ final class IntegerCountBranch<K> implements AutoCloseable {
             if (!groups.step()) return;
             counts = reduction.expand(groups.counts());
             boolean impossible = groups.infeasible();
+            importReducedConflicts(groups.learnedConflicts());
             groups.close();
             groups = null;
             if (counts != null) {
@@ -292,6 +293,7 @@ final class IntegerCountBranch<K> implements AutoCloseable {
             if (!components.step()) return;
             counts = reduction.expand(components.counts());
             boolean impossible = components.infeasible();
+            importReducedConflicts(components.learnedConflicts());
             BigInteger[] partial = components.partial();
             components.close();
             components = null;
@@ -682,6 +684,20 @@ final class IntegerCountBranch<K> implements AutoCloseable {
     private void learn(CountGuard condition) {
         if (!supportConflicts.contains(condition)) supportConflicts.add(condition);
         learnedChoices.add(condition.conflict());
+    }
+
+    private void importReducedConflicts(List<CountConflict> values) {
+        CountMapping mapping = CountMapping.representatives(reduction.representatives());
+        for (var conflict : values) {
+            List<ExactLinearProgram.Constraint> guarded = new ArrayList<>(current);
+            guarded.addAll(mapping.conflict(conflict, budget).assumptions());
+            learnedChoices.add(new CountConflict(guarded));
+        }
+        if (!values.isEmpty()) budget.note("count_view_conflicts", "imported=" + values.size() + "; branch_guards=" + current.size());
+    }
+
+    List<CountConflict> knownChoices() {
+        return knownChoices;
     }
 
     private void branch(CountGuard conflict) {

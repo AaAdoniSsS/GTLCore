@@ -44,6 +44,9 @@ final class CountBoolean implements AutoCloseable {
     private int rowIndex, level, decisions, conflicts, pinned;
     private boolean complete, infeasible;
     private BigInteger[] counts;
+    private final List<CountConflict> learned = new ArrayList<>();
+    private final List<CountConflict> proofSteps = new ArrayList<>();
+    private List<ExactLinearProgram.Constraint> proofScope;
 
     CountBoolean(List<ExactLinearProgram.Constraint> constraints, BigInteger[] lower,
                  BigInteger[] upper, PlanningBudget budget) {
@@ -70,6 +73,13 @@ final class CountBoolean implements AutoCloseable {
             return;
         }
         memory = bytes;
+        if (budget.proofJournal() != null) {
+            proofScope = new ArrayList<>(constraints);
+            for (int i = 0; i < lower.length; i++) {
+                proofScope.add(new ExactLinearProgram.Constraint(Map.of(i, BigInteger.ONE.negate()), lower[i].negate()));
+                if (upper[i] != null) proofScope.add(new ExactLinearProgram.Constraint(Map.of(i, BigInteger.ONE), upper[i]));
+            }
+        }
         for (int i = 0; i < lower.length; i++) {
             affected.add(new ArrayList<>());
             if (!lower[i].equals(upper[i]) && lower[i].signum() == 0) fixed[i] = null;
@@ -250,6 +260,26 @@ final class CountBoolean implements AutoCloseable {
 
     private void learn(BitSet explanation) {
         conflicts++;
+        if (learned.size() < 128 || proofScope != null) {
+            List<ExactLinearProgram.Constraint> premises = new ArrayList<>();
+            for (int i = 0; i < fixed.length; i++) if (fixed[i] != null) {
+                premises.add(new ExactLinearProgram.Constraint(Map.of(i, BigInteger.ONE), fixed[i]));
+                premises.add(new ExactLinearProgram.Constraint(Map.of(i, BigInteger.ONE.negate()), fixed[i].negate()));
+            }
+            for (int bit = explanation.nextSetBit(0); bit >= 0; bit = explanation.nextSetBit(bit + 1)) {
+                boolean one = (bit & 1) == 1;
+                premises.add(new ExactLinearProgram.Constraint(Map.of(bit / 2, one ? BigInteger.ONE.negate() : BigInteger.ONE), one ? BigInteger.ONE.negate() : BigInteger.ZERO));
+            }
+            long bytes = 128L + 144L * premises.size();
+            if (budget.tryReserve(bytes)) {
+                memory += bytes;
+                CountConflict conflict = new CountConflict(premises);
+                if (learned.size() < 128) learned.add(conflict);
+                if (proofScope != null) proofSteps.add(conflict);
+            } else if (proofScope != null) {
+                budget.proofJournal().markIncomplete();
+            }
+        }
         if (explanation.isEmpty()) {
             // The empty explanation closes the searched Boolean domain. Only
             // a full domain (no trial-fixed positive counts) closes this branch
@@ -317,6 +347,9 @@ final class CountBoolean implements AutoCloseable {
     }
 
     private boolean finish(String detail) {
+        if (!complete && proofScope != null) {
+            budget.proofJournal().add(CountProof.certificate("boolean_domain:" + detail, values.length, proofScope, proofSteps, null, infeasible));
+        }
         complete = true;
         budget.note("count_boolean", detail + "; variables=" + values.length + "; rows=" + original.size() +
                 "; cardinality_rows=" + rows.stream().filter(row -> row.cardinality() != null).count() +
@@ -326,6 +359,10 @@ final class CountBoolean implements AutoCloseable {
 
     BigInteger[] counts() {
         return counts == null ? null : counts.clone();
+    }
+
+    List<CountConflict> learnedConflicts() {
+        return List.copyOf(learned);
     }
 
     boolean infeasible() {

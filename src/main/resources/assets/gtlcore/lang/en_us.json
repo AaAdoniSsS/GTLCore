@@ -40,6 +40,7 @@
   "gtlcore.ae.graph.seed_quantities_unproven": "Startup quantities may still be reducible.",
   "gtlcore.ae.graph.seed_scope_refill": "These conclusions assume the consumable allowance of this refill plan.",
   "gtlcore.ae.graph.seed_scope_stock": "These conclusions assume this inventory and the required retained materials.",
+  "gtlcore.ae.graph.seed_scope_material_tradeoff": "This plan may add base materials to reduce startup seeds; check the extra inputs.",
   "gtlcore.ae.graph.failure.infeasible": "The captured inventory is proven insufficient, but no verified refill plan is available. Add materials or adjust patterns and retry.",
   "gtlcore.ae.graph.failure.unknown": "No executable plan was found; infeasibility is not proven. See the planning log for strategy details.",
   "gtlcore.ae.graph.failure.search_limit": "Planning reached its cumulative work budget before completing. Reduce the request or adjust the graph search budget and retry.",

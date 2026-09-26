@@ -30,6 +30,7 @@ final class CountComponents implements AutoCloseable {
     private int cursor;
     private long memory, work, allowance;
     private boolean prepared, complete, infeasible, unresolved;
+    private final List<CountConflict> learned = new ArrayList<>();
 
     CountComponents(List<ExactLinearProgram.Constraint> rows, BigInteger[] lower, BigInteger[] upper, PlanningBudget budget) {
         original = rows;
@@ -87,6 +88,7 @@ final class CountComponents implements AutoCloseable {
             if (!binary.step()) return false;
             var found = binary.counts();
             boolean impossible = binary.infeasible();
+            importConflicts(binary.learnedConflicts());
             binary.close();
             binary = null;
             if (found != null || impossible) accept(found, impossible);
@@ -99,6 +101,7 @@ final class CountComponents implements AutoCloseable {
         if (polishing != null) {
             if (!polishing.step()) return false;
             var found = polishing.counts();
+            importConflicts(polishing.learnedConflicts());
             boolean impossible = polishing.infeasible();
             polishing.close();
             polishing = null;
@@ -308,6 +311,16 @@ final class CountComponents implements AutoCloseable {
 
     BigInteger[] counts() {
         return counts;
+    }
+
+    private void importConflicts(List<CountConflict> values) {
+        var component = components.get(cursor);
+        List<List<Integer>> localGroups = Arrays.stream(component.variables).mapToObj(groups::get).toList();
+        memory += CountMapping.retain(learned, CountMapping.sums(localGroups, lower).conflicts(values, budget), budget);
+    }
+
+    List<CountConflict> learnedConflicts() {
+        return List.copyOf(learned);
     }
 
     boolean infeasible() {

@@ -40,6 +40,7 @@
   "gtlcore.ae.graph.seed_quantities_unproven": "启动材料数量仍可能进一步减少。",
   "gtlcore.ae.graph.seed_scope_refill": "以上结论以本次补料方案的耗材额度为条件。",
   "gtlcore.ae.graph.seed_scope_stock": "以上结论以本次库存及要求保留的材料为条件。",
+  "gtlcore.ae.graph.seed_scope_material_tradeoff": "此方案允许补充基础原料以减少启动种子；请核对新增耗材。",
   "gtlcore.ae.graph.failure.infeasible": "已证明当前库存无法完成订单，但尚未生成可验证的补料方案。请补料或调整样板后重试。",
   "gtlcore.ae.graph.failure.unknown": "尚未找到可执行方案，也未证明无解。请查看规划日志中的策略详情。",
   "gtlcore.ae.graph.failure.search_limit": "规划达到累计搜索额度，尚未完成判断。可减少请求数量或调整图合成搜索额度后重试。",

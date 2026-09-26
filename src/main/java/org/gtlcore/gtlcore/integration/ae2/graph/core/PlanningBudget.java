@@ -59,6 +59,16 @@ public final class PlanningBudget {
     private final ThreadLocal<WorkScope> currentScope = new ThreadLocal<>();
     private final AtomicLong activeWorkers = new AtomicLong(), peakWorkers = new AtomicLong(), maxSlice = new AtomicLong();
     private volatile boolean measuring;
+    private volatile CountProof.Journal proofJournal;
+
+    /** Optional bounded certificate export; normal planning does not allocate proof archives. */
+    public void proofJournal(CountProof.Journal journal) {
+        proofJournal = journal;
+    }
+
+    CountProof.Journal proofJournal() {
+        return proofJournal;
+    }
 
     public PlanningBudget(long milliseconds, long maxNodes, BooleanSupplier cancelled) {
         this(milliseconds, maxNodes, 64L << 20, cancelled, System::nanoTime);

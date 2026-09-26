@@ -24,6 +24,7 @@ final class CountQuickSolve implements AutoCloseable {
     private boolean complete, infeasible;
     private boolean trial;
     private long memory;
+    private final List<CountConflict> learned = new ArrayList<>();
 
     CountQuickSolve(List<ExactLinearProgram.Constraint> rows, BigInteger[] lower, BigInteger[] upper, PlanningBudget budget) {
         this(rows, lower, upper, budget, false);
@@ -91,6 +92,7 @@ final class CountQuickSolve implements AutoCloseable {
                 if (!components.step()) return false;
                 var value = components.counts();
                 boolean impossible = components.infeasible();
+                if (!trial) memory += CountMapping.retain(learned, CountMapping.representatives(reduction.representatives()).conflicts(components.learnedConflicts(), budget), budget);
                 components.close();
                 components = null;
                 if (value != null || impossible) return finish(value, impossible);
@@ -124,6 +126,7 @@ final class CountQuickSolve implements AutoCloseable {
             if (!binary.step()) return false;
             var value = binary.counts();
             boolean impossible = binary.infeasible();
+            if (!trial) memory += CountMapping.retain(learned, CountMapping.representatives(reduction.representatives()).conflicts(binary.learnedConflicts(), budget), budget);
             binary.close();
             binary = null;
             if (value != null || impossible) return finish(value, impossible);
@@ -166,6 +169,10 @@ final class CountQuickSolve implements AutoCloseable {
 
     boolean infeasible() {
         return infeasible;
+    }
+
+    List<CountConflict> learnedConflicts() {
+        return List.copyOf(learned);
     }
 
     @Override

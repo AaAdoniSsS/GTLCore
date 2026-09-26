@@ -16,6 +16,7 @@ public final class GraphPlan<K> {
     private final Map<K, Long> seeds;
     private final Result result;
     private final SeedOptimality seedOptimality;
+    private java.util.List<GraphPlan<K>> alternatives = java.util.List.of();
     private volatile Map<K, Long> initialView, missingView;
     private volatile Map<String, BigInteger> exactTimes;
 
@@ -70,7 +71,12 @@ public final class GraphPlan<K> {
 
     /** Other material/operation objectives may remain unproven even when this is certified. */
     public record SeedOptimality(int lowerTypeBound, int types, boolean cardinalityProven,
-                                 boolean quantitiesParetoProven, boolean fundedPreview) {
+                                 boolean quantitiesParetoProven, boolean fundedPreview, boolean baseMaterialTradeoff) {
+
+        public SeedOptimality(int lowerTypeBound, int types, boolean cardinalityProven,
+                              boolean quantitiesParetoProven, boolean fundedPreview) {
+            this(lowerTypeBound, types, cardinalityProven, quantitiesParetoProven, fundedPreview, false);
+        }
 
         public SeedOptimality {
             if (lowerTypeBound < 0 || lowerTypeBound > types) throw new IllegalArgumentException("Invalid seed bound");
@@ -83,8 +89,22 @@ public final class GraphPlan<K> {
 
     public GraphPlan<K> withSeedOptimality(SeedOptimality proof) {
         if (proof == null) return this;
-        return new GraphPlan<>(target, amount, preserveSeeds, steps, recipes, initial, seeds, missing, result,
+        GraphPlan<K> copy = new GraphPlan<>(target, amount, preserveSeeds, steps, recipes, initial, seeds, missing, result,
                 searchNodes, planningNanos, proof);
+        copy.alternatives = alternatives;
+        return copy;
+    }
+
+    /** Verified incomparable material/seed choices. Entries never contain a recursive frontier. */
+    public java.util.List<GraphPlan<K>> alternatives() {
+        return alternatives;
+    }
+
+    GraphPlan<K> withAlternatives(java.util.List<GraphPlan<K>> options) {
+        GraphPlan<K> copy = new GraphPlan<>(target, amount, preserveSeeds, steps, recipes, initial, seeds, missing, result,
+                searchNodes, planningNanos, seedOptimality);
+        copy.alternatives = java.util.List.copyOf(options);
+        return copy;
     }
 
     public long searchNodes() {

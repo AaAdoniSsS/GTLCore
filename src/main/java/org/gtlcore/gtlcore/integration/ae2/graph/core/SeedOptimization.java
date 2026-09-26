@@ -44,10 +44,19 @@ final class SeedOptimization<K> implements AutoCloseable {
     private BigInteger low, high, middle;
     private Map<K, BigInteger> supplied;
     private long memory;
+    private final boolean flexibleMaterials;
+    private final Set<K> purchased = new LinkedHashSet<>();
+    private final List<GraphPlan<K>> options = new ArrayList<>();
 
     SeedOptimization(GraphCompiler<K> compiler, GraphPlan<K> plan, Map<K, Long> stock, Map<K, Long> mandatory,
                      Set<K> external, Set<String> excluded, boolean force, PlanningBudget budget) {
+        this(compiler, plan, stock, mandatory, external, excluded, force, budget, false);
+    }
+
+    SeedOptimization(GraphCompiler<K> compiler, GraphPlan<K> plan, Map<K, Long> stock, Map<K, Long> mandatory,
+                     Set<K> external, Set<String> excluded, boolean force, PlanningBudget budget, boolean flexibleMaterials) {
         this.compiler = compiler;
+        this.flexibleMaterials = flexibleMaterials;
         original = best = plan;
         this.stock = stock;
         this.mandatory = mandatory;
@@ -92,6 +101,10 @@ final class SeedOptimization<K> implements AutoCloseable {
                 summary = summarizing.result();
                 macros.add(new BackwardCoverability.Action<>(original.steps(), summary));
                 summarizing = null;
+                if (flexibleMaterials) for (var recipe : recipes.values()) for (K key : recipe.inputs().keySet()) {
+                    budget.check();
+                    if (!produced.contains(key) && !external.contains(key) && !mandatory.containsKey(key) && !key.equals(original.target())) purchased.add(key);
+                }
                 // Net consumables retain their inventory/funded-preview limits.
                 // Every other produced startup input is a loan: selected or
                 // not, it may not be silently relabelled as a spent raw material.
@@ -106,7 +119,7 @@ final class SeedOptimization<K> implements AutoCloseable {
                 mandatory.forEach((key, value) -> base.put(key, BigInteger.valueOf(Math.max(value, stock.getOrDefault(key, 0L)))));
                 Map<K, BigInteger> loans = new LinkedHashMap<>();
                 choices.forEach(key -> loans.put(key, original.feasible() ? BigInteger.valueOf(stock.getOrDefault(key, 0L)) : ExactAmounts.LONG_MAX));
-                support = new SeedSupport<>(List.copyOf(recipes.values()), choices, base, loans, external, mandatory.keySet(),
+                support = new SeedSupport<>(List.copyOf(recipes.values()), choices, base, loans, searchExternal(), mandatory.keySet(),
                         original.target(), original.amount(), force, budget);
                 combination = new int[0];
                 phase = 2;
@@ -221,6 +234,10 @@ final class SeedOptimization<K> implements AutoCloseable {
                 if (verifying != null) {
                     if (!verifying.step()) return false;
                     best = candidate;
+                    if (options.stream().noneMatch(old -> SeedPortfolio.dominates(old, candidate))) {
+                        options.removeIf(old -> SeedPortfolio.dominates(candidate, old));
+                        if (options.size() < 32) options.add(candidate);
+                    }
                     verifying = null;
                     if (quantityKeys != null) {
                         if (!best.seeds().containsKey(quantityKeys.get(quantityIndex))) {
@@ -295,7 +312,7 @@ final class SeedOptimization<K> implements AutoCloseable {
         BigInteger targetReserve = goals.getOrDefault(original.target(), BigInteger.ZERO);
         if (force) targetReserve = targetReserve.max(supplied.getOrDefault(original.target(), BigInteger.ZERO));
         goals.put(original.target(), targetReserve.add(BigInteger.valueOf(original.amount())));
-        searching = new BackwardCoverability<>(List.copyOf(recipes.values()), supplied, goals, external, macros,
+        searching = new BackwardCoverability<>(List.copyOf(recipes.values()), supplied, goals, searchExternal(), macros,
                 budget, Math.min(32_768, allowance - (budget.nodes() - started)));
         trials++;
         phase = 3;
@@ -350,7 +367,7 @@ final class SeedOptimization<K> implements AutoCloseable {
         if (force && value.delta(original.target()).compareTo(BigInteger.valueOf(original.amount())) < 0) return null;
         Map<K, Long> seeds = new LinkedHashMap<>(mandatory);
         for (K key : value.keys()) if (!external.contains(key) && value.required(key).signum() > 0) {
-            if (!raw.containsKey(key) && value.delta(key).signum() < 0) return null;
+            if (!raw.containsKey(key) && !purchased.contains(key) && value.delta(key).signum() < 0) return null;
             if (produced.contains(key) && value.delta(key).signum() >= 0) {
                 if (value.required(key).compareTo(ExactAmounts.LONG_MAX) > 0) return null;
                 seeds.merge(key, value.required(key).longValueExact(), Math::max);
@@ -369,7 +386,7 @@ final class SeedOptimization<K> implements AutoCloseable {
             BigInteger goal = BigInteger.valueOf(seeds.getOrDefault(key, 0L));
             if (key.equals(original.target())) goal = goal.add(BigInteger.valueOf(original.amount()));
             BigInteger need = value.required(key).max(goal.subtract(value.delta(key)));
-            if (!external.contains(key) && need.compareTo(supplied.getOrDefault(key, BigInteger.ZERO)) > 0) return null;
+            if (!external.contains(key) && !purchased.contains(key) && need.compareTo(supplied.getOrDefault(key, BigInteger.ZERO)) > 0) return null;
             if (need.signum() > 0) initial.put(key, need);
             BigInteger gap = need.subtract(BigInteger.valueOf(stock.getOrDefault(key, 0L)));
             if (!external.contains(key) && gap.signum() > 0) missing.put(key, gap);
@@ -386,7 +403,7 @@ final class SeedOptimization<K> implements AutoCloseable {
         }
         complete = true;
         best = best.withSeedOptimality(new GraphPlan.SeedOptimality(Math.min(lowerBound, best.seeds().size()),
-                best.seeds().size(), cardinalityProven, amountsProven, !original.feasible()));
+                best.seeds().size(), cardinalityProven, amountsProven, !original.feasible(), flexibleMaterials));
         budget.note("global_seeds", detail + "; types=" + original.seeds().size() + "->" + best.seeds().size() +
                 "; lower_bound=" + lowerBound + "; cardinality_proven=" + cardinalityProven + "; amounts_proven=" + amountsProven +
                 "; all_source_recipes=" + recipes.size() + "; trials=" + trials + "; work=" + (budget.nodes() - started));
@@ -397,6 +414,17 @@ final class SeedOptimization<K> implements AutoCloseable {
 
     GraphPlan<K> result() {
         return best;
+    }
+
+    List<GraphPlan<K>> options() {
+        return List.copyOf(options);
+    }
+
+    private Set<K> searchExternal() {
+        if (purchased.isEmpty()) return external;
+        Set<K> result = new LinkedHashSet<>(external);
+        result.addAll(purchased);
+        return result;
     }
 
     boolean cardinalityProven() {

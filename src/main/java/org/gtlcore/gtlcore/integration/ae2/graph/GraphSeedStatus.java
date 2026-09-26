@@ -20,14 +20,17 @@ public final class GraphSeedStatus {
         buffer.writeVarInt(proof.types());
         buffer.writeBoolean(proof.cardinalityProven());
         buffer.writeBoolean(proof.quantitiesParetoProven());
-        buffer.writeBoolean(proof.fundedPreview());
+        buffer.writeByte((proof.fundedPreview() ? 1 : 0) | (proof.baseMaterialTradeoff() ? 2 : 0));
     }
 
     public static GraphPlan.SeedOptimality read(FriendlyByteBuf buffer) {
         if (!buffer.readBoolean()) return null;
         int lower = buffer.readVarInt(), types = buffer.readVarInt();
         if (types < 0 || types > 100_000) throw new IllegalArgumentException("Invalid seed type count");
-        return new GraphPlan.SeedOptimality(lower, types, buffer.readBoolean(), buffer.readBoolean(), buffer.readBoolean());
+        boolean cardinality = buffer.readBoolean(), quantities = buffer.readBoolean();
+        int scope = buffer.readUnsignedByte();
+        if (scope > 3) throw new IllegalArgumentException("Invalid seed proof scope");
+        return new GraphPlan.SeedOptimality(lower, types, cardinality, quantities, (scope & 1) != 0, (scope & 2) != 0);
     }
 
     public static List<Component> tooltip(GraphPlan.SeedOptimality proof) {
@@ -36,7 +39,8 @@ public final class GraphSeedStatus {
         lines.add(proof.cardinalityProven() ? Component.translatable("gtlcore.ae.graph.seed_types_proven", proof.types()) :
                 Component.translatable("gtlcore.ae.graph.seed_types_bound", proof.types(), proof.lowerTypeBound()));
         lines.add(Component.translatable(proof.quantitiesParetoProven() ? "gtlcore.ae.graph.seed_quantities_proven" : "gtlcore.ae.graph.seed_quantities_unproven"));
-        lines.add(Component.translatable(proof.fundedPreview() ? "gtlcore.ae.graph.seed_scope_refill" : "gtlcore.ae.graph.seed_scope_stock"));
+        lines.add(Component.translatable(proof.baseMaterialTradeoff() ? "gtlcore.ae.graph.seed_scope_material_tradeoff" :
+                proof.fundedPreview() ? "gtlcore.ae.graph.seed_scope_refill" : "gtlcore.ae.graph.seed_scope_stock"));
         return lines;
     }
 }

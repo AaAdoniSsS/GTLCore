@@ -48,6 +48,7 @@ public final class GraphJobCodec {
             saved.putBoolean("cardinalityProven", proof.cardinalityProven());
             saved.putBoolean("quantitiesProven", proof.quantitiesParetoProven());
             saved.putBoolean("fundedPreview", proof.fundedPreview());
+            saved.putBoolean("baseMaterialTradeoff", proof.baseMaterialTradeoff());
             tag.put("seedOptimality", saved);
         }
         tag.put("steps", step(plan.steps()));
@@ -147,7 +148,7 @@ public final class GraphJobCodec {
             CompoundTag proof = tag.getCompound("seedOptimality");
             if (proof.getInt("types") != plan.seeds().size()) throw new IllegalArgumentException("Seed proof differs from saved plan");
             plan = plan.withSeedOptimality(new GraphPlan.SeedOptimality(proof.getInt("lowerTypes"), proof.getInt("types"),
-                    proof.getBoolean("cardinalityProven"), proof.getBoolean("quantitiesProven"), proof.getBoolean("fundedPreview")));
+                    proof.getBoolean("cardinalityProven"), proof.getBoolean("quantitiesProven"), proof.getBoolean("fundedPreview"), proof.getBoolean("baseMaterialTradeoff")));
         }
         PlanVerifier.verify(plan);
         Map<String, BigInteger> accepted = new LinkedHashMap<>();
