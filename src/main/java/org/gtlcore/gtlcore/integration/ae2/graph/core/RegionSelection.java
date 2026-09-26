@@ -51,6 +51,8 @@ public final class RegionSelection<K> {
     private long countWork;
     private RegionSelection<K> single;
     private boolean triedSingles;
+    private RegionBootstrap<K> bootstrap;
+    private boolean triedBootstrap;
 
     public RegionSelection(GraphCompiler.Region<K> region, Map<K, BigInteger> demand, Map<K, Long> stock,
                            K target, long amount, boolean preserve, boolean forceTarget, Set<K> external, PlanningBudget budget, CatalystPolicy policy, Map<K, Long> catalystStock) {
@@ -87,7 +89,7 @@ public final class RegionSelection<K> {
         // Keep a concrete candidate even when this local search is cut short.
         // Its deficits do not prove that stock is missing: the caller must still
         // try other allocations or independently prove that no plan can start.
-        if (phase != 8 && phase != 10 && phase != 11 && region.cyclic() && budget.nodes() - searchStarted - countWork > 32_768L + 128L * recipes.size()) {
+        if (phase != 8 && phase != 10 && phase != 11 && phase != 12 && region.cyclic() && budget.nodes() - searchStarted - countWork > 32_768L + 128L * recipes.size()) {
             if (ordering != null) {
                 ordering.close();
                 ordering = null;
@@ -274,7 +276,7 @@ public final class RegionSelection<K> {
             case 11 -> {
                 if (index >= recipes.size()) {
                     phase = 8;
-                    return true;
+                    return complete();
                 }
                 if (single == null) {
                     GraphRecipe<K> recipe = recipes.get(index);
@@ -298,6 +300,13 @@ public final class RegionSelection<K> {
                     if (recipes.size() > 6) phase = 8;
                 }
             }
+            case 12 -> {
+                if (!bootstrap.step()) return false;
+                best = bootstrap.result();
+                bootstrap.close();
+                bootstrap = null;
+                phase = 8;
+            }
             default -> {
                 return true;
             }
@@ -311,6 +320,14 @@ public final class RegionSelection<K> {
             triedSingles = true;
             phase = 11;
             index = 0;
+        }
+        // Parallel working copies are a separate, deliberate recovery contract.
+        // Only the minimum-startup strategy may shrink its seed set here.
+        if (phase == 8 && !triedBootstrap && preserve && catalystPolicy.parallelism() == 1 && best != null && best.runs().signum() > 0 &&
+                region.cyclic() && best.seeds().entrySet().stream().anyMatch(e -> !external.contains(e.getKey()) && e.getValue() > stock.getOrDefault(e.getKey(), 0L))) {
+            triedBootstrap = true;
+            bootstrap = new RegionBootstrap<>(region.recipes(), best, stock, external, budget);
+            phase = 12;
         }
         return phase == 8;
     }

@@ -20,17 +20,19 @@ final class RecipeCountModel<K> implements AutoCloseable {
     static <K> RecipeCountModel<K> create(GraphCompiler<K> compiler, K target, long amount, Map<K, Long> stock,
                                           Map<K, Long> seeds, Set<K> external, Set<String> excluded, boolean force,
                                           PlanningBudget budget) {
-        return create(compiler, target, amount, stock, seeds, external, excluded, force, budget, 128, 192);
+        // Sparse preprocessing is sized by incidences, independently of the
+        // much smaller dense-simplex limits in the integer branch strategy.
+        return create(compiler, target, amount, stock, seeds, external, excluded, force, budget, 8192, 192);
     }
 
     static <K> RecipeCountModel<K> forBounds(GraphCompiler<K> compiler, K target, long amount, Map<K, Long> stock,
-                                            Map<K, Long> seeds, Set<K> external, Set<String> excluded, PlanningBudget budget) {
+                                             Map<K, Long> seeds, Set<K> external, Set<String> excluded, PlanningBudget budget) {
         return create(compiler, target, amount, stock, seeds, external, excluded, false, budget, 8192, 8192);
     }
 
     private static <K> RecipeCountModel<K> create(GraphCompiler<K> compiler, K target, long amount, Map<K, Long> stock,
-                                                 Map<K, Long> seeds, Set<K> external, Set<String> excluded, boolean force,
-                                                 PlanningBudget budget, int maxKeys, int maxRecipes) {
+                                                  Map<K, Long> seeds, Set<K> external, Set<String> excluded, boolean force,
+                                                  PlanningBudget budget, int maxKeys, int maxRecipes) {
         // Limits apply to this aid, never to the engine's large compiled DAGs.
         long workspace = 512L * 1024;
         if (!budget.tryReserve(workspace)) {
@@ -85,7 +87,7 @@ final class RecipeCountModel<K> implements AutoCloseable {
 
     /** Selected region only: upstream inputs are left for backward propagation. */
     static <K> RecipeCountModel<K> region(List<GraphRecipe<K>> recipes, Map<K, BigInteger> goals,
-                                         Map<K, Long> stock, Set<K> external, PlanningBudget budget) {
+                                          Map<K, Long> stock, Set<K> external, PlanningBudget budget) {
         if (recipes.size() > 192) return null;
         Set<K> keys = new LinkedHashSet<>(), produced = new LinkedHashSet<>();
         long entries = 0;

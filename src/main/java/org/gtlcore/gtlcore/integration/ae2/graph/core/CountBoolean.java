@@ -1,0 +1,235 @@
+package org.gtlcore.gtlcore.integration.ae2.graph.core;
+
+import java.math.BigInteger;
+import java.util.*;
+
+/**
+ * Sparse pseudo-Boolean witness search after integer bounds. Propagation keeps
+ * exact weighted rows; conflicts explain themselves in terms of decisions and
+ * backjump over unrelated choices. Trial fixed counts and local cutoffs never
+ * become infeasibility proofs for the parent integer model.
+ */
+final class CountBoolean implements AutoCloseable {
+
+    private record Row(int[] variables, BigInteger[] coefficients, BigInteger upper) {}
+
+    private final List<ExactLinearProgram.Constraint> original;
+    private final List<Row> rows = new ArrayList<>();
+    private final List<List<Integer>> affected = new ArrayList<>();
+    private final Deque<Integer> queue = new ArrayDeque<>();
+    private final BitSet queued = new BitSet();
+    private final List<Integer> trail = new ArrayList<>();
+    private final PlanningBudget budget;
+    private final BigInteger[] fixed;
+    private final int[] values, levels;
+    private final BitSet[] reasons;
+    private final double[] activity, polarity;
+    private final long allowance;
+    private long memory, work;
+    private int rowIndex, level, decisions, conflicts, pinned;
+    private boolean complete;
+    private BigInteger[] counts;
+
+    CountBoolean(List<ExactLinearProgram.Constraint> constraints, BigInteger[] lower,
+                 BigInteger[] upper, PlanningBudget budget) {
+        original = constraints;
+        this.budget = budget;
+        fixed = lower.clone();
+        values = new int[lower.length];
+        levels = new int[lower.length];
+        reasons = new BitSet[lower.length];
+        activity = new double[lower.length];
+        polarity = new double[lower.length];
+        Arrays.fill(values, -1);
+        allowance = Math.min(262_144, budget.remainingWork() / 8);
+        if (!CountPartition.binaryChoices(lower, upper, 1) || allowance < 1024) {
+            complete = true;
+            return;
+        }
+        long entries = constraints.stream().mapToLong(row -> row.terms().size()).sum();
+        long bytes = 1024 + 128L * entries + 192L * constraints.size() + 256L * lower.length;
+        if (!budget.tryReserve(bytes)) {
+            complete = true;
+            return;
+        }
+        memory = bytes;
+        for (int i = 0; i < lower.length; i++) {
+            affected.add(new ArrayList<>());
+            if (!lower[i].equals(upper[i]) && lower[i].signum() == 0) fixed[i] = null;
+            else if (!lower[i].equals(upper[i])) pinned++;
+        }
+    }
+
+    boolean step() {
+        if (complete) return true;
+        charge();
+        if (work >= allowance) return finish("work_limit");
+        if (rowIndex < original.size()) {
+            var row = original.get(rowIndex++);
+            var variables = new ArrayList<Integer>();
+            var coefficients = new ArrayList<BigInteger>();
+            BigInteger upper = row.upper();
+            for (var term : row.terms().entrySet()) {
+                charge();
+                int id = term.getKey();
+                if (fixed[id] != null) upper = upper.subtract(term.getValue().multiply(fixed[id]));
+                else if (term.getValue().signum() != 0) {
+                    variables.add(id);
+                    coefficients.add(term.getValue());
+                    activity[id] += 1.0 / Math.max(1, row.terms().size());
+                    polarity[id] -= term.getValue().signum() / (double) Math.max(1, row.terms().size());
+                }
+            }
+            add(new Row(variables.stream().mapToInt(Integer::intValue).toArray(),
+                    coefficients.toArray(BigInteger[]::new), upper));
+            return false;
+        }
+        if (!queue.isEmpty()) {
+            int id = queue.removeFirst();
+            queued.clear(id);
+            propagate(rows.get(id));
+            return complete;
+        }
+        int next = -1;
+        for (int i = 0; i < values.length; i++) {
+            charge();
+            if (fixed[i] == null && values[i] < 0 && (next < 0 || activity[i] > activity[next])) next = i;
+        }
+        if (next >= 0) {
+            level++;
+            decisions++;
+            int value = polarity[next] >= 0 ? 1 : 0;
+            BitSet reason = new BitSet();
+            reason.set(2 * next + value);
+            assign(next, value, reason);
+            return false;
+        }
+        BigInteger[] candidate = fixed.clone();
+        for (int i = 0; i < candidate.length; i++) if (candidate[i] == null) candidate[i] = BigInteger.valueOf(values[i]);
+        // Check the untouched model, including every coupled resource row.
+        for (var row : original) {
+            BigInteger sum = BigInteger.ZERO;
+            for (var term : row.terms().entrySet()) {
+                charge();
+                sum = sum.add(term.getValue().multiply(candidate[term.getKey()]));
+            }
+            if (sum.compareTo(row.upper()) > 0) throw new IllegalStateException("Boolean count witness violates original row");
+        }
+        counts = candidate;
+        return finish("witness");
+    }
+
+    private void propagate(Row row) {
+        BigInteger minimum = BigInteger.ZERO;
+        BitSet explanation = new BitSet();
+        for (int i = 0; i < row.variables().length; i++) {
+            charge();
+            int id = row.variables()[i], value = values[id];
+            BigInteger coefficient = row.coefficients()[i];
+            minimum = minimum.add(value < 0 ? coefficient.min(BigInteger.ZERO) : coefficient.multiply(BigInteger.valueOf(value)));
+            // Only assignments raising the optimistic minimum need explaining.
+            if (value >= 0 && value == (coefficient.signum() > 0 ? 1 : 0)) explanation.or(reasons[id]);
+        }
+        BigInteger slack = row.upper().subtract(minimum);
+        if (slack.signum() < 0) {
+            learn(explanation);
+            return;
+        }
+        for (int i = 0; i < row.variables().length; i++) {
+            charge();
+            int id = row.variables()[i];
+            BigInteger coefficient = row.coefficients()[i];
+            if (values[id] < 0 && coefficient.abs().compareTo(slack) > 0)
+                assign(id, coefficient.signum() > 0 ? 0 : 1, explanation);
+        }
+    }
+
+    private void assign(int variable, int value, BitSet explanation) {
+        values[variable] = value;
+        levels[variable] = level;
+        reasons[variable] = (BitSet) explanation.clone();
+        trail.add(variable);
+        affected.get(variable).forEach(this::enqueue);
+    }
+
+    private void learn(BitSet explanation) {
+        conflicts++;
+        if (explanation.isEmpty()) {
+            finish("candidate_face_blocked");
+            return;
+        }
+        if (conflicts > 512) {
+            finish("conflict_limit");
+            return;
+        }
+        long bytes = 192L + 128L * explanation.cardinality();
+        if (!budget.tryReserve(bytes)) {
+            finish("memory_limit");
+            return;
+        }
+        memory += bytes;
+        int highest = 0, previous = 0, ones = 0, index = 0;
+        int[] variables = new int[explanation.cardinality()];
+        BigInteger[] coefficients = new BigInteger[variables.length];
+        for (int bit = explanation.nextSetBit(0); bit >= 0; bit = explanation.nextSetBit(bit + 1)) {
+            charge();
+            int id = bit / 2, at = levels[id];
+            if (at > highest) {
+                previous = highest;
+                highest = at;
+            } else if (at > previous) previous = at;
+            variables[index] = id;
+            coefficients[index++] = (bit & 1) == 1 ? BigInteger.ONE : BigInteger.ONE.negate();
+            ones += bit & 1;
+            activity[id] += 1;
+        }
+        // Explanations contain decisions only, hence at most one per level.
+        // Keep unrelated earlier decisions; the learned row forces the last
+        // relevant choice in the opposite direction after the backjump.
+        level = previous;
+        while (!trail.isEmpty() && levels[trail.get(trail.size() - 1)] > level) {
+            int id = trail.remove(trail.size() - 1);
+            values[id] = -1;
+            levels[id] = 0;
+            reasons[id] = null;
+            affected.get(id).forEach(this::enqueue);
+        }
+        add(new Row(variables, coefficients, BigInteger.valueOf(ones - 1L)));
+    }
+
+    private void add(Row row) {
+        int id = rows.size();
+        rows.add(row);
+        for (int variable : row.variables()) affected.get(variable).add(id);
+        enqueue(id);
+    }
+
+    private void enqueue(int row) {
+        if (!queued.get(row)) {
+            queued.set(row);
+            queue.addLast(row);
+        }
+    }
+
+    private void charge() {
+        budget.check();
+        work++;
+    }
+
+    private boolean finish(String detail) {
+        complete = true;
+        budget.note("count_boolean", detail + "; variables=" + values.length + "; rows=" + original.size() +
+                "; trial_counts=" + pinned + "; decisions=" + decisions + "; learned=" + conflicts + "; work=" + work);
+        return true;
+    }
+
+    BigInteger[] counts() {
+        return counts == null ? null : counts.clone();
+    }
+
+    @Override
+    public void close() {
+        budget.release(memory);
+        memory = 0;
+    }
+}

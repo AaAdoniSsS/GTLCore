@@ -33,6 +33,7 @@ final class IntegerCountBranch<K> implements AutoCloseable {
     List<ExactLinearProgram.Constraint> linearConstraints;
     CountBounds propagating;
     CountPartition partition;
+    CountBoolean binary;
     ExactLinearProgram linear;
     CountSchedule<K> scheduling;
     CountProgram<K> program;
@@ -190,6 +191,17 @@ final class IntegerCountBranch<K> implements AutoCloseable {
             if (counts != null) {
                 if (!preprocessingOnly && refineSupport()) state = State.SPLIT;
                 else scheduling = new CountSchedule<>(model, counts, budget);
+            } else binary = new CountBoolean(linearConstraints, lower, upper, budget);
+            return;
+        }
+        if (binary != null) {
+            if (!binary.step()) return;
+            counts = binary.counts();
+            binary.close();
+            binary = null;
+            if (counts != null) {
+                if (!preprocessingOnly && refineSupport()) state = State.SPLIT;
+                else scheduling = new CountSchedule<>(model, counts, budget);
             } else if (preprocessingOnly) state = State.UNRESOLVED;
             else linear = new ExactLinearProgram(model.recipes.size(), linearConstraints, model.objective(true), budget);
             return;
@@ -298,11 +310,13 @@ final class IntegerCountBranch<K> implements AutoCloseable {
         if (linear != null) linear.close();
         if (propagating != null) propagating.close();
         if (partition != null) partition.close();
+        if (binary != null) binary.close();
         if (scheduling != null) scheduling.close();
         if (program != null) program.close();
         linear = null;
         propagating = null;
         partition = null;
+        binary = null;
         scheduling = null;
         program = null;
         assembling = null;

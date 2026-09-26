@@ -85,12 +85,7 @@ public final class GraphCpuController {
             plan = new GraphPlan<>(plan.target(), plan.amount(), plan.preserveSeeds(), plan.steps(), plan.recipes(),
                     plan.initialExact(), plan.seeds(), Map.of(), GraphPlan.Result.FEASIBLE, plan.searchNodes(), plan.planningNanos());
         }
-        try {
-            PlanVerifier.verifyRuntimeInventory(plan);
-        } catch (ArithmeticException e) {
-            GTLCore.LOGGER.warn("[Graph Crafting] submit rejected target={} amount={} reason=CPU_INVENTORY_AMOUNT_LIMIT", plan.target(), plan.amount());
-            return CraftingSubmitResult.INCOMPLETE_PLAN;
-        }
+        PlanVerifier.verify(plan);
         UUID id = UUID.randomUUID();
         CraftingLink cpuLink = new CraftingLink(CraftingCpuHelper.generateLinkData(id, requester == null, false), host.cpu());
         GtlExecutionAdapter preparedAdapter = new GtlExecutionAdapter(host, cpuLink);
@@ -108,7 +103,8 @@ public final class GraphCpuController {
                 return CraftingSubmitResult.INCOMPLETE_PLAN;
             }
         }
-        Map<AEKey, Long> taken = new LinkedHashMap<>(), waiting = new LinkedHashMap<>(view.emitted());
+        Map<AEKey, Long> taken = new LinkedHashMap<>(), waiting = new LinkedHashMap<>();
+        Map<AEKey, java.math.BigInteger> deferred = new LinkedHashMap<>();
         var storage = grid.getStorageService().getInventory();
         if (!allowMissing) {
             for (var entry : view.usedItems()) {
@@ -117,14 +113,14 @@ public final class GraphCpuController {
             }
         }
         try {
-            for (var entry : plan.initial().entrySet()) {
-                long requested = entry.getValue() - waiting.getOrDefault(entry.getKey(), 0L);
+            for (var entry : plan.initialExact().entrySet()) {
+                long requested = ExactAmounts.capped(entry.getValue().subtract(
+                        view.emittedExact().getOrDefault(entry.getKey(), java.math.BigInteger.ZERO)));
                 long extracted = storage.extract(entry.getKey(), requested, Actionable.MODULATE, source);
                 if (extracted < 0 || extracted > requested) throw new IllegalStateException("Invalid initial extraction");
                 if (extracted > 0) taken.put(entry.getKey(), extracted);
                 if (extracted < requested) {
-                    if (allowMissing) waiting.merge(entry.getKey(), requested - extracted, CheckedAmounts::add);
-                    else {
+                    if (!allowMissing) {
                         // A short actual extraction may follow successful simulation. Transfer
                         // every acquired item to AE's persistent idle/refund inventory.
                         taken.forEach((key, count) -> host.orphanInventory().insert(key, count, Actionable.MODULATE));
@@ -133,6 +129,13 @@ public final class GraphCpuController {
                         return CraftingSubmitResult.missingIngredient(new GenericStack(entry.getKey(), requested - extracted));
                     }
                 }
+                // Only a bounded window is reserved in the physical CPU. Keep
+                // the rest as exact, unreceived supply, never as owned stock.
+                java.math.BigInteger owed = entry.getValue().subtract(java.math.BigInteger.valueOf(extracted));
+                long window = Math.min(Long.MAX_VALUE - extracted, ExactAmounts.capped(owed));
+                if (window > 0) waiting.put(entry.getKey(), window);
+                java.math.BigInteger later = owed.subtract(java.math.BigInteger.valueOf(window));
+                if (later.signum() > 0) deferred.put(entry.getKey(), later);
             }
         } catch (RuntimeException e) {
             taken.forEach((key, count) -> host.orphanInventory().insert(key, count, Actionable.MODULATE));
@@ -140,7 +143,7 @@ public final class GraphCpuController {
             throw e;
         }
         try {
-            runtime = new GraphJobRuntime<>(plan, taken, waiting);
+            runtime = new GraphJobRuntime<>(plan, taken, waiting, deferred);
         } catch (RuntimeException e) {
             taken.forEach((key, count) -> host.orphanInventory().insert(key, count, Actionable.MODULATE));
             host.dirty();

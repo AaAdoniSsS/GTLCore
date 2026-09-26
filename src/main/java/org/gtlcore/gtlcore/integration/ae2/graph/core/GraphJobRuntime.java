@@ -49,6 +49,7 @@ public final class GraphJobRuntime<K> {
     private DagScheduler<K> dag;
     private PipelineScheduler<K> pipeline;
     private final Map<K, Long> expected = new LinkedHashMap<>();
+    private final Map<K, BigInteger> deferredExternal = new LinkedHashMap<>();
     private final OutputObligations<K> obligations;
     private final String recoveryOwner;
     private long recoveryStage;
@@ -79,7 +80,12 @@ public final class GraphJobRuntime<K> {
     private long version;
 
     public GraphJobRuntime(GraphPlan<K> plan, Map<K, Long> initial, Map<K, Long> emitted) {
-        PlanVerifier.verifyRuntimeInventory(plan);
+        this(plan, initial, emitted, Map.of());
+    }
+
+    public GraphJobRuntime(GraphPlan<K> plan, Map<K, Long> initial, Map<K, Long> emitted,
+                           Map<K, BigInteger> deferred) {
+        PlanVerifier.verify(plan);
         this.plan = plan;
         this.owned = new ResourceLedger<>(initial);
         this.cursor = new PlanCursor(plan.steps());
@@ -87,9 +93,16 @@ public final class GraphJobRuntime<K> {
         this.pipeline = dag == null ? new PipelineScheduler<>(cursor, plan.recipes(), List.of()) : null;
         this.expected.putAll(GraphRecipe.amounts(emitted));
         this.obligations = new OutputObligations<>(emitted);
+        deferredExternal.putAll(ExactAmounts.copy(deferred));
         recoveryOwner = UUID.randomUUID().toString();
-        plan.initial().forEach((key, amount) -> {
-            if (CheckedAmounts.add(initial.getOrDefault(key, 0L), emitted.getOrDefault(key, 0L)) != amount)
+        Set<K> supplied = new LinkedHashSet<>(plan.initialExact().keySet());
+        supplied.addAll(initial.keySet());
+        supplied.addAll(emitted.keySet());
+        supplied.addAll(deferred.keySet());
+        supplied.forEach(key -> {
+            long window = CheckedAmounts.add(initial.getOrDefault(key, 0L), emitted.getOrDefault(key, 0L));
+            if (!BigInteger.valueOf(window).add(deferredExternal.getOrDefault(key, BigInteger.ZERO))
+                    .equals(plan.initialExact().getOrDefault(key, BigInteger.ZERO)))
                 throw new IllegalArgumentException("Initial material ownership mismatch");
         });
         remainingDelivery = plan.amount();
@@ -98,11 +111,17 @@ public final class GraphJobRuntime<K> {
 
     public GraphJobRuntime(Snapshot<K> saved) {
         this.plan = saved.plan();
-        PlanVerifier.verifyRuntimeInventory(plan);
+        PlanVerifier.verify(plan);
         this.owned = new ResourceLedger<>(saved.owned());
         this.cursor = new PlanCursor(plan.steps(), saved.cursor());
         expected.putAll(GraphRecipe.amounts(saved.expected()));
         obligations = new OutputObligations<>(saved.obligations());
+        deferredExternal.putAll(ExactAmounts.copy(saved.deferredExternal()));
+        deferredExternal.forEach((key, count) -> {
+            if (count.compareTo(plan.initialExact().getOrDefault(key, BigInteger.ZERO)) > 0)
+                throw new IllegalArgumentException("Invalid deferred supply");
+        });
+        expected.forEach((key, count) -> CheckedAmounts.add(owned.get(key), count));
         if (!obligations.all().equals(GraphRecipe.amounts(expected))) throw new IllegalArgumentException("Output accounts disagree");
         recoveryOwner = saved.recovery().owner();
         recoveryStage = saved.recovery().stage();
@@ -156,12 +175,15 @@ public final class GraphJobRuntime<K> {
             recipe.inputs().forEach((key, amount) -> consumed.merge(key,
                     remaining.multiply(BigInteger.valueOf(amount - recipe.configurationInputs().getOrDefault(key, 0L))), BigInteger::add));
         });
-        pendingOutputs.forEach((key, amount) -> {
+        Set<K> supplies = new LinkedHashSet<>(pendingOutputs.keySet());
+        supplies.addAll(deferredExternal.keySet());
+        supplies.forEach(key -> {
             // Intermediate material is drained by its consumers. Only a possible
             // final surplus needs early settlement; do not stream a repeatedly
             // returned catalyst just because its gross turnover exceeds long.
-            if (amount.subtract(consumed.getOrDefault(key, BigInteger.ZERO))
+            if (pendingOutputs.getOrDefault(key, BigInteger.ZERO).subtract(consumed.getOrDefault(key, BigInteger.ZERO))
                     .add(BigInteger.valueOf(owned.get(key))).add(BigInteger.valueOf(expected.getOrDefault(key, 0L)))
+                    .add(deferredExternal.getOrDefault(key, BigInteger.ZERO))
                     .compareTo(ExactAmounts.LONG_MAX) > 0)
                 streamingOutputs.add(key);
         });
@@ -176,6 +198,7 @@ public final class GraphJobRuntime<K> {
             return 0;
         }
         if (state != State.RUNNING || suspended || replanning) return 0;
+        replenishExternal();
         drainSurplus(adapter, workBudget);
         if (state != State.RUNNING) return 0;
         int pushed = 0;
@@ -187,7 +210,7 @@ public final class GraphJobRuntime<K> {
             PlanStep.Batch step = dag == null ? pipeline.poll(tick,
                     key -> CheckedAmounts.add(owned.get(key), expected.getOrDefault(key, 0L))) : dag.poll(tick);
             if (step == null) {
-                if (expected.isEmpty() && (dag == null ? pipeline.finished() : dag.finished())) {
+                if (expected.isEmpty() && deferredExternal.isEmpty() && (dag == null ? pipeline.finished() : dag.finished())) {
                     if (!seedsHeld()) {
                         state = State.NEEDS_ATTENTION;
                         reason = "RECOVERY_UNFUNDED";
@@ -221,7 +244,10 @@ public final class GraphJobRuntime<K> {
                 long fixed = recipe.configurationInputs().getOrDefault(output.getKey(), 0L);
                 long net = output.getValue() - (recipeInputs.getOrDefault(output.getKey(), 0L) - fixed);
                 if (net > 0) {
-                    long future = CheckedAmounts.add(owned.get(output.getKey()), expected.getOrDefault(output.getKey(), 0L));
+                    // Unreceived external supply can wait; actual inventory and
+                    // accepted machine returns retain their physical headroom.
+                    long physicalReturns = expected.getOrDefault(output.getKey(), 0L) - obligations.external(output.getKey());
+                    long future = CheckedAmounts.add(owned.get(output.getKey()), physicalReturns);
                     batch = Math.min(batch, java.math.BigInteger.valueOf(Long.MAX_VALUE - future).add(java.math.BigInteger.valueOf(fixed))
                             .divide(java.math.BigInteger.valueOf(net)).min(java.math.BigInteger.valueOf(Long.MAX_VALUE)).longValueExact());
                 }
@@ -258,9 +284,26 @@ public final class GraphJobRuntime<K> {
             }
             Map<K, Long> outputs = new LinkedHashMap<>();
             for (var output : recipe.executionOutputs().entrySet()) outputs.put(output.getKey(), CheckedAmounts.multiply(output.getValue(), batch));
+            Map<K, Long> dispatchInputs = recipe.dispatchInputs(batch);
+            for (var output : outputs.entrySet()) {
+                K key = output.getKey();
+                BigInteger over = BigInteger.valueOf(owned.get(key) - dispatchInputs.getOrDefault(key, 0L))
+                        .add(BigInteger.valueOf(expected.getOrDefault(key, 0L))).add(BigInteger.valueOf(output.getValue()))
+                        .subtract(ExactAmounts.LONG_MAX);
+                if (over.signum() > 0) {
+                    long postponed = over.longValueExact();
+                    obligations.deferExternal(key, postponed);
+                    long left = expected.get(key) - postponed;
+                    if (left == 0) expected.remove(key);
+                    else expected.put(key, left);
+                    deferredExternal.merge(key, over, BigInteger::add);
+                    changedKeys.add(key);
+                    changed();
+                }
+            }
             Map<K, Long> combined = new LinkedHashMap<>(expected);
             outputs.forEach((key, amount) -> combined.merge(key, amount, CheckedAmounts::add));
-            Map<K, Long> escrow = owned.take(recipe.dispatchInputs(batch), 1);
+            Map<K, Long> escrow = owned.take(dispatchInputs, 1);
             changedKeys.addAll(escrow.keySet());
             changedKeys.addAll(outputs.keySet());
             preparedOutputs = combined;
@@ -336,7 +379,26 @@ public final class GraphJobRuntime<K> {
             changed();
             if (cancelRequested) cancel();
         }
+        if (state == State.RUNNING && !replanning) replenishExternal();
         return pushed;
+    }
+
+    private void replenishExternal() {
+        var iterator = deferredExternal.entrySet().iterator();
+        while (iterator.hasNext()) {
+            var entry = iterator.next();
+            K key = entry.getKey();
+            long space = Long.MAX_VALUE - owned.get(key) - expected.getOrDefault(key, 0L);
+            long count = Math.min(space, ExactAmounts.capped(entry.getValue()));
+            if (count <= 0) continue;
+            obligations.addExternal(Map.of(key, count));
+            expected.merge(key, count, CheckedAmounts::add);
+            BigInteger remaining = entry.getValue().subtract(BigInteger.valueOf(count));
+            if (remaining.signum() == 0) iterator.remove();
+            else entry.setValue(remaining);
+            changedKeys.add(key);
+            changed();
+        }
     }
 
     public long accept(K key, long amount, boolean simulate) {
@@ -367,7 +429,7 @@ public final class GraphJobRuntime<K> {
     public boolean completePlaceholder() {
         if (state != State.RUNNING || suspended || replanning || preparedOutputs != null ||
                 settlementEscrow != null || !pendingRuns.isEmpty() || !uncertainInputs.isEmpty() ||
-                obligations.ambiguous() || !obligations.external().isEmpty() || !seedsHeld())
+                obligations.ambiguous() || !obligations.external().isEmpty() || !deferredExternal.isEmpty() || !seedsHeld())
             return false;
         if (expected.keySet().stream().anyMatch(key -> !key.equals(plan.target()))) return false;
         expected.clear();
@@ -507,6 +569,7 @@ public final class GraphJobRuntime<K> {
         expected.clear();
         obligations.clear();
         pendingOutputs.clear();
+        deferredExternal.clear();
         pendingRuns.clear();
         pendingInputs.clear();
         streamingOutputs.clear();
@@ -583,6 +646,9 @@ public final class GraphJobRuntime<K> {
         var newPipeline = newDag == null ? new PipelineScheduler<>(newCursor, replacement.recipes(), List.of()) : null;
         owned.restore(extraHeld);
         obligations.addExternal(extraExternal);
+        // These were unreceived requests for the old suffix, not held items or
+        // accepted production. The replacement has just proved its own funding.
+        deferredExternal.clear();
         extraExternal.forEach((key, count) -> expected.merge(key, count, CheckedAmounts::add));
         committedHistory.clear();
         committedHistory.putAll(history);
@@ -641,6 +707,12 @@ public final class GraphJobRuntime<K> {
 
     public long externalWaiting(K key) {
         return obligations.external(key);
+    }
+
+    public Map<K, BigInteger> externalWaitingExact() {
+        Map<K, BigInteger> total = new LinkedHashMap<>(deferredExternal);
+        obligations.external().forEach((key, count) -> total.merge(key, BigInteger.valueOf(count), BigInteger::add));
+        return ExactAmounts.copy(total);
     }
 
     public Map<K, Long> inFlight() {
@@ -729,7 +801,7 @@ public final class GraphJobRuntime<K> {
         if (settlementEscrow != null) {
             return new Snapshot<>(plan, owned.snapshot(), GraphRecipe.amounts(expected), settlementEscrow,
                     Map.copyOf(acceptedRuns), dag == null ? cursor.snapshot() : List.of(), pipeline == null ? List.of() : pipeline.snapshot(), remainingDelivery,
-                    State.NEEDS_ATTENTION, suspended, "SETTLEMENT_IN_DOUBT_SAVED_DURING_HANDOFF", obligations.snapshot(), recovery(), Map.copyOf(committedHistory));
+                    State.NEEDS_ATTENTION, suspended, "SETTLEMENT_IN_DOUBT_SAVED_DURING_HANDOFF", obligations.snapshot(), recovery(), Map.copyOf(committedHistory), ExactAmounts.copy(deferredExternal));
         }
         if (preparedOutputs != null) {
             Map<K, Long> held = new LinkedHashMap<>(owned.snapshot());
@@ -742,16 +814,26 @@ public final class GraphJobRuntime<K> {
             // pre-dispatch state or a duplicate copy of escrow as held material.
             return new Snapshot<>(plan, GraphRecipe.amounts(held), GraphRecipe.amounts(preparedOutputs), preparedInputs,
                     Map.copyOf(acceptedRuns), dag == null ? cursor.snapshot() : List.of(), pipeline == null ? List.of() : pipeline.snapshot(), remainingDelivery,
-                    State.NEEDS_ATTENTION, suspended, "DISPATCH_IN_DOUBT_SAVED_DURING_HANDOFF", preparing.snapshot(), recovery(), Map.copyOf(committedHistory));
+                    State.NEEDS_ATTENTION, suspended, "DISPATCH_IN_DOUBT_SAVED_DURING_HANDOFF", preparing.snapshot(), recovery(), Map.copyOf(committedHistory), ExactAmounts.copy(deferredExternal));
         }
         return new Snapshot<>(plan, owned.snapshot(), GraphRecipe.amounts(expected), uncertainInputs,
                 Map.copyOf(acceptedRuns), dag == null ? cursor.snapshot() : List.of(), pipeline == null ? List.of() : pipeline.snapshot(), remainingDelivery, state, suspended, reason,
-                obligations.snapshot(), recovery(), Map.copyOf(committedHistory));
+                obligations.snapshot(), recovery(), Map.copyOf(committedHistory), ExactAmounts.copy(deferredExternal));
     }
 
     public record Snapshot<K>(GraphPlan<K> plan, Map<K, Long> owned, Map<K, Long> expected,
                               Map<K, Long> uncertainInputs, Map<String, BigInteger> acceptedRuns,
                               List<PlanCursor.Position> cursor, List<PlanStep.Batch> pipeline, long remainingDelivery, State state,
                               boolean suspended, String reason, OutputObligations.Snapshot<K> obligations,
-                              RecoveryObligation<K> recovery, Map<String, BigInteger> committedHistory) {}
+                              RecoveryObligation<K> recovery, Map<String, BigInteger> committedHistory, Map<K, BigInteger> deferredExternal) {
+
+        public Snapshot(GraphPlan<K> plan, Map<K, Long> owned, Map<K, Long> expected,
+                        Map<K, Long> uncertainInputs, Map<String, BigInteger> acceptedRuns,
+                        List<PlanCursor.Position> cursor, List<PlanStep.Batch> pipeline, long remainingDelivery, State state,
+                        boolean suspended, String reason, OutputObligations.Snapshot<K> obligations,
+                        RecoveryObligation<K> recovery, Map<String, BigInteger> committedHistory) {
+            this(plan, owned, expected, uncertainInputs, acceptedRuns, cursor, pipeline, remainingDelivery, state,
+                    suspended, reason, obligations, recovery, committedHistory, Map.of());
+        }
+    }
 }

@@ -194,8 +194,9 @@ public final class CraftingEngineRouter {
         private Map<AEKey, Long> available;
         private CatalystPlanningWork<AEKey> current;
         private GraphPlan<AEKey> selected;
-        private boolean partialSearch, directEmission, unavailableTarget;
+        private boolean partialSearch, directEmission, unavailableTarget, tryEstimate, tryNeighbor;
         private long low, high, middle, snapshotNanos, snapshotElapsedNanos, catalogPreparationNanos;
+        private long estimatedAmount;
         private long catalogPreparationStarted, catalogPreparationElapsed, catalogParallelNanos;
         private int catalogParallelBatches;
         private GraphSnapshots.Timing snapshotTiming;
@@ -254,15 +255,30 @@ public final class CraftingEngineRouter {
                 partialSearch = true;
                 low = 1;
                 high = amount - 1;
+                estimatedAmount = estimateAmount(candidate);
+                tryEstimate = estimatedAmount > 1;
+                middle = 1;
             } else {
                 if (candidate.feasible()) {
                     selected = candidate;
                     low = middle + 1;
-                } else if (candidate.missing().isEmpty()) throw limitOrUnknown(candidate);
-                else high = middle - 1;
+                } else if (candidate.missing().isEmpty()) {
+                    budget.note("craft_less", "undecided_probe=" + middle + "; retained_amount=" + selected.amount());
+                    return finishReduced();
+                } else high = middle - 1;
+                if (tryEstimate && estimatedAmount >= low && estimatedAmount <= high) {
+                    middle = estimatedAmount;
+                    tryNeighbor = true;
+                } else if (tryNeighbor && candidate.feasible()) {
+                    middle = low;
+                    tryNeighbor = false;
+                } else {
+                    middle = low + (high - low) / 2;
+                    tryNeighbor = false;
+                }
+                tryEstimate = false;
             }
             if (low > high) return finish();
-            middle = low + (high - low) / 2;
             current.close();
             current = calculation(middle);
             return false;
@@ -270,9 +286,32 @@ public final class CraftingEngineRouter {
 
         private CatalystPlanningWork<AEKey> calculation(long count) {
             budget.note("request", "target=" + target + "; amount=" + count + "; strategy=" + strategy + "; preserve_seeds=" + preserve);
-            return new CatalystPlanningWork<>(checkpoint != null ? CatalystPolicy.MINIMAL : catalysts, budget,
+            // Feasibility probes must not each repeat the optional catalyst
+            // acceleration search. Preserve the shared order budget.
+            return new CatalystPlanningWork<>(checkpoint != null || strategy == CalculationStrategy.CRAFT_LESS ? CatalystPolicy.MINIMAL : catalysts, budget,
                     policy -> new GraphPlanningWork<>(compiler, target, count, available, snapshot.emitable(),
                             checkpoint == null ? Map.of() : checkpoint.recoverySeeds(), preserve, checkpoint == null && !directEmission, budget).catalysts(policy));
+        }
+
+        private long estimateAmount(GraphPlan<AEKey> full) {
+            java.math.BigInteger guess = java.math.BigInteger.valueOf(amount);
+            for (var entry : full.initialExact().entrySet()) {
+                if (snapshot.emitable().contains(entry.getKey()) || entry.getValue().signum() == 0) continue;
+                java.math.BigInteger scaled = java.math.BigInteger.valueOf(amount)
+                        .multiply(java.math.BigInteger.valueOf(available.getOrDefault(entry.getKey(), 0L)))
+                        .divide(entry.getValue());
+                guess = guess.min(scaled);
+            }
+            // A probe hint, never an upper-bound proof: batches, alternative
+            // sources and startup costs need not scale with order quantity.
+            return guess.max(java.math.BigInteger.ONE).longValueExact();
+        }
+
+        private boolean finishReduced() {
+            if (selected.feasible()) selected = new GraphPlan<>(selected.target(), selected.amount(), selected.preserveSeeds(), selected.steps(),
+                    selected.recipes(), selected.initialExact(), selected.seeds(), Map.of(), GraphPlan.Result.FEASIBLE_NOT_PROVEN_OPTIMAL,
+                    budget.nodes(), selected.planningNanos());
+            return finish();
         }
 
         @Override
@@ -341,11 +380,9 @@ public final class CraftingEngineRouter {
                 GraphPlan<AEKey> retained = current.limited(limit);
                 if (retained.feasible()) selected = retained;
             }
-            if (selected == null || !selected.feasible()) throw limit;
-            selected = new GraphPlan<>(selected.target(), selected.amount(), selected.preserveSeeds(), selected.steps(),
-                    selected.recipes(), selected.initialExact(), selected.seeds(), Map.of(), GraphPlan.Result.FEASIBLE_NOT_PROVEN_OPTIMAL,
-                    budget.nodes(), selected.planningNanos());
-            finish();
+            if (selected == null || !selected.feasible() && (!partialSearch || selected.missingExact().isEmpty())) throw limit;
+            budget.note("craft_less", "limit=" + limit.limit() + "; retained_amount=" + selected.amount() + "; result=" + selected.result());
+            finishReduced();
             return result;
         }
     }

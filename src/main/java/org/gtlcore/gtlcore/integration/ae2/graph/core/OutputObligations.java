@@ -87,6 +87,11 @@ public final class OutputObligations<K> {
         additional.forEach((key, count) -> external.merge(key, CheckedAmounts.nonNegative(count), CheckedAmounts::add));
     }
 
+    /** Postpone unreceived supply to make room for a physical batch's returns. */
+    public void deferExternal(K key, long amount) {
+        reduce(external, key, CheckedAmounts.nonNegative(amount));
+    }
+
     public long external(K key) {
         return external.getOrDefault(key, 0L);
     }

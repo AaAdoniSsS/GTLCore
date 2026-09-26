@@ -19,7 +19,7 @@ import java.util.Objects;
 public final class GraphJobCodec {
 
     public static final String NBT_KEY = "gtlcoreGraphJob";
-    private static final int SCHEMA = 6;
+    private static final int SCHEMA = 7;
     private static final int MAX_ENTRIES = 100_000;
 
     private GraphJobCodec() {}
@@ -33,6 +33,8 @@ public final class GraphJobCodec {
         tag.putLong("amount", plan.amount());
         tag.putBoolean("preserve", plan.preserveSeeds());
         tag.put("initial", amounts(plan.initial()));
+        tag.put("initialExact", exactAmounts(plan.initialExact()));
+        tag.put("deferredExternal", exactAmounts(state.deferredExternal()));
         tag.put("seeds", amounts(plan.seeds()));
         tag.put("steps", step(plan.steps()));
         ListTag recipes = new ListTag();
@@ -126,7 +128,7 @@ public final class GraphJobCodec {
         }
         GraphPlan<AEKey> plan = new GraphPlan<>(key(tag.getCompound("target")), amount(tag, "amount"),
                 tag.getBoolean("preserve"), step(tag.getCompound("steps"), 0), recipes,
-                amounts(tag, "initial"), amounts(tag, "seeds"), Map.of(), GraphPlan.Result.FEASIBLE, 0, 0);
+                schema >= 7 ? exactAmounts(tag, "initialExact") : amounts(tag, "initial"), amounts(tag, "seeds"), Map.of(), GraphPlan.Result.FEASIBLE, 0, 0);
         PlanVerifier.verify(plan);
         Map<String, BigInteger> accepted = new LinkedHashMap<>();
         CompoundTag counts = tag.getCompound("acceptedRuns");
@@ -170,7 +172,29 @@ public final class GraphJobCodec {
         }
         return new GraphJobRuntime.Snapshot<>(plan, amounts(tag, "owned"), amounts(tag, "expected"),
                 amounts(tag, "uncertainInputs"), accepted, cursor, pipeline, amount(tag, "remainingDelivery"),
-                GraphJobRuntime.State.valueOf(tag.getString("state")), tag.getBoolean("suspended"), tag.getString("reason"), obligations, recovery, committed);
+                GraphJobRuntime.State.valueOf(tag.getString("state")), tag.getBoolean("suspended"), tag.getString("reason"), obligations, recovery, committed,
+                schema >= 7 ? exactAmounts(tag, "deferredExternal") : Map.of());
+    }
+
+    private static ListTag exactAmounts(Map<AEKey, BigInteger> amounts) {
+        ListTag entries = new ListTag();
+        amounts.forEach((key, count) -> {
+            CompoundTag entry = new CompoundTag();
+            entry.put("key", key.toTagGeneric());
+            exact(entry, "amount", count);
+            entries.add(entry);
+        });
+        return entries;
+    }
+
+    private static Map<AEKey, BigInteger> exactAmounts(CompoundTag tag, String name) {
+        Map<AEKey, BigInteger> result = new LinkedHashMap<>();
+        for (Tag entry : list(tag, name)) {
+            CompoundTag row = (CompoundTag) entry;
+            if (result.putIfAbsent(key(row.getCompound("key")), exact(row, "amount")) != null)
+                throw new IllegalArgumentException("Duplicate resource");
+        }
+        return ExactAmounts.copy(result);
     }
 
     public static ListTag amounts(Map<AEKey, Long> amounts) {

@@ -25,7 +25,7 @@ final class IntegerCountSearch<K> implements AutoCloseable {
     private List<IntegerCountBranch<K>> dispatched = List.of();
     private Incumbent<K> best;
     private boolean complete, infeasible, unresolved;
-    private long work, improvementUntil = Long.MAX_VALUE;
+    private long work, improvementUntil = Long.MAX_VALUE, firstWitnessWork = -1, firstWitnessNanos;
     private int branches, rounds, suspensions, boundPrunes, choicePrunes, peakWidth;
 
     private record Incumbent<K>(GraphPlan<K> plan, PlanPreference<K> cost, long memory) {}
@@ -211,6 +211,10 @@ final class IntegerCountSearch<K> implements AutoCloseable {
         branch.workspace = 0;
         if (best == null) {
             best = candidate;
+            firstWitnessWork = work;
+            firstWitnessNanos = System.nanoTime();
+            budget.note("integer_counts_first", "work=" + work + "; elapsed_ms=" + (firstWitnessNanos - started) / 1_000_000.0 +
+                    "; branches=" + branches + "; result=" + branch.plan.result());
             improvementUntil = Math.min(allowance, work + Math.min(16_384L, Math.max(0, (allowance - work) / 8)));
         } else if (replaces) best = candidate;
         // Incomparable materials remain separate candidates. This bound affects
@@ -252,7 +256,9 @@ final class IntegerCountSearch<K> implements AutoCloseable {
         infeasible = proved && !unresolved && best == null;
         budget.note("integer_counts", "branches=" + branches + "; slices=" + rounds + "; suspended=" + suspensions +
                 "; peak_width=" + peakWidth + "; work=" + work + "/" + allowance + "; frontier=" + frontier.size() +
-                "; bound_prunes=" + boundPrunes + "; unresolved=" + unresolved + "; witness=" + (best != null));
+                "; bound_prunes=" + boundPrunes + "; unresolved=" + unresolved + "; witness=" + (best != null) +
+                "; first_work=" + firstWitnessWork + "; improvement_work=" + (firstWitnessWork < 0 ? 0 : work - firstWitnessWork) +
+                "; improvement_ms=" + (firstWitnessWork < 0 ? 0 : (System.nanoTime() - firstWitnessNanos) / 1_000_000.0));
         if (!choiceConflicts.isEmpty()) budget.note("count_conflicts", "proven_choice_conflicts=" + choiceConflicts.size() + "; reused=" + choicePrunes);
         close();
         return true;

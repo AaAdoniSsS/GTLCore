@@ -159,16 +159,17 @@ final class QuantityAnalysis<K> {
                 budget.note("quantity_bounds", "proven_blocked; recipes=" + model.recipes.size() + "; keys=" + model.keys.size());
                 return finish(true);
             }
-            binaryChoices = model.keys.size() <= 128 && CountPartition.binaryChoices(bounds.lowerBounds(), bounds.upperBounds(), 8);
+            binaryChoices = CountPartition.binaryChoices(bounds.lowerBounds(), bounds.upperBounds(), 8);
             bounds.close();
             bounds = null;
-            if (model.recipes.size() > 192 || model.keys.size() > 128) return finish(false);
+            if ((model.recipes.size() > 192 || model.keys.size() > 128) && !binaryChoices) return finish(false);
             // Keep the exact model, but let the caller try cheap executable
             // witnesses before paying for simplex and continuous coverability.
             phase = 8;
             return false;
         }
         if (phase == 8) {
+            if (model.recipes.size() > 192 || model.keys.size() > 128) return finish(false);
             linear = new ExactLinearProgram(model.recipes.size(), model.constraints, model.objective(false), budget);
             phase = 2;
             return false;

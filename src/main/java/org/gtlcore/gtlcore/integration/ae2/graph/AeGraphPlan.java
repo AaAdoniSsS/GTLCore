@@ -89,6 +89,10 @@ public final class AeGraphPlan implements ICraftingPlan {
         return ExactAmounts.longView(emitted);
     }
 
+    public Map<AEKey, BigInteger> emittedExact() {
+        return emitted;
+    }
+
     /**
      * UI-only snapshot for integrations that cast ICraftingPlan to AE's concrete
      * record (notably AE2 Crafting Tree). Never submit this view to a CPU: the
