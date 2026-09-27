@@ -12,30 +12,15 @@ final class LoopBatching {
     private LoopBatching() {}
 
     static Map<String, BigInteger> counts(PlanStep body) {
-        record Visit(PlanStep step, BigInteger count) {}
-        var pending = new ArrayDeque<Visit>();
-        var counts = new LinkedHashMap<String, BigInteger>();
-        pending.push(new Visit(body, BigInteger.ONE));
-        int visited = 0;
-        while (!pending.isEmpty()) {
-            if (++visited > 256) return Map.of();
-            var visit = pending.pop();
-            if (visit.count().signum() == 0) continue;
-            if (visit.step() instanceof PlanStep.Batch batch) {
-                BigInteger count = visit.count().multiply(BigInteger.valueOf(batch.runs()));
-                if (count.signum() == 0) continue;
-                counts.merge(batch.recipe(), count, BigInteger::add);
-                if (counts.size() > PipelineScheduler.WINDOW || counts.get(batch.recipe()).compareTo(MAX) > 0) return Map.of();
-            } else if (visit.step() instanceof PlanStep.Repeat repeat) {
-                BigInteger count = visit.count().multiply(BigInteger.valueOf(repeat.times()));
-                if (count.compareTo(MAX) > 0) return Map.of();
-                pending.push(new Visit(repeat.body(), count));
-            } else {
-                var children = ((PlanStep.Sequence) visit.step()).children();
-                for (int i = children.size() - 1; i >= 0; i--) pending.push(new Visit(children.get(i), visit.count()));
-            }
+        var computation = new PlanCountComputation(body);
+        // Limit structural work, not expanded call occurrences. Large shared
+        // loop bodies can still have just a handful of distinct program nodes.
+        for (int slice = 0; slice < 128; slice++) if (computation.step(null)) {
+            var counts = computation.result();
+            if (counts.size() > PipelineScheduler.WINDOW || counts.values().stream().anyMatch(count -> count.compareTo(MAX) > 0)) return Map.of();
+            return counts;
         }
-        return Collections.unmodifiableMap(counts);
+        return Map.of();
     }
 
     static boolean fixedPerRun(GraphRecipe<?> recipe) {
@@ -44,7 +29,7 @@ final class LoopBatching {
 
     /** All constraints are affine in the number of regrouped iterations; no trial dispatches. */
     static <K> long iterations(Map<String, BigInteger> counts, long remaining,
-                              Map<String, GraphRecipe<K>> recipes, Function<K, BigInteger> stock) {
+                               Map<String, GraphRecipe<K>> recipes, Function<K, BigInteger> stock) {
         BigInteger lower = BigInteger.TWO, upper = BigInteger.valueOf(remaining);
         Map<K, BigInteger> prefix = new HashMap<>();
         for (var entry : counts.entrySet()) {

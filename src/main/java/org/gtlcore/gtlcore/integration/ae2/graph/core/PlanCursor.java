@@ -2,10 +2,11 @@ package org.gtlcore.gtlcore.integration.ae2.graph.core;
 
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.IdentityHashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -15,6 +16,8 @@ public final class PlanCursor {
     private final List<PlanStep> nodes = new ArrayList<>();
     private final Map<PlanStep, Integer> ids = new IdentityHashMap<>();
     private final Map<PlanStep, Homogeneous> homogeneous = new IdentityHashMap<>();
+    private final Map<PlanStep, BigInteger[]> prefixes = new IdentityHashMap<>();
+    private final Set<PlanStep> work = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Map<PlanStep, Map<String, BigInteger>> loopCounts = new IdentityHashMap<>();
     private final List<Frame> stack = new ArrayList<>();
 
@@ -50,43 +53,68 @@ public final class PlanCursor {
         }
     }
 
-    private void index(PlanStep step) {
-        if (ids.containsKey(step)) return;
-        ids.put(step, nodes.size());
-        nodes.add(step);
-        if (step instanceof PlanStep.Sequence sequence) for (PlanStep child : sequence.children()) index(child);
-        else if (step instanceof PlanStep.Repeat repeat) index(repeat.body());
+    private void index(PlanStep root) {
+        // Preserve the original pre-order node IDs used by saved cursors, but
+        // fold shared children only once and keep traversal off the Java stack.
+        var pending = new ArrayList<IndexFrame>();
+        ids.put(root, 0);
+        nodes.add(root);
+        pending.add(new IndexFrame(root));
+        while (!pending.isEmpty()) {
+            IndexFrame frame = pending.get(pending.size() - 1);
+            PlanStep child = null;
+            if (frame.step instanceof PlanStep.Sequence sequence && frame.child < sequence.children().size())
+                child = sequence.children().get(frame.child++);
+            else if (frame.step instanceof PlanStep.Repeat repeat && frame.child++ == 0) child = repeat.body();
+            if (child == null) {
+                summarize(frame.step);
+                pending.remove(pending.size() - 1);
+            } else if (!ids.containsKey(child)) {
+                ids.put(child, nodes.size());
+                nodes.add(child);
+                pending.add(new IndexFrame(child));
+            }
+        }
+    }
+
+    private void summarize(PlanStep step) {
         if (step instanceof PlanStep.Batch batch) {
+            if (batch.runs() > 0) work.add(step);
             homogeneous.put(step, new Homogeneous(batch.recipe(), BigInteger.valueOf(batch.runs())));
         } else if (step instanceof PlanStep.Repeat repeat) {
+            if (repeat.times() > 0 && work.contains(repeat.body())) work.add(step);
             Homogeneous body = homogeneous.get(repeat.body());
-            if (body != null) homogeneous.put(step, new Homogeneous(body.recipe, body.runs.multiply(BigInteger.valueOf(repeat.times()))));
+            if (repeat.times() == 0) homogeneous.put(step, new Homogeneous(null, BigInteger.ZERO));
+            else if (body != null) homogeneous.put(step, new Homogeneous(body.recipe, body.runs.multiply(BigInteger.valueOf(repeat.times()))));
         } else {
+            var children = ((PlanStep.Sequence) step).children();
+            for (PlanStep child : children) if (work.contains(child)) {
+                work.add(step);
+                break;
+            }
             String recipe = null;
             BigInteger runs = BigInteger.ZERO;
-            for (PlanStep child : ((PlanStep.Sequence) step).children()) {
+            BigInteger[] sums = new BigInteger[children.size() + 1];
+            sums[0] = BigInteger.ZERO;
+            for (int i = 0; i < children.size(); i++) {
+                PlanStep child = children.get(i);
                 Homogeneous part = homogeneous.get(child);
                 if (part == null) return;
+                sums[i + 1] = runs = runs.add(part.runs);
                 if (part.runs.signum() == 0) continue;
                 if (recipe != null && !recipe.equals(part.recipe)) return;
                 recipe = part.recipe;
-                runs = runs.add(part.runs);
             }
             homogeneous.put(step, new Homogeneous(recipe, runs));
+            prefixes.put(step, sums);
         }
     }
 
     private void push(PlanStep step) {
         long remaining = step instanceof PlanStep.Batch batch ? batch.runs() :
                 step instanceof PlanStep.Repeat repeat ? repeat.times() : ((PlanStep.Sequence) step).children().size();
-        if (!hasWork(step)) remaining = 0;
+        if (!work.contains(step)) remaining = 0;
         stack.add(new Frame(step, remaining));
-    }
-
-    private static boolean hasWork(PlanStep step) {
-        if (step instanceof PlanStep.Batch batch) return batch.runs() > 0;
-        if (step instanceof PlanStep.Repeat repeat) return repeat.times() > 0 && hasWork(repeat.body());
-        return ((PlanStep.Sequence) step).children().stream().anyMatch(PlanCursor::hasWork);
     }
 
     public PlanStep.Batch current() {
@@ -97,9 +125,15 @@ public final class PlanCursor {
                 continue;
             }
             if (frame.step instanceof PlanStep.Batch batch) return new PlanStep.Batch(batch.recipe(), frame.remaining);
-            // Repeated occurrences of the same recipe have no intervening
-            // dependency. Expose a large batch even for previously saved
-            // Repeat(Batch(1), n) programs, retaining the existing cursor format.
+            // A shared sequence can contain exponentially many occurrences of
+            // one recipe too. Batch its unvisited suffix without expanding it.
+            if (frame.step instanceof PlanStep.Sequence sequence && homogeneous.containsKey(frame.step)) {
+                Homogeneous summary = homogeneous.get(frame.step);
+                BigInteger count = summary.runs.subtract(prefixes.get(frame.step)[sequence.children().size() - Math.toIntExact(frame.remaining)]);
+                if (count.signum() > 0) return new PlanStep.Batch(summary.recipe, ExactAmounts.capped(count));
+                frame.remaining = 0;
+                continue;
+            }
             if (frame.step instanceof PlanStep.Repeat repeat) {
                 Homogeneous body = homogeneous.get(repeat.body());
                 if (body != null && body.runs.signum() > 0)
@@ -125,6 +159,7 @@ public final class PlanCursor {
             if (frame.remaining == 0) {
                 stack.remove(stack.size() - 1);
             } else if (frame.step instanceof PlanStep.Sequence sequence) {
+                if (homogeneous.containsKey(frame.step)) return null;
                 PlanStep child = sequence.children().get(sequence.children().size() - Math.toIntExact(frame.remaining));
                 frame.remaining--;
                 push(child);
@@ -175,7 +210,9 @@ public final class PlanCursor {
                 var sequence = (PlanStep.Sequence) frame.step;
                 PlanStep child = sequence.children().get(sequence.children().size() - Math.toIntExact(frame.remaining));
                 frame.remaining--;
-                push(child);
+                Homogeneous part = homogeneous.get(child);
+                if (part != null && left.compareTo(part.runs) >= 0) left = left.subtract(part.runs);
+                else push(child);
             }
         }
     }
@@ -189,28 +226,36 @@ public final class PlanCursor {
     }
 
     public Map<String, BigInteger> remainingCountsExact() {
-        Map<String, BigInteger> result = new LinkedHashMap<>();
+        // Count all live suffixes in a single shared traversal. Counting each
+        // ancestor's suffix independently is quadratic for nested shared calls.
+        var remaining = new ArrayList<PlanStep>();
         for (Frame frame : stack) {
+            if (frame.remaining == 0) continue;
             if (frame.step instanceof PlanStep.Batch batch) {
-                if (frame.remaining > 0) result.merge(batch.recipe(), BigInteger.valueOf(frame.remaining), BigInteger::add);
+                remaining.add(new PlanStep.Batch(batch.recipe(), frame.remaining));
             } else if (frame.step instanceof PlanStep.Repeat repeat) {
-                count(repeat.body(), BigInteger.valueOf(frame.remaining), result);
+                remaining.add(new PlanStep.Repeat(repeat.body(), frame.remaining));
             } else {
                 var children = ((PlanStep.Sequence) frame.step).children();
-                for (int i = children.size() - Math.toIntExact(frame.remaining); i < children.size(); i++) count(children.get(i), BigInteger.ONE, result);
+                remaining.addAll(children.subList(children.size() - Math.toIntExact(frame.remaining), children.size()));
             }
         }
-        return result;
-    }
-
-    private static void count(PlanStep step, BigInteger multiplier, Map<String, BigInteger> counts) {
-        if (multiplier.signum() == 0) return;
-        PlanCountComputation.of(step).forEach((recipe, runs) -> counts.merge(recipe, runs.multiply(multiplier), BigInteger::add));
+        return PlanCountComputation.of(new PlanStep.Sequence(remaining));
     }
 
     public record Position(int node, long remaining) {}
 
     private record Homogeneous(String recipe, BigInteger runs) {}
+
+    private static final class IndexFrame {
+
+        final PlanStep step;
+        int child;
+
+        IndexFrame(PlanStep step) {
+            this.step = step;
+        }
+    }
 
     private static final class Frame {
 

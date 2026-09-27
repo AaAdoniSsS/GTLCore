@@ -63,6 +63,8 @@ public final class GraphJobRuntime<K> {
     private final Deque<K> streamingOutputs = new ArrayDeque<>();
     private final Set<K> changedKeys = new LinkedHashSet<>();
     private Map<K, Long> uncertainInputs = Map.of();
+    // Absolute overrides of expected during a provider handoff. Zero is a
+    // tombstone; unrelated outstanding batches stay in the base map.
     private Map<K, Long> preparedOutputs;
     private Map<K, Long> preparedInputs;
     private Map<K, Long> synchronousReturns;
@@ -301,8 +303,8 @@ public final class GraphJobRuntime<K> {
                     changed();
                 }
             }
-            Map<K, Long> combined = new LinkedHashMap<>(expected);
-            outputs.forEach((key, amount) -> combined.merge(key, amount, CheckedAmounts::add));
+            Map<K, Long> combined = new LinkedHashMap<>();
+            outputs.forEach((key, amount) -> combined.put(key, CheckedAmounts.add(expected.getOrDefault(key, 0L), amount)));
             Map<K, Long> escrow = owned.take(dispatchInputs, 1);
             changedKeys.addAll(escrow.keySet());
             changedKeys.addAll(outputs.keySet());
@@ -345,8 +347,7 @@ public final class GraphJobRuntime<K> {
                     if (remaining.signum() == 0) pendingOutputs.remove(output.getKey());
                     else pendingOutputs.put(output.getKey(), remaining);
                 }
-                expected.clear();
-                expected.putAll(preparedOutputs);
+                commitPreparedOutputs();
                 owned.restore(synchronousReturns);
                 dispatches++;
                 pushed++;
@@ -355,14 +356,13 @@ public final class GraphJobRuntime<K> {
                 obligations.dispatch(recipe.id(), batch, outputs, true);
                 synchronousReturns.forEach(obligations::returned);
                 uncertainInputs = escrow; // evidence of a possible transfer, NOT held inventory
-                expected.clear();
-                expected.putAll(preparedOutputs);
+                commitPreparedOutputs();
                 owned.restore(synchronousReturns);
                 state = State.NEEDS_ATTENTION;
                 reason = "DISPATCH_IN_DOUBT";
             } else {
                 synchronousReturns.forEach(obligations::returned);
-                synchronousReturns.forEach((key, amount) -> expected.compute(key, (ignored, value) -> value - amount));
+                synchronousReturns.forEach((key, amount) -> expected.compute(key, (ignored, value) -> value.longValue() == amount ? null : value - amount));
                 owned.restore(synchronousReturns);
                 owned.restore(escrow);
                 rejections++;
@@ -375,7 +375,6 @@ public final class GraphJobRuntime<K> {
             synchronousReturns = null;
             preparingRecipe = null;
             preparingBatchOutputs = null;
-            expected.values().removeIf(value -> value == 0);
             changed();
             if (cancelRequested) cancel();
         }
@@ -403,13 +402,13 @@ public final class GraphJobRuntime<K> {
 
     public long accept(K key, long amount, boolean simulate) {
         if (amount <= 0 || state == State.CANCELLED || state == State.COMPLETED || state == State.CANCELLING) return 0;
-        Map<K, Long> obligations = preparedOutputs == null ? expected : preparedOutputs;
-        long requested = obligations.getOrDefault(key, 0L);
+        long requested = waiting(key);
         long alreadyBuffered = synchronousReturns == null ? 0 : synchronousReturns.getOrDefault(key, 0L);
         long accepted = Math.min(Math.min(amount, requested), Long.MAX_VALUE - owned.get(key) - alreadyBuffered);
         if (accepted <= 0 || simulate) return Math.max(0, accepted);
-        if (accepted == requested) obligations.remove(key);
-        else obligations.put(key, requested - accepted);
+        if (preparedOutputs != null) preparedOutputs.put(key, requested - accepted);
+        else if (accepted == requested) expected.remove(key);
+        else expected.put(key, requested - accepted);
         if (synchronousReturns == null) {
             this.obligations.returned(key, accepted);
             owned.add(key, accepted);
@@ -720,7 +719,9 @@ public final class GraphJobRuntime<K> {
     }
 
     public long inFlight(K key) {
-        return obligations.inFlight(key);
+        // The committed waiting account already aggregates every physical
+        // batch. Reuse it for status queries instead of walking all owners.
+        return expected.getOrDefault(key, 0L) - obligations.external(key);
     }
 
     private boolean seedsHeld() {
@@ -737,7 +738,26 @@ public final class GraphJobRuntime<K> {
     }
 
     public long waiting(K key) {
-        return (preparedOutputs == null ? expected : preparedOutputs).getOrDefault(key, 0L);
+        Long prepared = preparedOutputs == null ? null : preparedOutputs.get(key);
+        return prepared == null ? expected.getOrDefault(key, 0L) : prepared;
+    }
+
+    private void commitPreparedOutputs() {
+        preparedOutputs.forEach((key, count) -> {
+            if (count == 0) expected.remove(key);
+            else expected.put(key, count);
+        });
+    }
+
+    private Map<K, Long> preparedExpected() {
+        // A synchronous save needs the complete view. Ordinary dispatch only
+        // reads or commits keys changed by this handoff, including older returns.
+        Map<K, Long> result = new LinkedHashMap<>(expected);
+        preparedOutputs.forEach((key, count) -> {
+            if (count == 0) result.remove(key);
+            else result.put(key, count);
+        });
+        return GraphRecipe.amounts(result);
     }
 
     public long remainingDelivery() {
@@ -812,7 +832,7 @@ public final class GraphJobRuntime<K> {
             // A provider may cause a synchronous save. Its handoff has not
             // returned, so persist an ambiguous ticket rather than a retryable
             // pre-dispatch state or a duplicate copy of escrow as held material.
-            return new Snapshot<>(plan, GraphRecipe.amounts(held), GraphRecipe.amounts(preparedOutputs), preparedInputs,
+            return new Snapshot<>(plan, GraphRecipe.amounts(held), preparedExpected(), preparedInputs,
                     Map.copyOf(acceptedRuns), dag == null ? cursor.snapshot() : List.of(), pipeline == null ? List.of() : pipeline.snapshot(), remainingDelivery,
                     State.NEEDS_ATTENTION, suspended, "DISPATCH_IN_DOUBT_SAVED_DURING_HANDOFF", preparing.snapshot(), recovery(), Map.copyOf(committedHistory), ExactAmounts.copy(deferredExternal));
         }

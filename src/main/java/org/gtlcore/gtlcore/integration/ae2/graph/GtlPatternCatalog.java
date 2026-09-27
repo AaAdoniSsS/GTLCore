@@ -17,7 +17,6 @@ import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
 import appeng.core.AEConfig;
-import appeng.crafting.pattern.AEProcessingPattern;
 import appeng.me.service.CraftingService;
 
 import java.util.*;
@@ -200,10 +199,12 @@ public final class GtlPatternCatalog {
                         normalizingPattern = pattern;
                         normalizingSignature = signature;
                         normalizing = new CandidateCapture(pattern, signature.values(), available, level, budget);
-                        for (var input : signature.values().inputs()) for (var possible : input.choices()) {
-                            if (!normalizing.exactInputs)
-                                templates.putIfAbsent(possible.stack().what().getPrimaryKey(), possible.stack().what());
-                            pending.add(possible.stack().what());
+                        for (int slot = 0; slot < signature.values().inputs().size(); slot++) {
+                            for (var possible : signature.values().inputs().get(slot).choices()) {
+                                if (!normalizing.exactInputs[slot])
+                                    templates.putIfAbsent(possible.stack().what().getPrimaryKey(), possible.stack().what());
+                                pending.add(possible.stack().what());
+                            }
                         }
                         return false;
                     }
@@ -409,7 +410,7 @@ public final class GtlPatternCatalog {
         final List<CapturedPattern.Candidate> capturedCandidates = new ArrayList<>();
         final Map<AEKey, GenericStack> candidates = new LinkedHashMap<>();
         final IPatternDetails.IInput[] inputs;
-        final boolean exactInputs;
+        final boolean[] exactInputs;
         int inputSlot;
         boolean bounded;
         Iterator<PatternFingerprint.Choice> possibilities;
@@ -426,13 +427,13 @@ public final class GtlPatternCatalog {
             inputs = pattern.getInputs();
             if (inputs.length > 256 || values.outputs().size() > 256) throw new PlanningBudget.Exhausted(PlanningBudget.Limit.GRAPH_LIMIT);
             budget.reserve(96L + 32L * (inputs.length + values.outputs().size()));
-            // Like MAX_FAST's structural exactness check, specialize only the
-            // native processing implementation. Its Input.isValid is AEKey.matches;
-            // other NBT variants cannot be candidates. Check the actual inputs as
-            // well: wrappers or addon input implementations retain the full path.
-            boolean exact = pattern.getClass() == AEProcessingPattern.class;
-            for (var input : inputs) exact &= input.getClass().getName().equals("appeng.crafting.pattern.AEProcessingPattern$Input");
-            exactInputs = exact;
+            // Exactness belongs to the input implementation, not its enclosing
+            // pattern. Native processing Input.isValid is AEKey.matches even
+            // inside an addon wrapper or alongside fuzzy inputs. Custom input
+            // implementations retain the full candidate/validation path.
+            exactInputs = new boolean[inputs.length];
+            for (int slot = 0; slot < inputs.length; slot++)
+                exactInputs[slot] = inputs[slot].getClass().getName().equals("appeng.crafting.pattern.AEProcessingPattern$Input");
         }
 
         boolean step() {
@@ -444,7 +445,7 @@ public final class GtlPatternCatalog {
             }
             var input = inputs[inputSlot];
             var inputValues = values.inputs().get(inputSlot);
-            if (exactInputs && inputValues.choices().size() == 1) {
+            if (exactInputs[inputSlot] && inputValues.choices().size() == 1) {
                 var choice = inputValues.choices().get(0);
                 List<CapturedPattern.Candidate> selected;
                 if (input.isValid(choice.stack().what(), level)) {
@@ -475,7 +476,7 @@ public final class GtlPatternCatalog {
                 if (possibilities.hasNext() && candidates.size() < MAX_VARIANTS) {
                     possible = possibilities.next().stack();
                     if (input.isValid(possible.what(), level)) candidates.put(possible.what(), possible);
-                    if (!exactInputs) fuzzy = available.findFuzzy(possible.what(), FuzzyMode.IGNORE_ALL).iterator();
+                    if (!exactInputs[inputSlot]) fuzzy = available.findFuzzy(possible.what(), FuzzyMode.IGNORE_ALL).iterator();
                     return false;
                 }
                 bounded |= possibilities.hasNext();

@@ -23,7 +23,7 @@ import java.util.Set;
 public final class GraphJobCodec {
 
     public static final String NBT_KEY = "gtlcoreGraphJob";
-    private static final int SCHEMA = 8;
+    private static final int SCHEMA = 9;
     private static final int MAX_ENTRIES = 100_000;
 
     private GraphJobCodec() {}
@@ -241,44 +241,113 @@ public final class GraphJobCodec {
     }
 
     private static CompoundTag step(PlanStep step) {
-        return step(step, new IdentityHashMap<>());
-    }
-
-    private static CompoundTag step(PlanStep step, Map<PlanStep, Integer> nodes) {
+        // A flat, post-order table retains shared calls without coupling program
+        // depth to either the Java stack or Minecraft's NBT nesting limit.
+        Map<PlanStep, Integer> nodes = new IdentityHashMap<>();
+        ListTag rows = new ListTag();
+        var pending = new ArrayList<StepFrame>();
+        pending.add(new StepFrame(step));
+        int edges = 0;
+        while (!pending.isEmpty()) {
+            if (nodes.size() + pending.size() > MAX_ENTRIES) throw new IllegalArgumentException("Graph task too large");
+            StepFrame frame = pending.get(pending.size() - 1);
+            PlanStep child = null;
+            if (frame.step instanceof PlanStep.Sequence sequence && frame.child < sequence.children().size())
+                child = sequence.children().get(frame.child++);
+            else if (frame.step instanceof PlanStep.Repeat repeat && frame.child++ == 0) child = repeat.body();
+            if (child != null) {
+                if (++edges > MAX_ENTRIES) throw new IllegalArgumentException("Too many graph program references");
+                if (!nodes.containsKey(child)) pending.add(new StepFrame(child));
+                continue;
+            }
+            CompoundTag row = new CompoundTag();
+            if (frame.step instanceof PlanStep.Batch batch) {
+                row.putString("kind", "batch");
+                row.putString("recipe", batch.recipe());
+                row.putLong("count", batch.runs());
+            } else if (frame.step instanceof PlanStep.Repeat repeat) {
+                row.putString("kind", "repeat");
+                row.putLong("count", repeat.times());
+                row.putInt("body", nodes.get(repeat.body()));
+            } else {
+                row.putString("kind", "sequence");
+                var children = ((PlanStep.Sequence) frame.step).children();
+                int[] references = new int[children.size()];
+                for (int i = 0; i < references.length; i++) references[i] = nodes.get(children.get(i));
+                row.putIntArray("children", references);
+            }
+            nodes.put(frame.step, rows.size());
+            rows.add(row);
+            pending.remove(pending.size() - 1);
+        }
         CompoundTag tag = new CompoundTag();
-        Integer reference = nodes.get(step);
-        if (reference != null) {
-            tag.putString("kind", "ref");
-            tag.putInt("node", reference);
-            return tag;
-        }
-        if (nodes.size() >= MAX_ENTRIES) throw new IllegalArgumentException("Graph task too large");
-        int id = nodes.size();
-        nodes.put(step, id);
-        tag.putInt("node", id);
-        if (step instanceof PlanStep.Batch batch) {
-            tag.putString("kind", "batch");
-            tag.putString("recipe", batch.recipe());
-            tag.putLong("count", batch.runs());
-        } else if (step instanceof PlanStep.Repeat repeat) {
-            tag.putString("kind", "repeat");
-            tag.putLong("count", repeat.times());
-            tag.put("body", step(repeat.body(), nodes));
-        } else {
-            tag.putString("kind", "sequence");
-            ListTag children = new ListTag();
-            for (PlanStep child : ((PlanStep.Sequence) step).children()) children.add(step(child, nodes));
-            tag.put("children", children);
-        }
+        tag.putString("kind", "program");
+        tag.put("nodes", rows);
         return tag;
     }
 
     private static PlanStep step(CompoundTag tag, int depth) {
+        if (tag.getString("kind").equals("program")) return program(tag);
         return step(tag, depth, new HashMap<>(), new HashSet<>());
     }
 
+    private static PlanStep program(CompoundTag tag) {
+        ListTag rows = list(tag, "nodes");
+        if (rows.isEmpty()) throw new IllegalArgumentException("Empty graph program table");
+        var nodes = new ArrayList<PlanStep>(rows.size());
+        boolean[] referenced = new boolean[rows.size()];
+        int edges = 0;
+        for (Tag entry : rows) {
+            CompoundTag row = (CompoundTag) entry;
+            PlanStep step;
+            switch (row.getString("kind")) {
+                case "batch" -> step = new PlanStep.Batch(row.getString("recipe"), amount(row, "count"));
+                case "repeat" -> {
+                    if (!row.contains("body", Tag.TAG_INT)) throw new IllegalArgumentException("Missing graph program reference");
+                    step = new PlanStep.Repeat(reference(nodes, referenced, row.getInt("body")), amount(row, "count"));
+                    edges++;
+                }
+                case "sequence" -> {
+                    if (!row.contains("children", Tag.TAG_INT_ARRAY)) throw new IllegalArgumentException("Missing graph program children");
+                    int[] children = row.getIntArray("children");
+                    edges = Math.addExact(edges, children.length);
+                    if (edges > MAX_ENTRIES) throw new IllegalArgumentException("Too many graph program references");
+                    var parts = new ArrayList<PlanStep>(children.length);
+                    for (int child : children) parts.add(reference(nodes, referenced, child));
+                    step = new PlanStep.Sequence(parts);
+                }
+                default -> throw new IllegalArgumentException("Unknown graph program node");
+            }
+            if (edges > MAX_ENTRIES) throw new IllegalArgumentException("Too many graph program references");
+            nodes.add(step);
+        }
+        for (int i = 0; i < referenced.length - 1; i++)
+            if (!referenced[i]) throw new IllegalArgumentException("Unreachable graph program node");
+        return nodes.get(nodes.size() - 1);
+    }
+
+    private static PlanStep reference(List<PlanStep> nodes, boolean[] referenced, int id) {
+        // Children must already be defined. Forward, cyclic and out-of-range
+        // references are rejected before a PlanStep can be constructed.
+        if (id < 0 || id >= nodes.size()) throw new IllegalArgumentException("Invalid or cyclic graph program reference");
+        referenced[id] = true;
+        return nodes.get(id);
+    }
+
+    private static final class StepFrame {
+
+        final PlanStep step;
+        int child;
+
+        StepFrame(PlanStep step) {
+            this.step = step;
+        }
+    }
+
     private static PlanStep step(CompoundTag tag, int depth, Map<Integer, PlanStep> nodes, Set<Integer> defined) {
-        if (depth > 128) throw new IllegalArgumentException("Graph plan nesting too deep");
+        // Legacy files were written without the old 128-level read cap. Accept
+        // the nesting Minecraft itself can store; new programs use a flat table.
+        if (depth > 512) throw new IllegalArgumentException("Graph plan nesting too deep");
         if (tag.getString("kind").equals("ref")) {
             if (!tag.contains("node", Tag.TAG_INT) || !nodes.containsKey(tag.getInt("node")))
                 throw new IllegalArgumentException("Invalid or cyclic graph program reference");

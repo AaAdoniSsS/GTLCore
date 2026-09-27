@@ -1,6 +1,7 @@
 package org.gtlcore.gtlcore.integration.ae2.graph.core;
 
 import java.math.BigInteger;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
@@ -79,16 +80,21 @@ public record SequenceSummary<K>(Map<K, BigInteger> required, Map<K, BigInteger>
     }
 
     public static <K> SequenceSummary<K> of(PlanStep step, Map<String, GraphRecipe<K>> recipes) {
-        return of(step, recipes, new IdentityHashMap<>());
-    }
-
-    private static <K> SequenceSummary<K> of(PlanStep step, Map<String, GraphRecipe<K>> recipes,
-                                             Map<PlanStep, SequenceSummary<K>> shared) {
-        SequenceSummary<K> cached = shared.get(step);
-        if (cached != null) return cached;
-        SequenceSummary<K> result = calculate(step, recipes, shared);
-        shared.put(step, result);
-        return result;
+        Map<PlanStep, SequenceSummary<K>> shared = new IdentityHashMap<>();
+        var pending = new ArrayList<SummaryFrame>();
+        pending.add(new SummaryFrame(step));
+        while (!pending.isEmpty()) {
+            SummaryFrame frame = pending.get(pending.size() - 1);
+            PlanStep child = null;
+            if (frame.step instanceof PlanStep.Sequence sequence && frame.child < sequence.children().size())
+                child = sequence.children().get(frame.child++);
+            else if (frame.step instanceof PlanStep.Repeat repeat && frame.child++ == 0) child = repeat.body();
+            if (child == null) {
+                shared.put(frame.step, calculate(frame.step, recipes, shared));
+                pending.remove(pending.size() - 1);
+            } else if (!shared.containsKey(child)) pending.add(new SummaryFrame(child));
+        }
+        return shared.get(step);
     }
 
     private static <K> SequenceSummary<K> calculate(PlanStep step, Map<String, GraphRecipe<K>> recipes,
@@ -98,10 +104,10 @@ public record SequenceSummary<K>(Map<K, BigInteger> required, Map<K, BigInteger>
             if (recipe == null) throw new IllegalArgumentException("Unknown recipe " + batch.recipe());
             return recipe(recipe).repeat(batch.runs());
         }
-        if (step instanceof PlanStep.Repeat repeat) return of(repeat.body(), recipes, shared).repeat(repeat.times());
+        if (step instanceof PlanStep.Repeat repeat) return shared.get(repeat.body()).repeat(repeat.times());
         Map<K, BigInteger> need = new LinkedHashMap<>(), change = new LinkedHashMap<>(), maximum = new LinkedHashMap<>();
         for (PlanStep child : ((PlanStep.Sequence) step).children()) {
-            SequenceSummary<K> next = of(child, recipes, shared);
+            SequenceSummary<K> next = shared.get(child);
             // Only visit the new child's resources. Copying the accumulated prefix
             // at every aisle/step would turn an ordinary chain into quadratic work.
             for (K key : next.keys()) {
@@ -112,5 +118,15 @@ public record SequenceSummary<K>(Map<K, BigInteger> required, Map<K, BigInteger>
             }
         }
         return new SequenceSummary<>(need, change, maximum);
+    }
+
+    private static final class SummaryFrame {
+
+        final PlanStep step;
+        int child;
+
+        SummaryFrame(PlanStep step) {
+            this.step = step;
+        }
     }
 }
