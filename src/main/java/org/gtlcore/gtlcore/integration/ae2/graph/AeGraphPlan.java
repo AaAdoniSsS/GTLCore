@@ -1,10 +1,9 @@
 package org.gtlcore.gtlcore.integration.ae2.graph;
 
-import org.gtlcore.gtlcore.integration.ae2.graph.core.CheckedAmounts;
+import org.gtlcore.gtlcore.config.ConfigHolder;
+import org.gtlcore.gtlcore.integration.ae2.graph.core.CraftingCostModel;
 import org.gtlcore.gtlcore.integration.ae2.graph.core.ExactAmounts;
 import org.gtlcore.gtlcore.integration.ae2.graph.core.GraphPlan;
-import org.gtlcore.gtlcore.integration.ae2.graph.core.GraphRecipe;
-import org.gtlcore.gtlcore.integration.ae2.graph.core.PlanNodeCost;
 
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.networking.crafting.ICraftingPlan;
@@ -28,6 +27,7 @@ public final class AeGraphPlan implements ICraftingPlan {
     private final Map<AEKey, BigInteger> emitted;
     private final long bytes;
     private final BigInteger exactBytes;
+    private final CraftingCostModel.Mode costMode;
     private final UUID id = UUID.randomUUID();
     private final Map<String, BigInteger> selectedCounts;
     private final Map<IPatternDetails, Long> selectedPatterns;
@@ -54,7 +54,8 @@ public final class AeGraphPlan implements ICraftingPlan {
             if (emitable.contains(key) && deficit.signum() > 0) emissions.put(key, deficit);
         });
         this.emitted = Map.copyOf(emissions);
-        this.exactBytes = computeBytes(graph, selectedCounts);
+        costMode = ConfigHolder.INSTANCE == null ? CraftingCostModel.Mode.LEGACY : ConfigHolder.INSTANCE.ae2GraphByteCostMode;
+        this.exactBytes = CraftingCostModel.bytes(graph, costMode, key -> key.getType().getAmountPerByte());
         this.bytes = ExactAmounts.capped(exactBytes);
     }
 
@@ -117,6 +118,15 @@ public final class AeGraphPlan implements ICraftingPlan {
         return exactBytes;
     }
 
+    public CraftingCostModel.Mode costMode() {
+        return costMode;
+    }
+
+    /** The long UI view must not discount an exact cost larger than Long.MAX_VALUE. */
+    public boolean fitsStorage(long available, boolean unbounded) {
+        return bytes <= available && (unbounded || exactBytes.compareTo(BigInteger.valueOf(available)) <= 0);
+    }
+
     @Override
     public boolean simulation() {
         return !graph.feasible();
@@ -156,34 +166,5 @@ public final class AeGraphPlan implements ICraftingPlan {
         KeyCounter result = new KeyCounter();
         amounts.forEach((key, amount) -> { if (amount > 0) result.add(key, amount); });
         return result;
-    }
-
-    private static BigInteger computeBytes(GraphPlan<AEKey> graph, Map<String, BigInteger> counts) {
-        // The material charge depends on units per byte, not key identity. Sum
-        // equal denominators first instead of doing rational arithmetic once for
-        // every resource in a large graph.
-        Map<Long, BigInteger> material = new LinkedHashMap<>();
-        material.put((long) graph.target().getType().getAmountPerByte(), BigInteger.valueOf(graph.amount()));
-        BigInteger runs = BigInteger.ZERO;
-        for (var count : counts.entrySet()) {
-            BigInteger repetitions = count.getValue();
-            runs = runs.add(repetitions);
-            GraphRecipe<AEKey> recipe = graph.recipes().get(count.getKey());
-            recipe.inputs().forEach((key, amount) -> material.merge((long) key.getType().getAmountPerByte(),
-                    BigInteger.valueOf(amount).multiply(repetitions), BigInteger::add));
-        }
-        // AE charges 8 / amountPerByte for requested/input units plus one byte per run.
-        // Sum fractions exactly before rounding; graph compression does not discount CPU storage.
-        BigInteger numerator = runs.add(PlanNodeCost.count(graph, counts.keySet()).multiply(BigInteger.valueOf(8))), denominator = BigInteger.ONE;
-        for (var entry : material.entrySet()) {
-            BigInteger divisor = BigInteger.valueOf(entry.getKey());
-            BigInteger gcd = denominator.gcd(divisor);
-            BigInteger scale = divisor.divide(gcd);
-            numerator = numerator.multiply(scale).add(entry.getValue().multiply(BigInteger.valueOf(8)).multiply(denominator.divide(gcd)));
-            denominator = denominator.multiply(scale);
-        }
-        // The compatibility view is bounded by ICraftingPlan's long API. Keep
-        // the full cost for CPU admission so saturation cannot discount storage.
-        return CheckedAmounts.ceilDiv(numerator, denominator);
     }
 }

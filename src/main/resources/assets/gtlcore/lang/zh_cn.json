@@ -58,6 +58,8 @@
   "config.gtlcore.option.ae2CraftingEngine": "AE 合成引擎（需要重启）",
   "config.gtlcore.option.ae2CraftingEngine.comment": "选择新合成任务使用的引擎：LEGACY 为原有引擎，GRAPH 为支持循环配方的图引擎。修改后需要重启。AE2 下单计算模式仅影响 LEGACY。",
   "config.gtlcore.option.ae2GraphSeedPolicy": "图合成种子策略",
+  "config.gtlcore.option.ae2GraphByteCostMode": "图合成 CPU 字节计费模式",
+  "config.gtlcore.option.ae2GraphByteCostMode.comment": "仅用于 GRAPH。LEGACY（默认）保留现有物料、执行次数和依赖计费。COMPACT 按初始所需物料除以各类型每字节数量，全部求和后向上取整，再加每种实际使用配方任务 8 字节。初始物料含种子、等待外部供应和待补物料，只计一次；中间产物及重复执行次数不另收费。这是 CPU 准入规则，不代表实际内存或库存峰值。修改后对新规划生效，已有预览保持原计费。",
   "config.gtlcore.option.ae2GraphDiscoverByproducts": "图合成主动发现副产物来源",
   "config.gtlcore.option.ae2GraphDiscoverByproducts.comment": "仅用于 GRAPH，默认关闭。启用后会索引本网络已注册样板中明确列出的副产物，并允许为获得副产物主动执行整张配方。所有输入与产物仍按同一次执行计算；不会推测未登记或随机产物。可能增加候选配方、搜索开销及主产物余量。修改后对新规划生效。",
   "config.gtlcore.option.ae2GraphSeedPolicy.comment": "仅用于 GRAPH。PRESERVE 在任务完成后保留或恢复可重新启动循环的种子；ALLOW_CONSUME 允许在最后一次使用后消耗种子。两种模式都会保护尚需使用的种子，不会把预计返还量当作现有物料。",

@@ -74,10 +74,9 @@ public final class GraphCpuController {
     public ICraftingSubmitResult submit(IGrid grid, ICraftingPlan supplied, IActionSource source, ICraftingRequester requester) {
         if (ownsTask() || !host.orphanInventory().list.isEmpty()) return CraftingSubmitResult.CPU_BUSY;
         if (!host.active()) return CraftingSubmitResult.CPU_OFFLINE;
-        if (host.cpu().getAvailableStorage() < supplied.bytes()) return CraftingSubmitResult.CPU_TOO_SMALL;
         boolean allowMissing = supplied instanceof MissingCraftingPlan;
         AeGraphPlan view = (AeGraphPlan) (allowMissing ? ((MissingCraftingPlan) supplied).delegate() : supplied);
-        if (!host.unboundedJobStorage() && view.exactBytes().compareTo(java.math.BigInteger.valueOf(host.cpu().getAvailableStorage())) > 0)
+        if (!view.fitsStorage(host.cpu().getAvailableStorage(), host.unboundedJobStorage()))
             return CraftingSubmitResult.CPU_TOO_SMALL;
         GraphPlan<AEKey> plan = view.graph();
         if (!plan.feasible()) {
@@ -483,7 +482,7 @@ public final class GraphCpuController {
             try {
                 AeGraphPlan selected = (AeGraphPlan) request.join();
                 if (!selected.graph().feasible()) failure = "REPLAN_" + selected.graph().result();
-                else if (selected.bytes() > host.cpu().getAvailableStorage()) failure = "REPLAN_CPU_TOO_SMALL";
+                else if (!selected.fitsStorage(host.cpu().getAvailableStorage(), host.unboundedJobStorage())) failure = "REPLAN_CPU_TOO_SMALL";
                 else if (installReplan(selected)) {
                     if (ConfigHolder.INSTANCE.ae2GraphDiagnosticLogging)
                         GTLCore.LOGGER.info("[Graph Crafting] job={} replan=installed committed_recipes={} remaining_recipes={}",

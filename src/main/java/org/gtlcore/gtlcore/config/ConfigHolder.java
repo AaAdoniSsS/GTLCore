@@ -1,6 +1,7 @@
 package org.gtlcore.gtlcore.config;
 
 import org.gtlcore.gtlcore.GTLCore;
+import org.gtlcore.gtlcore.integration.ae2.graph.core.CraftingCostModel;
 
 import dev.toma.configuration.Configuration;
 import dev.toma.configuration.config.Config;
@@ -98,6 +99,9 @@ public class ConfigHolder {
     @Configurable
     @Configurable.Comment("config.gtlcore.option.ae2GraphSeedPolicy.comment")
     public AEGraphSeedPolicy ae2GraphSeedPolicy = AEGraphSeedPolicy.PRESERVE;
+    @Configurable
+    @Configurable.Comment("config.gtlcore.option.ae2GraphByteCostMode.comment")
+    public CraftingCostModel.Mode ae2GraphByteCostMode = CraftingCostModel.Mode.LEGACY;
     @Configurable
     @Configurable.Comment("config.gtlcore.option.ae2GraphDiscoverByproducts.comment")
     public boolean ae2GraphDiscoverByproducts = false;

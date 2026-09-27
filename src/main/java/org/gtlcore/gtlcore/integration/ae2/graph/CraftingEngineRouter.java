@@ -348,9 +348,9 @@ public final class CraftingEngineRouter {
             long skipped = ConfigHolder.INSTANCE.ae2GraphDiagnosticLogging ? logAllowance(grid,
                     new PlanLogKey(target, amount, strategy, selected.result(), snapshot.epoch(), selected.missingExact().hashCode())) : -1;
             if (skipped >= 0) GTLCore.LOGGER.info(
-                    "[Graph Crafting] plan target={} result={} amount={} snapshot_ms={} planner_ms={} queue_ms={} patterns={} nodes={} cache_hit={} bytes={} plan={} snapshot_elapsed_ms={} snapshot_wait_ms={} plan_assembly_ms={} catalog_prepare_ms={} snapshot_idle_ms={} snapshot_tick_slices={} snapshot_idle_slices={} snapshot_max_slice_ms={} catalog_elapsed_ms={} catalog_parallel_ms={} catalog_parallel_batches={} target_sources={} catalog_recipes={} missing={} suppressed_repeats={}",
+                    "[Graph Crafting] plan target={} result={} amount={} snapshot_ms={} planner_ms={} queue_ms={} patterns={} nodes={} cache_hit={} bytes={} byte_cost_mode={} plan={} snapshot_elapsed_ms={} snapshot_wait_ms={} plan_assembly_ms={} catalog_prepare_ms={} snapshot_idle_ms={} snapshot_tick_slices={} snapshot_idle_slices={} snapshot_max_slice_ms={} catalog_elapsed_ms={} catalog_parallel_ms={} catalog_parallel_batches={} target_sources={} catalog_recipes={} missing={} suppressed_repeats={}",
                     target, selected.result(), selected.amount(), snapshotNanos / 1_000_000.0, selected.planningNanos() / 1_000_000.0,
-                    budget.waitingNanos() / 1_000_000.0, selected.recipes().size(), budget.nodes(), snapshot.cacheHit(), result.bytes(), result.id(),
+                    budget.waitingNanos() / 1_000_000.0, selected.recipes().size(), budget.nodes(), snapshot.cacheHit(), result.bytes(), result.costMode(), result.id(),
                     snapshotElapsedNanos / 1_000_000.0, Math.max(0, snapshotElapsedNanos - snapshotNanos) / 1_000_000.0, assemblyNanos / 1_000_000.0,
                     (catalogPreparationNanos + catalogParallelNanos) / 1_000_000.0, snapshotTiming.idleNanos() / 1_000_000.0,
                     snapshotTiming.tickSlices(), snapshotTiming.idleSlices(), snapshotTiming.maxSliceNanos() / 1_000_000.0,
