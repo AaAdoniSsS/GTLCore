@@ -10,6 +10,7 @@ final class CountQuickSolve implements AutoCloseable {
     private final List<ExactLinearProgram.Constraint> rows;
     private final int variables;
     private final boolean factor;
+    private final long matchingAllowance;
     private CountBounds bounds;
     private CountReduction reduction;
     private CountPartition partition;
@@ -35,7 +36,13 @@ final class CountQuickSolve implements AutoCloseable {
     }
 
     CountQuickSolve(List<ExactLinearProgram.Constraint> rows, BigInteger[] lower, BigInteger[] upper, PlanningBudget budget, boolean saturate, boolean factor) {
+        this(rows, lower, upper, budget, saturate, factor, 262144);
+    }
+
+    CountQuickSolve(List<ExactLinearProgram.Constraint> rows, BigInteger[] lower, BigInteger[] upper, PlanningBudget budget,
+                    boolean saturate, boolean factor, long matchingAllowance) {
         this.factor = factor;
+        this.matchingAllowance = matchingAllowance;
         this.budget = budget;
         variables = lower.length;
         this.rows = new ArrayList<>(rows);
@@ -107,7 +114,10 @@ final class CountQuickSolve implements AutoCloseable {
             partition = null;
             if (value != null) return finish(value, false);
             boolean weighted = reduction.rows().stream().flatMap(row -> row.terms().values().stream()).anyMatch(v -> v.abs().compareTo(BigInteger.ONE) > 0);
-            if (weighted) matching = new CountMeetInMiddle(reduction.rows(), reduction.lower(), reduction.upper(), budget);
+            // A quick subproblem must leave room for propagation and simplex.
+            // The full branch strategy retains its larger, resumable matching
+            // table; this local cutoff establishes no infeasibility result.
+            if (weighted) matching = new CountMeetInMiddle(reduction.rows(), reduction.lower(), reduction.upper(), budget, matchingAllowance);
             phase++;
         }
         if (phase == 3) {

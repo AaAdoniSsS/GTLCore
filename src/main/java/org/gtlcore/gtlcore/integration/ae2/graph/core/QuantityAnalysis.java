@@ -23,6 +23,7 @@ final class QuantityAnalysis<K> {
     private int phase = -1, index;
     private boolean blocked;
     private boolean binaryChoices;
+    private boolean largeChoices;
     private long memory;
     private RecipeCountModel<K> model;
     private ExactLinearProgram linear;
@@ -33,15 +34,19 @@ final class QuantityAnalysis<K> {
     private final boolean forceCraft;
 
     private static boolean finiteChoices(BigInteger[] lower, BigInteger[] upper) {
+        return finiteChoices(lower, upper, BigInteger.valueOf(4096));
+    }
+
+    private static boolean finiteChoices(BigInteger[] lower, BigInteger[] upper, BigInteger maximumSpan) {
         int free = 0;
         for (int i = 0; i < lower.length; i++) {
             if (upper[i] == null) return false;
             BigInteger span = upper[i].subtract(lower[i]);
             if (span.signum() == 0) continue;
-            if (span.signum() < 0 || span.compareTo(BigInteger.valueOf(4096)) > 0) return false;
+            if (span.signum() < 0 || maximumSpan != null && span.compareTo(maximumSpan) > 0) return false;
             free++;
         }
-        return free >= 4 && free <= 128;
+        return free >= 4 && free <= (maximumSpan == null ? 512 : 128);
     }
 
     QuantityAnalysis(GraphCompiler<K> compiler, K target, long amount, Map<K, Long> stock, Set<K> external,
@@ -171,11 +176,16 @@ final class QuantityAnalysis<K> {
                 budget.note("quantity_bounds", "proven_blocked; recipes=" + model.recipes.size() + "; keys=" + model.keys.size());
                 return finish(true);
             }
-            binaryChoices = CountPartition.binaryChoices(bounds.lowerBounds(), bounds.upperBounds(), 8) ||
-                    finiteChoices(bounds.lowerBounds(), bounds.upperBounds());
+            BigInteger[] low = bounds.lowerBounds(), high = bounds.upperBounds();
+            binaryChoices = CountPartition.binaryChoices(low, high, 8) || finiteChoices(low, high);
+            // A single final product can demand enormous intermediate batches.
+            // Scout their finite count domains too; the raw graph may shrink
+            // through recovery macros before the dense solver's size limits.
+            largeChoices = finiteChoices(low, high, null) &&
+                    Arrays.stream(high).anyMatch(value -> value != null && value.bitLength() >= 16);
             bounds.close();
             bounds = null;
-            if ((model.recipes.size() > 192 || model.keys.size() > 128) && !binaryChoices) return finish(false);
+            if ((model.recipes.size() > 192 || model.keys.size() > 128) && !binaryChoices && !largeChoices) return finish(false);
             // Keep the exact model, but let the caller try cheap executable
             // witnesses before paying for simplex and continuous coverability.
             phase = 8;
@@ -275,6 +285,10 @@ final class QuantityAnalysis<K> {
 
     boolean hasBinaryChoices() {
         return phase == 8 && binaryChoices;
+    }
+
+    boolean hasLargeChoices() {
+        return phase == 8 && largeChoices;
     }
 
     void discard() {

@@ -225,6 +225,7 @@ final class CountBounds implements AutoCloseable {
                 parent[a] = b;
             }
         }
+        propagateCapacityChains(capacities, known, initial);
         Map<Integer, List<Integer>> components = new LinkedHashMap<>();
         for (int r : capacities) components.computeIfAbsent(root(parent, rows.get(r).terms().keySet().iterator().next()), unused -> new ArrayList<>()).add(r);
         for (var component : components.values()) {
@@ -290,6 +291,71 @@ final class CountBounds implements AutoCloseable {
         }
         if (added > 0 && explain && assumptionStart == originalRows.size())
             budget.note("count_capacity", "verified_group_bounds=" + added);
+    }
+
+    /** Carry a joint raw-material capacity through private ratio conversions. */
+    private void propagateCapacityChains(List<Integer> capacities, Set<ExactLinearProgram.Constraint> known, int initial) {
+        if (capacities.isEmpty()) return;
+        Map<Integer, Integer> transitions = new HashMap<>();
+        Set<Integer> ambiguous = new HashSet<>();
+        for (int r = 0; r < initial; r++) {
+            var row = rows.get(r);
+            if (row.terms().size() != 2 || row.upper().signum() != 0) continue;
+            int negative = -1, positive = -1;
+            for (var term : row.terms().entrySet()) {
+                charge();
+                if (term.getValue().signum() < 0) negative = term.getKey();
+                else if (term.getValue().signum() > 0) positive = term.getKey();
+            }
+            if (negative < 0 || positive < 0) continue;
+            if (transitions.putIfAbsent(negative, r) != null) ambiguous.add(negative);
+        }
+        ambiguous.forEach(transitions::remove);
+        int added = 0, count = capacities.size();
+        for (int c = 0; c < count && work < allowance / 4; c++) {
+            int sourceId = capacities.get(c);
+            var source = rows.get(sourceId);
+            if (source.terms().size() > MAX_ELIMINATION_TERMS) continue;
+            Map<Integer, BigInteger> terms = new LinkedHashMap<>(source.terms());
+            BigInteger bound = source.upper();
+            BitSet reason = explain ? new BitSet() : null;
+            if (explain) union(reason, rowReasons.get(sourceId));
+            Set<Integer> visited = new HashSet<>();
+            for (int round = 0; round < 32 && work < allowance / 4; round++) {
+                Integer from = null, rowId = null;
+                for (int id : terms.keySet()) {
+                    charge();
+                    if (!visited.contains(id) && transitions.containsKey(id)) {
+                        from = id;
+                        rowId = transitions.get(id);
+                        break;
+                    }
+                }
+                if (from == null) break;
+                visited.add(from);
+                var flow = rows.get(rowId);
+                BigInteger consumed = flow.terms().get(from).negate(), coefficient = terms.remove(from);
+                BigInteger gcd = consumed.gcd(coefficient), a = consumed.divide(gcd), b = coefficient.divide(gcd);
+                terms.replaceAll((key, value) -> value.multiply(a));
+                bound = bound.multiply(a);
+                for (var term : flow.terms().entrySet()) if (!term.getKey().equals(from)) {
+                    charge();
+                    terms.merge(term.getKey(), term.getValue().multiply(b), BigInteger::add);
+                }
+                if (bound.bitLength() > 2048 || terms.values().stream().anyMatch(value -> value.bitLength() > 2048)) break;
+                if (explain) union(reason, rowReasons.get(rowId));
+                int next = rows.size();
+                if (addConsequence(new ExactLinearProgram.Constraint(terms, bound), reason == null ? null : (BitSet) reason.clone(), known)) {
+                    capacities.add(next);
+                    if (++added >= 128) return;
+                }
+                // Continue from the exact integer-normalized consequence even
+                // when an equivalent row was already present.
+                var normalized = normalized(new ExactLinearProgram.Constraint(terms, bound));
+                terms = new LinkedHashMap<>(normalized.terms());
+                bound = normalized.upper();
+            }
+        }
     }
 
     private static int root(int[] parent, int id) {

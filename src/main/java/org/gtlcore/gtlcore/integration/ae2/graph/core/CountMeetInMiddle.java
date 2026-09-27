@@ -75,11 +75,16 @@ final class CountMeetInMiddle implements AutoCloseable {
 
     CountMeetInMiddle(List<ExactLinearProgram.Constraint> original, BigInteger[] lower,
                       BigInteger[] upper, PlanningBudget budget) {
+        this(original, lower, upper, budget, 12_000_000);
+    }
+
+    CountMeetInMiddle(List<ExactLinearProgram.Constraint> original, BigInteger[] lower,
+                      BigInteger[] upper, PlanningBudget budget, long maxWork) {
         this.original = original;
         this.lower = lower.clone();
         this.upper = upper.clone();
         this.budget = budget;
-        allowance = Math.min(12_000_000, budget.remainingWork() / 3 * 2);
+        allowance = Math.min(maxWork, budget.remainingWork() / 3 * 2);
         long entries = original.stream().mapToLong(row -> row.terms().size()).sum();
         long bytes = 1024 + 192L * entries + 256L * original.size() + 256L * lower.length;
         if (allowance < 1024 || !budget.tryReserve(bytes)) complete = true;

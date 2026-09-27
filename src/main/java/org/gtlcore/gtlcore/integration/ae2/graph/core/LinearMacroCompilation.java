@@ -103,30 +103,25 @@ final class LinearMacroCompilation<K> {
     }
 
     PlanStep expand(PlanStep step) {
-        return expand(step, new IdentityHashMap<>());
-    }
-
-    private PlanStep expand(PlanStep step, Map<PlanStep, PlanStep> cache) {
-        PlanStep known = cache.get(step);
-        if (known != null) return known;
-        budget.check();
-        PlanStep result = step;
-        if (step instanceof PlanStep.Batch batch && bodies.containsKey(batch.recipe())) {
-            var children = new ArrayList<PlanStep>();
-            for (GraphRecipe<K> recipe : bodies.get(batch.recipe())) {
-                budget.check();
-                children.add(PlanStep.batch(recipe.id(), BigInteger.valueOf(batch.runs())));
-            }
-            budget.reserve(64L + 64L * children.size());
-            result = new PlanStep.Sequence(children);
-        } else if (step instanceof PlanStep.Repeat repeat) result = new PlanStep.Repeat(expand(repeat.body(), cache), repeat.times());
-        else if (step instanceof PlanStep.Sequence sequence) {
-            var children = new ArrayList<PlanStep>();
-            for (PlanStep child : sequence.children()) children.add(expand(child, cache));
-            result = new PlanStep.Sequence(children);
-            budget.reserve(64L + 8L * children.size());
+        long[] retained = { 0 };
+        boolean complete = false;
+        try {
+            PlanStep result = PlanRewrite.batches(step, batch -> {
+                if (!bodies.containsKey(batch.recipe())) return batch;
+                var children = new ArrayList<PlanStep>();
+                for (GraphRecipe<K> recipe : bodies.get(batch.recipe())) {
+                    budget.check();
+                    children.add(PlanStep.batch(recipe.id(), BigInteger.valueOf(batch.runs())));
+                }
+                long bytes = 64L + 64L * children.size();
+                budget.reserve(bytes);
+                retained[0] += bytes;
+                return new PlanStep.Sequence(children);
+            }, budget);
+            complete = true;
+            return result;
+        } finally {
+            if (!complete) budget.release(retained[0]);
         }
-        cache.put(step, result);
-        return result;
     }
 }

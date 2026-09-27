@@ -13,7 +13,7 @@ final class IntegerCountSearch<K> implements AutoCloseable {
     private final CountExecution<K> execution;
     private final K target;
     private final long amount, started, preprocessingAllowance;
-    private long allowance;
+    private long allowance, scoutMaximum;
     private final Map<K, Long> stock, seeds;
     private final Set<K> external;
     private final boolean preserve, force;
@@ -30,6 +30,7 @@ final class IntegerCountSearch<K> implements AutoCloseable {
     private List<IntegerCountBranch<K>> dispatched = List.of();
     private Incumbent<K> best;
     private boolean complete, infeasible, unresolved, repairScheduled, paused;
+    private boolean scouting;
     private long work, improvementUntil = Long.MAX_VALUE, firstWitnessWork = -1, firstWitnessNanos;
     private int branches, rounds, suspensions, boundPrunes, choicePrunes, peakWidth;
 
@@ -120,7 +121,11 @@ final class IntegerCountSearch<K> implements AutoCloseable {
         // A live finite-domain enumeration retains its table and prefix stack.
         // Let it use another bounded slice of the same order budget instead of
         // discarding it at the general branch-search quota and redoing sources.
-        if (work >= allowance && best == null && pending.size() == 1 && pending.peekFirst().matching != null)
+        if (scouting && work >= allowance && allowance < scoutMaximum && hasIndependentProgress()) {
+            allowance += Math.min(524_288, scoutMaximum - allowance);
+            budget.note("integer_counts_scout", "independent_components_progress; allowance=" + allowance);
+        }
+        if (!scouting && work >= allowance && best == null && pending.size() == 1 && pending.peekFirst().matching != null)
             allowance = preprocessingAllowance;
         if (work >= allowance || work >= improvementUntil) {
             if (best == null && (!pending.isEmpty() || !deferred.isEmpty())) {
@@ -168,10 +173,27 @@ final class IntegerCountSearch<K> implements AutoCloseable {
         return paused;
     }
 
+    /** Budget scheduling hint only; partial quantities are not an executable plan. */
+    boolean hasIndependentProgress() {
+        if (running != null || pending.size() != 1 || !deferred.isEmpty()) return false;
+        var branch = pending.peekFirst();
+        return branch.components != null && branch.components.hasSolvedComponent() ||
+                branch.recovery != null && branch.recovery.hasIndependentProgress();
+    }
+
+    /** A short first attempt keeps its full frontier for the normal continuation. */
+    void scout(long maxWork) {
+        if (work != 0 || paused || running != null || maxWork <= 0) throw new IllegalStateException("Count search already started");
+        scouting = true;
+        scoutMaximum = Math.min(allowance, maxWork <= Long.MAX_VALUE / 4 ? maxWork * 4 : Long.MAX_VALUE);
+        allowance = Math.min(allowance, maxWork);
+    }
+
     /** The coordinator returns unused order work, never refunds work already charged. */
     void resume() {
         if (!paused || complete) throw new IllegalStateException("Count search is not suspended");
         allowance = work + Math.max(1, Math.min(2_000_000, budget.remainingWork() / 2));
+        scouting = false;
         paused = false;
         if (proofs != null) choiceConflicts.add(proofs.forModel(model));
         budget.note("integer_counts_resume", "work=" + work + "; allowance=" + allowance + "; branches=" + branches);

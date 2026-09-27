@@ -42,12 +42,14 @@ final class IntegerCountBranch<K> implements AutoCloseable {
     CountGroups groups;
     CountConditioning conditioning;
     CountRecovery<K> recovery;
+    CountScale scaling;
     boolean compileRecovery = true;
     CountMeetInMiddle matching;
     CountLatticeRepair repair;
     ExactRational[] repairPoint;
     int repairAttempts;
     CountBoolean binary;
+    boolean earlyBinary, triedBinary;
     ExactLinearProgram linear;
     ExactLinearProgram.Basis inheritedBasis, sharedBasis;
     CountReduction.Coordinates inheritedCoordinates;
@@ -270,7 +272,16 @@ final class IntegerCountBranch<K> implements AutoCloseable {
                 Map<String, BigInteger> used = PlanCountComputation.of(body);
                 counts = model.recipes.stream().map(r -> used.getOrDefault(r.id(), BigInteger.ZERO)).toArray(BigInteger[]::new);
                 beginAssembly(body);
-            } else groups = new CountGroups(reduction.rows(), reduction.lower(), reduction.upper(), budget);
+            } else beginGroups();
+            return;
+        }
+        if (scaling != null) {
+            if (!scaling.step()) return;
+            counts = reduction.expand(scaling.counts());
+            scaling.close();
+            scaling = null;
+            if (counts != null) scheduling = new CountSchedule<>(model, counts, budget);
+            else groups = new CountGroups(reduction.rows(), reduction.lower(), reduction.upper(), budget);
             return;
         }
         if (groups != null) {
@@ -326,7 +337,7 @@ final class IntegerCountBranch<K> implements AutoCloseable {
                 if (!preprocessingOnly && refineSupport()) state = State.SPLIT;
                 else scheduling = new CountSchedule<>(model, counts, budget);
             } else if (weightedChoices()) matching = new CountMeetInMiddle(reduction.rows(), reduction.lower(), reduction.upper(), budget);
-            else binary = new CountBoolean(reduction.rows(), reduction.lower(), reduction.upper(), budget);
+            else beginBoolean();
             return;
         }
         if (matching != null) {
@@ -341,13 +352,14 @@ final class IntegerCountBranch<K> implements AutoCloseable {
             } else if (impossible) {
                 learnedChoices.add(new CountConflict(current));
                 state = State.DEAD;
-            } else binary = new CountBoolean(reduction.rows(), reduction.lower(), reduction.upper(), budget);
+            } else beginBoolean();
             return;
         }
         if (binary != null) {
             if (!binary.step()) return;
             counts = reduction.expand(binary.counts());
             boolean impossible = binary.infeasible();
+            importReducedConflicts(binary.learnedConflicts());
             binary.close();
             binary = null;
             if (counts != null) {
@@ -356,8 +368,10 @@ final class IntegerCountBranch<K> implements AutoCloseable {
             } else if (impossible) {
                 learnedChoices.add(new CountConflict(current));
                 state = State.DEAD;
-            } else if (preprocessingOnly) state = State.UNRESOLVED;
+            } else if (earlyBinary) beginCompiledStrategies();
+            else if (preprocessingOnly) state = State.UNRESOLVED;
             else beginLinear();
+            earlyBinary = false;
             return;
         }
         if (repair != null) {
@@ -406,10 +420,11 @@ final class IntegerCountBranch<K> implements AutoCloseable {
             compiled = true;
             preprocessingOnly = reduction.variables() > 64 || reduction.rows().size() > 512;
             lowerCost = PlanPreference.compiledLowerBound(model, reduction, lower, seeds, budget);
-            if (current.isEmpty() && compileRecovery) recovery = new CountRecovery<>(this);
-            else if (current.isEmpty()) groups = new CountGroups(reduction.rows(), reduction.lower(), reduction.upper(), budget);
-            else if (preprocessingOnly) state = State.UNRESOLVED;
-            else beginLinear();
+            if (current.isEmpty() && CountBoolean.preferred(reduction.rows(), reduction.lower(), reduction.upper(), budget)) {
+                earlyBinary = true;
+                beginBoolean();
+                budget.note("count_dispatch", "unit_boolean_first; variables=" + reduction.variables());
+            } else beginCompiledStrategies();
             return;
         }
         if (!linear.step()) return;
@@ -451,6 +466,29 @@ final class IntegerCountBranch<K> implements AutoCloseable {
     private void beginRepair() {
         ExactRational[] reduced = Arrays.stream(reduction.representatives()).mapToObj(i -> repairPoint[i]).toArray(ExactRational[]::new);
         repair = new CountLatticeRepair(reduction.rows(), reduction.lower(), reduction.upper(), reduced, repairAttempts, budget);
+    }
+
+    private void beginCompiledStrategies() {
+        if (current.isEmpty() && compileRecovery) recovery = new CountRecovery<>(this);
+        else if (current.isEmpty()) beginGroups();
+        else if (preprocessingOnly) state = State.UNRESOLVED;
+        else beginLinear();
+    }
+
+    private void beginGroups() {
+        scaling = new CountScale(reduction.rows(), reduction.lower(), reduction.upper(), budget);
+    }
+
+    private void beginBoolean() {
+        // A local cutoff falls through to other representations, but revisiting
+        // the identical rows and bounds would merely repeat the same search.
+        if (triedBinary) {
+            if (preprocessingOnly) state = State.UNRESOLVED;
+            else beginLinear();
+        } else {
+            triedBinary = true;
+            binary = new CountBoolean(reduction.rows(), reduction.lower(), reduction.upper(), budget);
+        }
     }
 
     private void branchPoint(ExactRational[] point) {
@@ -570,6 +608,7 @@ final class IntegerCountBranch<K> implements AutoCloseable {
         if (groups != null) groups.close();
         if (conditioning != null) conditioning.close();
         if (recovery != null) recovery.close();
+        if (scaling != null) scaling.close();
         if (matching != null) matching.close();
         if (binary != null) binary.close();
         if (scheduling != null) scheduling.close();

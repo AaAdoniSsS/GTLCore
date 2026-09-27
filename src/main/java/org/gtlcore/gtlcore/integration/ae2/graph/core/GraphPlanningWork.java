@@ -55,6 +55,7 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
     private Boolean quantityBlocked;
     private Boolean stockBlocked;
     private boolean allocationAttempted, countAttempted, frontierTruncated;
+    private boolean bootstrapTooLarge;
     private Iterator<K> alternatives;
     private GraphPlan<K> candidate, best, verified, result;
     private int phase;
@@ -128,10 +129,26 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
             if (quantityDeferred && phase != 4 && phase != 8 && phase != 10 &&
                     !(phase == 3 && candidate.feasible()) &&
                     (phase == 9 || budget.nodes() - quickSearchStarted >= quickSearchAllowance)) {
-                resumeQuantityAnalysis(phase);
+                if (!countAttempted && quantities.hasLargeChoices()) {
+                    // A large finite allocation often compresses to a small
+                    // repeated integer program. Give it a bounded first try
+                    // before the full rational relaxation. If it suspends,
+                    // retain both this source state and its count frontier.
+                    quantityDeferred = false;
+                    quantityResumePhase = phase;
+                    countBeforeQuantity = true;
+                    budget.note("quantity", "large_finite_choices; scout_exact_counts_before_relaxation");
+                    startCountSearch();
+                    countSearch.scout(524_288);
+                } else resumeQuantityAnalysis(phase);
             }
             switch (phase) {
                 case 0 -> {
+                    if (bootstrapTooLarge && !countAttempted) {
+                        budget.note("source_dispatch", "bootstrap_range_limit; trying_exact_counts");
+                        startCountSearch();
+                        return false;
+                    }
                     if (forceCraft && !external.contains(target) &&
                             compiler.producers(target).stream().noneMatch(r -> !excluded.contains(r.id()))) {
                         // An AE crafting request asks for newly produced units,
@@ -230,6 +247,7 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
                     if (bootstrap != null) {
                         if (!bootstrap.step(slice)) return false;
                         candidate = bootstrap.result;
+                        bootstrap.close();
                         bootstrap = null;
                     }
                     if (candidate.feasible()) {
@@ -433,8 +451,18 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
 
     private void startCountSearch() {
         if (quantityDeferred) {
-            resumeQuantityAnalysis(15);
-            return;
+            if (bootstrapTooLarge) {
+                // Exact counts can avoid the oversized speculative seed and
+                // exploit a common order multiplier. Keep the deferred quantity
+                // analysis for fallback instead of spending it before this try.
+                quantityDeferred = false;
+                quantityResumePhase = 0;
+                countBeforeQuantity = true;
+                budget.note("quantity", "bootstrap_range_limit; exact_counts_before_relaxation");
+            } else {
+                resumeQuantityAnalysis(15);
+                return;
+            }
         }
         countAttempted = true;
         // The count strategy can transfer its immutable model and explanations
@@ -627,8 +655,7 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
         if (countSearch != null) countSearch.close();
         if (parkedCounts != null) parkedCounts.close();
         if (allocating != null) allocating.discard();
-        if (bootstrap != null && bootstrap.seedWork != null) bootstrap.seedWork.close();
-        if (bootstrap != null && bootstrap.summary != null) bootstrap.summary.close();
+        if (bootstrap != null) bootstrap.close();
         if (verifying != null) verifying.close();
         discardQuantityAnalysis();
         if (explaining != null) explaining.close();
@@ -661,7 +688,7 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
         return false;
     }
 
-    private final class Bootstrap {
+    private final class Bootstrap implements AutoCloseable {
 
         private final GraphPlan<K> original;
         private final long searchStarted = budget.nodes();
@@ -716,8 +743,19 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
                 }
                 if (updating.hasNext()) {
                     K key = updating.next();
-                    available.put(key, CheckedAmounts.amount(BigInteger.valueOf(available.getOrDefault(key, 0L)).add(summary.result().delta(key))));
+                    BigInteger next = BigInteger.valueOf(available.getOrDefault(key, 0L)).add(summary.result().delta(key));
+                    if (next.signum() < 0 || next.compareTo(ExactAmounts.LONG_MAX) > 0) {
+                        // This speculative prefix cannot fit the bootstrap's
+                        // inventory representation. It says nothing about an
+                        // interleaved count witness or another source choice.
+                        budget.note("bootstrap", "prefix_inventory_out_of_range; resource=" + key + "; exact=" + next + "; continuing_other_strategies");
+                        bootstrapTooLarge = true;
+                        result = original;
+                        return true;
+                    }
+                    available.put(key, next.longValueExact());
                 } else {
+                    summary.close();
                     summary = null;
                     updating = null;
                 }
@@ -726,6 +764,7 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
             if (seedWork != null) {
                 if (!(slice == null ? seedWork.step() : seedWork.advance(slice))) return false;
                 GraphPlan<K> seed = seedWork.result();
+                seedWork.close();
                 seedWork = null;
                 if (seed.feasible()) {
                     prefix.add(seed.steps());
@@ -757,6 +796,12 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
                 return false;
             }
             var deficit = deficits.next();
+            if (original.missingExact().get(deficit.getKey()).compareTo(ExactAmounts.LONG_MAX) > 0) {
+                budget.note("bootstrap", "seed_request_out_of_range; continuing_other_strategies");
+                bootstrapTooLarge = true;
+                result = original;
+                return true;
+            }
             var owner = graph.regions().stream().filter(region -> region.cyclic() &&
                     region.recipes().stream().anyMatch(recipe -> recipe.outputs().containsKey(deficit.getKey()))).findFirst().orElse(null);
             if (owner == null) return false;
@@ -765,6 +810,14 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
             if (compiler.producers(deficit.getKey()).stream().noneMatch(recipe -> !banned.contains(recipe.id()))) return false;
             seedWork = new GraphPlanningWork<>(compiler, deficit.getKey(), deficit.getValue(), available, external, Map.of(), false, true, budget, banned, nesting + 1);
             return false;
+        }
+
+        @Override
+        public void close() {
+            if (seedWork != null) seedWork.close();
+            seedWork = null;
+            if (summary != null) summary.close();
+            summary = null;
         }
     }
 }

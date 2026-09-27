@@ -48,6 +48,26 @@ final class CountBoolean implements AutoCloseable {
     private final List<CountConflict> proofSteps = new ArrayList<>();
     private List<ExactLinearProgram.Constraint> proofScope;
 
+    /** Unit-weight Boolean rows need propagation before expensive integer factoring. */
+    static boolean preferred(List<ExactLinearProgram.Constraint> rows, BigInteger[] lower,
+                             BigInteger[] upper, PlanningBudget budget) {
+        if (lower.length > 1024) return false;
+        int choices = 0;
+        for (int i = 0; i < lower.length; i++) {
+            budget.check();
+            if (lower[i].equals(upper[i])) continue;
+            if (lower[i].signum() != 0 || !BigInteger.ONE.equals(upper[i])) return false;
+            choices++;
+        }
+        if (choices < 8) return false;
+        for (var row : rows) for (var entry : row.terms().entrySet()) {
+            budget.check();
+            int id = entry.getKey();
+            if (!lower[id].equals(upper[id]) && entry.getValue().abs().compareTo(BigInteger.ONE) > 0) return false;
+        }
+        return true;
+    }
+
     CountBoolean(List<ExactLinearProgram.Constraint> constraints, BigInteger[] lower,
                  BigInteger[] upper, PlanningBudget budget) {
         original = constraints;
@@ -146,7 +166,13 @@ final class CountBoolean implements AutoCloseable {
                     if (candidate < 0 || activity[id] > activity[candidate] || activity[id] == activity[candidate] && id < candidate) candidate = id;
                 }
             }
-            if (!satisfied && candidate >= 0 && live < smallest) {
+            // Equal domain sizes still differ in how strongly they constrain
+            // the rest of the model. Taking the first row here discarded the
+            // conflict/activity score and made shared-resource contradictions
+            // depend on the input recipe order.
+            if (!satisfied && candidate >= 0 && (live < smallest || live == smallest &&
+                    (required < 0 || activity[candidate] > activity[required] ||
+                            activity[candidate] == activity[required] && candidate < required))) {
                 smallest = live;
                 required = candidate;
             }

@@ -10,10 +10,14 @@ final class CountRecovery<K> implements AutoCloseable {
     private final Map<String, PlanStep> bodies = new LinkedHashMap<>();
     private IntegerCountSearch<K> search;
     private final IntegerCountBranch<K> owner;
-    private Map<String, GraphRecipe<K>> ordinaryView;
+    private final Deque<Collection<GraphRecipe<K>>> candidates = new ArrayDeque<>();
     private CountRecoveryFuel<K> fuel;
+    private boolean pricedFuel;
     private PlanStep witness;
     private long memory;
+    private long viewWork, viewAllowance, viewMaximum;
+
+    private record Signature<K>(Map<K, Long> inputs, Map<K, Long> outputs) {}
 
     CountRecovery(IntegerCountBranch<K> branch) {
         owner = branch;
@@ -34,8 +38,14 @@ final class CountRecovery<K> implements AutoCloseable {
         if (!budget.tryReserve(bytes)) return;
         memory = bytes;
         Map<String, GraphRecipe<K>> compiled = new LinkedHashMap<>();
-        model.recipes.forEach(recipe -> compiled.put(recipe.id(), recipe));
-        long started = budget.nodes(), allowance = Math.min(32768, budget.remainingWork() / 16);
+        Set<Signature<K>> signatures = new HashSet<>();
+        int aliases = 0;
+        for (var recipe : model.recipes) {
+            budget.check();
+            if (ordinary(recipe) && !signatures.add(new Signature<>(recipe.inputs(), recipe.outputs()))) aliases++;
+            else compiled.put(recipe.id(), recipe);
+        }
+        long started = budget.nodes(), allowance = Math.min(262144, budget.remainingWork() / 16);
         int stages = 0;
         // Contract only private seams. Joint outputs remain on the interface;
         // every consumer/exit is retained, including destructive exits.
@@ -46,21 +56,39 @@ final class CountRecovery<K> implements AutoCloseable {
                 recipe.inputs().keySet().forEach(key -> consumers.computeIfAbsent(key, unused -> new ArrayList<>()).add(recipe));
                 recipe.outputs().keySet().forEach(key -> producers.computeIfAbsent(key, unused -> new ArrayList<>()).add(recipe));
             }
+            // Every start input already reaches its output through the start
+            // recipe. A return path exists exactly when they share an SCC.
+            // Reuse one topology pass instead of a full reachability search
+            // for each private seam of a long recovery chain.
+            var topology = new PlanTopology<>(List.copyOf(compiled.values()));
+            Map<K, Integer> groups = new HashMap<>();
+            for (var node : topology.nodes()) {
+                budget.check();
+                if (node.resource() != null) groups.put(node.resource(), topology.groupOf(node.id()));
+            }
             boolean changed = false;
-            for (var start : List.copyOf(compiled.values())) {
+            // Contract internal production stages before a joint-output return.
+            // Otherwise a catalyst with one producer can rotate a whole route
+            // into "return; start", hiding its funded forward entry point.
+            var forwardStages = new ArrayList<>(compiled.values());
+            forwardStages.sort(Comparator.comparingInt(recipe -> recipe.outputs().size()));
+            for (var start : forwardStages) {
                 budget.check();
                 if (budget.nodes() - started >= allowance) break;
                 if (!ordinary(start) || !compiled.containsKey(start.id())) continue;
                 for (K pending : start.outputs().keySet()) {
                     budget.check();
-                    if (model.stock.getOrDefault(pending, 0L) != 0 || model.goal(pending).signum() != 0 || model.external.contains(pending) ||
+                    // Existing intermediate stock does not invalidate a complete
+                    // call. This optional view may leave it unused; the original
+                    // model still permits entry at any primitive phase.
+                    if (model.goal(pending).signum() != 0 || model.external.contains(pending) ||
                             producers.get(pending).size() != 1 || start.inputs().containsKey(pending))
                         continue;
                     var exits = consumers.getOrDefault(pending, List.of());
                     if (exits.isEmpty() || exits.size() > 16 || exits.stream().anyMatch(exit -> !ordinary(exit) || exit == start ||
                             !compiled.containsKey(exit.id()) || exit.outputs().containsKey(pending)))
                         continue;
-                    if (!returnsTo(start.inputs().keySet(), pending, consumers, started, allowance)) continue;
+                    if (start.inputs().keySet().stream().noneMatch(input -> Objects.equals(groups.get(input), groups.get(pending)))) continue;
                     var macros = new ArrayList<GraphRecipe<K>>();
                     var programs = new ArrayList<PlanStep>();
                     for (var exit : exits) {
@@ -104,33 +132,40 @@ final class CountRecovery<K> implements AutoCloseable {
             }
             if (!changed) break;
         }
-        addOpenInterfaces(compiled, started, allowance);
-        if (bodies.isEmpty()) return;
-        budget.note("count_recovery", "recipes=" + model.recipes.size() + "->" + compiled.size() + "; macros=" + bodies.size());
+        if (bodies.isEmpty() && aliases == 0) return;
+        budget.note("count_recovery", "recipes=" + model.recipes.size() + "->" + compiled.size() + "; macros=" + bodies.size() + "; aliases=" + aliases);
         // Every exit, including destructive ones, stays available. The macro
         // summary retains the real prefix seed requirement. It is a candidate
         // representation only: other interleavings remain in the caller.
-        ordinaryView = compiled;
-        fuel = CountRecoveryFuel.compile(model, budget);
-        begin(fuel == null ? compiled.values() : fuel.recipes());
+        var retained = retainingView(compiled.values());
+        if (retained.size() < compiled.size()) candidates.addLast(retained);
+        candidates.addLast(List.copyOf(compiled.values()));
+        // Optional cross-route calls can obscure the small independent choice
+        // model. Keep them in a later view, after complete recovery calls.
+        int completeSize = compiled.size();
+        fuel = CountRecoveryFuel.compile(model, List.copyOf(compiled.values()), budget);
+        addOpenInterfaces(compiled, started, allowance);
+        if (compiled.size() > completeSize) candidates.addLast(compiled.values());
+        begin(fuel == null ? candidates.removeFirst() : fuel.recipes());
     }
 
-    private boolean returnsTo(Set<K> inputs, K pending, Map<K, List<GraphRecipe<K>>> consumers, long started, long allowance) {
-        Set<K> seen = new HashSet<>();
-        Deque<K> queue = new ArrayDeque<>();
-        queue.add(pending);
-        while (!queue.isEmpty() && budget.nodes() - started < allowance) {
-            K key = queue.removeFirst();
-            if (!seen.add(key)) continue;
-            for (var recipe : consumers.getOrDefault(key, List.of())) {
-                budget.check();
-                for (K output : recipe.outputs().keySet()) {
-                    if (inputs.contains(output)) return true;
-                    queue.addLast(output);
-                }
+    /** Prefer equal-cost returning exits, without excluding any original plan. */
+    private Collection<GraphRecipe<K>> retainingView(Collection<GraphRecipe<K>> recipes) {
+        Map<Map<K, Long>, List<GraphRecipe<K>>> groups = new LinkedHashMap<>();
+        for (var recipe : recipes) if (ordinary(recipe)) groups.computeIfAbsent(recipe.inputs(), unused -> new ArrayList<>()).add(recipe);
+        Set<String> omitted = new HashSet<>();
+        long work = 0, allowance = Math.min(32768, budget.remainingWork() / 32);
+        for (var group : groups.values()) for (var first : group) for (var other : group) {
+            budget.check();
+            if (++work > allowance) return recipes.stream().filter(recipe -> !omitted.contains(recipe.id())).toList();
+            if (first == other || omitted.contains(other.id()) || first.outputs().equals(other.outputs())) continue;
+            if (first.outputs().entrySet().stream().allMatch(e -> other.outputs().getOrDefault(e.getKey(), 0L) >= e.getValue())) {
+                omitted.add(first.id());
+                break;
             }
         }
-        return false;
+        if (!omitted.isEmpty()) budget.note("count_recovery", "returning_candidate; optional_exits_deferred=" + omitted.size());
+        return recipes.stream().filter(recipe -> !omitted.contains(recipe.id())).toList();
     }
 
     /** Public intermediate inventories keep primitive phase entry/exit points as well as complete calls. */
@@ -181,8 +216,12 @@ final class CountRecovery<K> implements AutoCloseable {
     }
 
     private void begin(Collection<GraphRecipe<K>> recipes) {
+        viewWork = 0;
+        viewAllowance = pricedFuel && fuel != null ? Math.min(4_000_000, budget.remainingWork() / 4) :
+                Math.min(1_000_000, budget.remainingWork() / 8);
+        viewMaximum = Math.min(4_000_000, budget.remainingWork() / 4);
         search = new IntegerCountSearch<>(new GraphCompiler<>(List.copyOf(recipes)), owner.target, owner.amount,
-                owner.stock, owner.seeds, owner.external, Set.of(), owner.preserve, owner.force, budget, owner.started, null, false);
+                pricedFuel && fuel != null ? fuel.pricedStock() : owner.stock, owner.seeds, owner.external, Set.of(), owner.preserve, owner.force, budget, owner.started, null, false);
         if (fuel == null) search.importProgramConflicts(owner.model, bodies, owner.knownChoices());
     }
 
@@ -192,41 +231,54 @@ final class CountRecovery<K> implements AutoCloseable {
 
     boolean step() {
         if (search == null) return true;
-        if (!search.step()) return false;
+        long before = budget.threadWork();
+        boolean done = false;
+        if (viewWork < viewAllowance) done = search.step();
+        viewWork += budget.threadWork() - before;
+        if (search.hasIndependentProgress()) {
+            if (viewWork >= viewAllowance && viewAllowance < viewMaximum) {
+                viewAllowance = Math.min(viewMaximum, viewAllowance + 1_000_000);
+                budget.note("count_recovery", "independent_components_progress; allowance=" + viewAllowance);
+            }
+            if (done && search.paused() && viewWork < viewAllowance) {
+                search.resume();
+                done = false;
+            }
+        }
+        if (pricedFuel && fuel != null && done && search.paused() && viewWork < viewAllowance) {
+            search.resume();
+            done = false;
+        }
+        if (!done && viewWork < viewAllowance) return false;
+        if (!done) budget.note("count_recovery", "candidate_work_limit; work=" + viewWork + "; alternatives=" + candidates.size());
         var plan = search.result();
         if (plan != null && plan.feasible()) {
-            witness = fuel == null ? expand(plan.steps(), new IdentityHashMap<>()) : fuel.lift(plan);
-            budget.note("count_recovery", "lifted_witness; macros=" + bodies.size());
+            PlanStep candidate = fuel == null ? plan.steps() : fuel.lift(plan, bytes -> memory += bytes);
+            if (candidate != null) witness = PlanRewrite.batches(candidate, batch -> bodies.containsKey(batch.recipe()) ?
+                    PlanStep.repeat(bodies.get(batch.recipe()), BigInteger.valueOf(batch.runs())) : batch, budget, bytes -> memory += bytes);
+            budget.note("count_recovery", (witness != null ? "lifted_witness" : "account_allocation_unresolved") + "; macros=" + bodies.size());
         }
         search.close();
         search = null;
-        if (fuel != null && witness == null) {
+        if (witness == null && fuel != null && !pricedFuel) {
+            pricedFuel = true;
+            begin(fuel.pricedRecipes());
+            return false;
+        }
+        if (witness == null && !candidates.isEmpty()) {
             fuel = null;
-            begin(ordinaryView.values());
+            begin(candidates.removeFirst());
             return false;
         }
         return true;
     }
 
-    private PlanStep expand(PlanStep step, Map<PlanStep, PlanStep> memo) {
-        PlanStep cached = memo.get(step);
-        if (cached != null) return cached;
-        budget.check();
-        PlanStep result = step;
-        if (step instanceof PlanStep.Batch batch && bodies.containsKey(batch.recipe()))
-            result = PlanStep.repeat(bodies.get(batch.recipe()), BigInteger.valueOf(batch.runs()));
-        else if (step instanceof PlanStep.Repeat repeat) result = new PlanStep.Repeat(expand(repeat.body(), memo), repeat.times());
-        else if (step instanceof PlanStep.Sequence sequence) {
-            var children = new ArrayList<PlanStep>();
-            for (var child : sequence.children()) children.add(expand(child, memo));
-            result = new PlanStep.Sequence(children);
-        }
-        memo.put(step, result);
-        return result;
-    }
-
     PlanStep witness() {
         return witness;
+    }
+
+    boolean hasIndependentProgress() {
+        return search != null && search.hasIndependentProgress();
     }
 
     @Override

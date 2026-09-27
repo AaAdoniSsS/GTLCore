@@ -24,6 +24,9 @@ final class CountComponents implements AutoCloseable {
     private BigInteger[] widths, totals, counts;
     private BitSet resolved = new BitSet();
     private CountPartition partition;
+    private CountScale scaling;
+    private BigInteger[] scaleOrigin;
+    private long scalingMemory;
     private CountMeetInMiddle matching;
     private CountBoolean binary;
     private CountQuickSolve polishing;
@@ -64,11 +67,26 @@ final class CountComponents implements AutoCloseable {
             if (found != null) accept(found, false);
             else {
                 var component = components.get(cursor);
-                boolean weighted = component.rows.stream().flatMap(row -> row.terms().values().stream())
-                        .anyMatch(value -> value.abs().compareTo(BigInteger.ONE) > 0);
-                if (weighted) matching = new CountMeetInMiddle(component.rows, component.lower, component.upper, budget);
-                else binary = new CountBoolean(component.rows, component.lower, component.upper, budget);
+                // Independent modules can repeat at unrelated large factors.
+                // Their union need not have a useful common GCD. Try a local
+                // divisible witness without recursively factoring its submodel.
+                if (Arrays.stream(component.upper).anyMatch(value -> value != null && value.bitLength() >= 16))
+                    beginScaling(component);
+                else beginMatching();
             }
+            return complete;
+        }
+        if (scaling != null) {
+            if (!scaling.step()) return false;
+            var found = scaling.counts();
+            scaling.close();
+            scaling = null;
+            if (found != null) for (int i = 0; i < found.length; i++) found[i] = found[i].subtract(scaleOrigin[i]);
+            scaleOrigin = null;
+            budget.release(scalingMemory);
+            scalingMemory = 0;
+            if (found != null) accept(found, false);
+            else beginMatching(); // A failed divisible candidate proves nothing.
             return complete;
         }
         if (matching != null) {
@@ -132,6 +150,47 @@ final class CountComponents implements AutoCloseable {
         counts = lifted;
         budget.note("count_components", "witness; components=" + components.size() + "; lifted_variables=" + counts.length);
         return true;
+    }
+
+    private void beginScaling(Component component) {
+        long bytes = 128L * component.variables.length + 64L * component.rows.size() +
+                64L * component.rows.stream().mapToLong(row -> row.terms().size()).sum();
+        if (!budget.tryReserve(bytes)) {
+            beginMatching();
+            return;
+        }
+        scalingMemory = bytes;
+        scaleOrigin = new BigInteger[component.variables.length];
+        BigInteger[] high = new BigInteger[scaleOrigin.length];
+        for (int i = 0; i < scaleOrigin.length; i++) {
+            BigInteger origin = BigInteger.ZERO;
+            for (int id : groups.get(component.variables[i])) {
+                budget.check();
+                origin = origin.add(lower[id]);
+            }
+            scaleOrigin[i] = origin;
+            if (component.upper[i] != null) high[i] = component.upper[i].add(origin);
+        }
+        var rows = new ArrayList<ExactLinearProgram.Constraint>();
+        for (var row : component.rows) {
+            BigInteger bound = row.upper();
+            for (var term : row.terms().entrySet()) {
+                budget.check();
+                bound = bound.add(term.getValue().multiply(scaleOrigin[term.getKey()]));
+            }
+            rows.add(new ExactLinearProgram.Constraint(row.terms(), bound));
+        }
+        // Work in actual aggregate counts: subtracting propagated, rounded
+        // lower bounds can hide the module's common repetition factor.
+        scaling = new CountScale(rows, scaleOrigin, high, budget, false);
+    }
+
+    private void beginMatching() {
+        var component = components.get(cursor);
+        boolean weighted = component.rows.stream().flatMap(row -> row.terms().values().stream())
+                .anyMatch(value -> value.abs().compareTo(BigInteger.ONE) > 0);
+        if (weighted) matching = new CountMeetInMiddle(component.rows, component.lower, component.upper, budget);
+        else binary = new CountBoolean(component.rows, component.lower, component.upper, budget);
     }
 
     private void prepare() {
@@ -313,6 +372,10 @@ final class CountComponents implements AutoCloseable {
         return counts;
     }
 
+    boolean hasSolvedComponent() {
+        return !resolved.isEmpty();
+    }
+
     private void importConflicts(List<CountConflict> values) {
         var component = components.get(cursor);
         List<List<Integer>> localGroups = Arrays.stream(component.variables).mapToObj(groups::get).toList();
@@ -345,6 +408,9 @@ final class CountComponents implements AutoCloseable {
     @Override
     public void close() {
         if (partition != null) partition.close();
+        if (scaling != null) scaling.close();
+        budget.release(scalingMemory);
+        scalingMemory = 0;
         if (matching != null) matching.close();
         if (binary != null) binary.close();
         if (polishing != null) polishing.close();
