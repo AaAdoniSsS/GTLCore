@@ -109,6 +109,8 @@ dependencies {
 
     modCompileOnly("mezz.jei:jei-$project.minecraft_version-forge-api:$project.jei_version") { transitive = false }
     modCompileOnly("mezz.jei:jei-$project.minecraft_version-common-api:$project.jei_version") { transitive = false }
+    // The preview header compatibility Mixin references JEI's existing screen bounds type.
+    modCompileOnly("mezz.jei:jei-$project.minecraft_version-forge:$project.jei_version") { transitive = false }
     modCompileOnly("curse.maven:emi-580555:6420945") { transitive = false }
     modCompileOnly("me.shedaniel:RoughlyEnoughItems-api:12.1.725") { transitive = false }
 
@@ -308,7 +310,18 @@ tasks.register("checkMixinPackageClasses") {
 
 tasks.named("check") {
     dependsOn(tasks.named("checkMixinPackageClasses"))
+    dependsOn(tasks.named("multiblockPreviewTest"))
     dependsOn(tasks.named("tagExprFilterTest"))
+}
+
+tasks.register("multiblockPreviewTest", JavaExec) {
+    group = "verification"
+    description = "Checks preview bounds, camera-plane panning, cache ownership and cancellation."
+    dependsOn(testClasses)
+    // Pure checks do not launch Minecraft or need the runtime-only client mods.
+    classpath = files(sourceSets.main.output, sourceSets.test.output, sourceSets.test.compileClasspath)
+    mainClass = "org.gtlcore.gtlcore.client.preview.MultiblockPreviewTest"
+    workingDir = projectDir
 }
 
 tasks.register("tagExprFilterTest", JavaExec) {

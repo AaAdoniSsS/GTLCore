@@ -840,5 +840,13 @@
   "gtlcore.jei.pattern_status.craftable": "Craftable",
   "message.gtlcore.structure_detection_running": "Structure detection is already running.",
   "tooltip.gtlcore.infinity_cell.uuid": "UUID: ",
-  "tooltip.gtlcore.infinity_cell.bytes": "Byte: "
+  "tooltip.gtlcore.infinity_cell.bytes": "Byte: ",
+  "gui.gtlcore.preview.fullscreen": "Fullscreen preview",
+  "gui.gtlcore.preview.restore": "Exit fullscreen",
+  "gui.gtlcore.preview.height": "Controller: %s blocks above bottom",
+  "gui.gtlcore.preview.height_unknown": "Controller height unavailable",
+  "gui.gtlcore.preview.dimensions": "Dimensions (W x D x H): %s x %s x %s",
+  "gui.gtlcore.preview.dimensions_unknown": "Structure dimensions unavailable",
+  "gui.gtlcore.preview.loading": "Preparing structure: %s%%",
+  "gui.gtlcore.preview.failed": "Structure preview failed. Please try again."
 }

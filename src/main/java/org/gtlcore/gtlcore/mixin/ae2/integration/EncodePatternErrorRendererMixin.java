@@ -1,14 +1,18 @@
 package org.gtlcore.gtlcore.mixin.ae2.integration;
 
 import org.gtlcore.gtlcore.client.gui.EncodePatternErrorModify;
+import org.gtlcore.gtlcore.client.preview.PreviewMaterialHighlights;
 
 import net.minecraft.ChatFormatting;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 
+import mezz.jei.api.gui.ingredient.IRecipeSlotView;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
+import org.spongepowered.asm.mixin.injection.Redirect;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -18,6 +22,13 @@ public class EncodePatternErrorRendererMixin implements EncodePatternErrorModify
 
     @Unique
     private boolean gTLCore$virtualIngredientHint;
+
+    @Redirect(method = "showError",
+              at = @At(value = "INVOKE",
+                       target = "Lmezz/jei/api/gui/ingredient/IRecipeSlotView;drawHighlight(Lnet/minecraft/client/gui/GuiGraphics;I)V"))
+    private void gTLCore$highlightMaterial(IRecipeSlotView slot, GuiGraphics graphics, int color) {
+        PreviewMaterialHighlights.draw(slot, graphics, color);
+    }
 
     @Override
     public void gTLCore$setVirtualIngredientHint(boolean hint) {
