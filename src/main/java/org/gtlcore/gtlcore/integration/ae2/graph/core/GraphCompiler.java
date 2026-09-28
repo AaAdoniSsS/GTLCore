@@ -14,6 +14,7 @@ public final class GraphCompiler<K> {
     private final Map<K, List<GraphRecipe<K>>> producers;
     private final Map<CacheKey<K>, Compiled<K>> cache = new LinkedHashMap<>(16, 0.75f, true);
     private final List<QuantityCertificate<K>> quantityCertificates = new ArrayList<>();
+    final CountSessions countSessions = new CountSessions();
 
     public GraphCompiler(List<GraphRecipe<K>> catalog) {
         this.catalog = List.copyOf(catalog);

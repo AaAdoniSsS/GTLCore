@@ -24,9 +24,20 @@ final class CountReduction implements AutoCloseable {
     private int[] representatives;
     private long memory, work, allowance;
     private int cursor, saturatedPairs;
-    private boolean complete, changed, saturated;
+    private boolean complete, changed, saturated, implicationsDone;
+    private CountImplications implications;
+    private CountHermite hermite;
+    private CountHall hall;
+    private CountBounds finalBounds;
+    private boolean compiled, hermiteDone, hallDone;
+    private final boolean strengthening;
 
     CountReduction(List<ExactLinearProgram.Constraint> source, BigInteger[] lower, BigInteger[] upper, PlanningBudget budget) {
+        this(source, lower, upper, budget, false);
+    }
+
+    CountReduction(List<ExactLinearProgram.Constraint> source, BigInteger[] lower, BigInteger[] upper, PlanningBudget budget, boolean strengthening) {
+        this.strengthening = strengthening;
         this.source = new ArrayList<>(source);
         this.sourceLower = lower.clone();
         this.sourceUpper = upper.clone();
@@ -56,6 +67,63 @@ final class CountReduction implements AutoCloseable {
     boolean step() {
         if (complete) return true;
         budget.check();
+        if (compiled) {
+            if (!strengthening) {
+                complete = true;
+                return true;
+            }
+            if (!hallDone) {
+                if (hall == null) hall = new CountHall(rows, lower, upper, budget);
+                if (!hall.step()) return false;
+                var extra = hall.cuts();
+                long bytes = 384L * extra.size();
+                if (!extra.isEmpty() && budget.tryReserve(bytes)) {
+                    memory += bytes;
+                    rows.addAll(extra);
+                }
+                hall.close();
+                hall = null;
+                hallDone = true;
+            }
+            if (!hermiteDone) {
+                if (hermite == null) hermite = new CountHermite(rows, lower.length, budget);
+                if (!hermite.step()) return false;
+                var extra = hermite.cuts();
+                long bytes = 192L * extra.size() + 192L * extra.stream().mapToLong(r -> r.terms().size()).sum();
+                if (!extra.isEmpty() && budget.tryReserve(bytes)) {
+                    memory += bytes;
+                    rows.addAll(extra);
+                    finalBounds = new CountBounds(lower.length, rows, budget);
+                }
+                hermite.close();
+                hermite = null;
+                hermiteDone = true;
+            }
+            if (finalBounds != null) {
+                if (!finalBounds.step()) return false;
+                if (finalBounds.blocked()) rows.add(new ExactLinearProgram.Constraint(Map.of(), BigInteger.ONE.negate()));
+                else {
+                    lower = finalBounds.lowerBounds();
+                    upper = finalBounds.upperBounds();
+                }
+                finalBounds.close();
+                finalBounds = null;
+            }
+            complete = true;
+            return true;
+        }
+        if (!implicationsDone) {
+            if (implications == null) implications = new CountImplications(source, sourceLower, sourceUpper, budget);
+            if (!implications.step()) return false;
+            var extra = implications.cuts();
+            if (!extra.isEmpty() && budget.tryReserve(384L * extra.size())) {
+                memory += 384L * extra.size();
+                source.addAll(extra);
+            }
+            implications.close();
+            implications = null;
+            implicationsDone = true;
+        }
         if (work >= allowance) {
             // Keep all choices when compilation runs out of its local budget.
             identity();
@@ -70,16 +138,27 @@ final class CountReduction implements AutoCloseable {
                 changed = false;
                 known.clear();
                 cursor = 0;
+                // Substitution can expose a shared capacity or cancel a
+                // produced resource. Reuse those consequences before handing
+                // the reduced model to another search strategy.
+                if (work < allowance / 2) {
+                    saturateWeightedCovers();
+                    saturateSums();
+                }
                 return false;
             }
             finish();
-            return true;
+            return false;
         }
         var row = normalize(project(source.get(cursor++)));
         if (row.terms().isEmpty() && row.upper().signum() >= 0) return false;
         var same = known.get(row.terms());
         if (same != null && same.upper().compareTo(row.upper()) <= 0) return false;
         known.put(row.terms(), row);
+        if (row.terms().size() == 1 && row.upper().signum() == 0) {
+            var term = row.terms().entrySet().iterator().next();
+            if (term.getValue().signum() > 0) fixZero(term.getKey());
+        }
         if (row.terms().size() != 2) return false;
         Map<Integer, BigInteger> opposite = new HashMap<>();
         row.terms().forEach((key, value) -> opposite.put(key, value.negate()));
@@ -132,6 +211,8 @@ final class CountReduction implements AutoCloseable {
         saturated = true;
         cursor = 0;
         saturateCovers();
+        saturateWeightedCovers();
+        saturateSums();
         saturateLocalPairs();
         BigInteger minimum = BigInteger.ZERO;
         for (int i = 0; i < root.length; i++) {
@@ -154,6 +235,180 @@ final class CountReduction implements AutoCloseable {
 
     private boolean binary(int id) {
         return sourceLower[id].signum() == 0 && BigInteger.ONE.equals(sourceUpper[id]);
+    }
+
+    /** Cancel shared production in combined demand/capacity rows, retaining every loss term. */
+    private void saturateWeightedCovers() {
+        if (root.length > 64 || source.size() > 192) return;
+        var needs = new ArrayList<ExactLinearProgram.Constraint>();
+        var shiftedNeeds = new ArrayList<ExactLinearProgram.Constraint>();
+        var capacities = new ArrayList<ExactLinearProgram.Constraint>();
+        for (var original : source) {
+            var row = normalize(project(original));
+            if (row.terms().size() < 2 || row.terms().size() > 16) continue;
+            if (row.terms().values().stream().allMatch(v -> v.signum() > 0)) capacities.add(row);
+            else if (row.upper().signum() < 0 && row.terms().values().stream().filter(v -> v.signum() < 0).count() >= 2) needs.add(row);
+            // Eliminating x + y = n can turn a negative demand bound into a
+            // positive one. Its negative terms still combine with capacity
+            // rows; the sign of the constant is not an applicability test.
+            else if (row.terms().values().stream().anyMatch(v -> v.signum() < 0)) shiftedNeeds.add(row);
+        }
+        if (needs.size() > 16 || capacities.size() > 32) return;
+        for (var row : shiftedNeeds) if (needs.size() < 16 && !needs.contains(row)) needs.add(row);
+        long started = work;
+        Set<ExactLinearProgram.Constraint> distinct = new HashSet<>(source);
+        for (int a = 0; a < needs.size(); a++) for (int b = a + 1; b < needs.size(); b++) {
+            if (work - started >= 16_384 || work >= allowance / 2) return;
+            BigInteger firstScale = BigInteger.ONE, secondScale = BigInteger.ONE;
+            for (var term : needs.get(a).terms().entrySet()) {
+                charge();
+                var other = needs.get(b).terms().get(term.getKey());
+                if (other == null || other.signum() == term.getValue().signum() || other.abs().equals(term.getValue().abs())) continue;
+                var gcd = other.gcd(term.getValue());
+                firstScale = other.abs().divide(gcd);
+                secondScale = term.getValue().abs().divide(gcd);
+                break;
+            }
+            // Individually normalized rows may use different units. Retain
+            // the ordinary sum, then try a positive integer rescaling that
+            // cancels a shared term. Both are necessary consequences.
+            int variants = firstScale.equals(BigInteger.ONE) && secondScale.equals(BigInteger.ONE) ? 1 : 2;
+            for (int variant = 0; variant < variants; variant++) {
+                if (work - started >= 16_384 || work >= allowance / 2) return;
+                var firstFactor = variant == 0 ? BigInteger.ONE : firstScale;
+                var secondFactor = variant == 0 ? BigInteger.ONE : secondScale;
+                Map<Integer, BigInteger> terms = new LinkedHashMap<>();
+                for (var term : needs.get(a).terms().entrySet()) {
+                    charge();
+                    terms.put(term.getKey(), term.getValue().multiply(firstFactor));
+                }
+                for (var term : needs.get(b).terms().entrySet()) {
+                    charge();
+                    terms.merge(term.getKey(), term.getValue().multiply(secondFactor), BigInteger::add);
+                }
+                BigInteger bound = needs.get(a).upper().multiply(firstFactor).add(needs.get(b).upper().multiply(secondFactor));
+                for (var cap : capacities) {
+                    BigInteger numerator = null, denominator = null;
+                    int cancelled = 0;
+                    boolean matches = true;
+                    for (var term : cap.terms().entrySet()) {
+                        charge();
+                        BigInteger value = terms.getOrDefault(term.getKey(), BigInteger.ZERO);
+                        if (value.signum() >= 0) continue;
+                        cancelled++;
+                        if (numerator == null) {
+                            numerator = value.negate();
+                            denominator = term.getValue();
+                        } else if (!value.negate().multiply(denominator).equals(term.getValue().multiply(numerator))) {
+                            matches = false;
+                            break;
+                        }
+                    }
+                    if (!matches || cancelled < 2) continue;
+                    BigInteger gcd = numerator.gcd(denominator), multiply = denominator.divide(gcd), add = numerator.divide(gcd);
+                    terms.replaceAll((id, value) -> value.multiply(multiply));
+                    for (var term : cap.terms().entrySet()) {
+                        charge();
+                        terms.merge(term.getKey(), term.getValue().multiply(add), BigInteger::add);
+                    }
+                    terms.values().removeIf(v -> v.signum() == 0);
+                    bound = bound.multiply(multiply).add(cap.upper().multiply(add));
+                    if (bound.bitLength() > 256 || terms.values().stream().anyMatch(v -> v.bitLength() > 256)) break;
+                }
+                // Two mixed rows may cancel without any capacity row being used.
+                // A cancelled coefficient proves nothing about that variable.
+                terms.values().removeIf(value -> value.signum() == 0);
+                if (terms.isEmpty() || terms.values().stream().anyMatch(v -> v.signum() < 0)) continue;
+                if (bound.signum() > 0) {
+                    BigInteger available = bound;
+                    if (terms.values().stream().noneMatch(value -> value.compareTo(available) > 0)) continue;
+                }
+                // This row is a nonnegative combination of necessary rows. With
+                // insufficient allowance for even one execution, a loss count is
+                // zero. Preserve any allowance for the other counts in the row.
+                var consequence = normalize(new ExactLinearProgram.Constraint(terms, bound));
+                if (!distinct.add(consequence)) continue;
+                source.add(consequence);
+                if (bound.signum() >= 0) for (var term : terms.entrySet())
+                    if (term.getValue().compareTo(bound) > 0) fixZero(term.getKey());
+                budget.note("count_weighted_cover", "necessary_loss_bound=" + consequence);
+            }
+        }
+    }
+
+    private void fixZero(int id) {
+        if (root[id] != id || sourceLower[id].signum() != 0) return;
+        sourceUpper[id] = BigInteger.ZERO;
+        // Every alias uses this same representative; its constant offset is
+        // retained when the shared representative becomes zero.
+        for (int i = 0; i < root.length; i++) if (root[i] == id) {
+            charge();
+            root[i] = -1;
+        }
+        int partner = partners[id];
+        partners[id] = -1;
+        if (partner >= 0) partners[partner] = -1;
+        changed = true;
+    }
+
+    /** If three necessary rows sum exactly to 0 <= 0, each has zero slack. */
+    private void saturateSums() {
+        Map<Map<Integer, BigInteger>, ExactLinearProgram.Constraint> unique = new LinkedHashMap<>();
+        for (var original : source) {
+            if (work >= allowance / 2) return;
+            var row = normalize(project(original));
+            if (row.terms().size() < 2 || row.terms().size() > 16) continue;
+            unique.merge(row.terms(), row, (a, b) -> a.upper().compareTo(b.upper()) <= 0 ? a : b);
+            Map<Integer, BigInteger> negative = new LinkedHashMap<>();
+            BigInteger limit = row.upper();
+            for (var term : row.terms().entrySet()) {
+                charge();
+                if (term.getValue().signum() < 0) negative.put(term.getKey(), term.getValue());
+                else limit = limit.subtract(term.getValue().multiply(sourceLower[term.getKey()]));
+            }
+            if (negative.size() > 1 && negative.size() < row.terms().size()) {
+                var relaxed = normalize(new ExactLinearProgram.Constraint(negative, limit));
+                unique.merge(relaxed.terms(), relaxed, (a, b) -> a.upper().compareTo(b.upper()) <= 0 ? a : b);
+            }
+        }
+        if (unique.size() > 128) return;
+        var needs = unique.values().stream().filter(row -> row.terms().values().stream().allMatch(v -> v.signum() < 0)).toList();
+        Set<ExactLinearProgram.Constraint> distinct = new HashSet<>(source);
+        int added = 0;
+        for (int a = 0; a < needs.size() && work < allowance / 2; a++)
+            for (int b = a + 1; b < needs.size() && work < allowance / 2; b++) {
+                var first = needs.get(a);
+                var second = needs.get(b);
+                Map<Integer, BigInteger> sum = new LinkedHashMap<>(first.terms());
+                for (var term : second.terms().entrySet()) {
+                    charge();
+                    sum.merge(term.getKey(), term.getValue(), BigInteger::add);
+                }
+                BigInteger bound = first.upper().add(second.upper()), gcd = BigInteger.ZERO;
+                for (var value : sum.values()) gcd = gcd.gcd(value);
+                // Integer rounding may tighten the sum without making its
+                // individual slacks zero. Only an exact division is usable.
+                if (bound.remainder(gcd).signum() != 0) continue;
+                BigInteger divisor = gcd;
+                Map<Integer, BigInteger> opposite = new LinkedHashMap<>();
+                sum.forEach((id, value) -> opposite.put(id, value.divide(divisor).negate()));
+                var third = unique.get(opposite);
+                if (third == null || !third.upper().equals(bound.divide(gcd).negate())) continue;
+                for (var row : List.of(first, second, third)) {
+                    if (distinct.add(row)) {
+                        source.add(row);
+                        added++;
+                    }
+                    Map<Integer, BigInteger> reverse = new LinkedHashMap<>();
+                    row.terms().forEach((id, value) -> reverse.put(id, value.negate()));
+                    var exact = new ExactLinearProgram.Constraint(reverse, row.upper().negate());
+                    if (distinct.add(exact)) {
+                        source.add(exact);
+                        added++;
+                    }
+                }
+            }
+        if (added > 0) budget.note("count_saturation", "exact_sum_rows=" + added);
     }
 
     /** Keep tight local material pools visible even when another pool has slack. */
@@ -309,7 +564,7 @@ final class CountReduction implements AutoCloseable {
             if (low != null) lower[id] = lower[id].max(low);
             if (high != null) upper[id] = upper[id] == null ? high : upper[id].min(high);
         }
-        complete = true;
+        compiled = true;
         budget.note("count_compile", "variables=" + root.length + "->" + representatives.length +
                 "; rows=" + source.size() + "->" + rows.size() + "; equalities=" + proof.size() + "; saturated_pairs=" + saturatedPairs);
     }
@@ -423,6 +678,14 @@ final class CountReduction implements AutoCloseable {
 
     @Override
     public void close() {
+        if (hall != null) hall.close();
+        hall = null;
+        if (hermite != null) hermite.close();
+        hermite = null;
+        if (finalBounds != null) finalBounds.close();
+        finalBounds = null;
+        if (implications != null) implications.close();
+        implications = null;
         budget.release(memory);
         memory = 0;
     }

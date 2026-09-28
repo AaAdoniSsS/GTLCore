@@ -24,6 +24,8 @@ final class CountComponents implements AutoCloseable {
     private BigInteger[] widths, totals, counts;
     private BitSet resolved = new BitSet();
     private CountPartition partition;
+    private CountDiophantine equation;
+    private CountReduction aggregationReduction;
     private CountScale scaling;
     private BigInteger[] scaleOrigin;
     private long scalingMemory;
@@ -56,6 +58,43 @@ final class CountComponents implements AutoCloseable {
                 prepare();
             } catch (LocalLimit limit) {
                 complete = true;
+            }
+            return complete;
+        }
+        if (aggregationReduction != null && equation == null) {
+            if (!aggregationReduction.step()) return false;
+            var component = components.get(cursor);
+            if (aggregationReduction.variables() <= 3 && aggregationReduction.variables() < component.lower.length) {
+                equation = new CountDiophantine(aggregationReduction.rows(), aggregationReduction.lower(), aggregationReduction.upper(), budget);
+            } else {
+                // Prefer recompilation when it exposes the direct small-
+                // equation path. Otherwise preserve the representation used
+                // by the established high-dimensional candidate heuristics.
+                aggregationReduction.close();
+                aggregationReduction = null;
+                equation = new CountDiophantine(component.rows, component.lower, component.upper, budget);
+            }
+            return false;
+        }
+        if (equation != null) {
+            if (!equation.step()) return false;
+            var found = equation.counts();
+            equation.close();
+            equation = null;
+            if (aggregationReduction != null) {
+                found = aggregationReduction.expand(found);
+                aggregationReduction.close();
+                aggregationReduction = null;
+                if (found == null) {
+                    var component = components.get(cursor);
+                    equation = new CountDiophantine(component.rows, component.lower, component.upper, budget);
+                    return false;
+                }
+            }
+            if (found != null) accept(found, false);
+            else {
+                var component = components.get(cursor);
+                partition = new CountPartition(component.rows, component.lower, component.upper, budget);
             }
             return complete;
         }
@@ -128,7 +167,12 @@ final class CountComponents implements AutoCloseable {
         }
         if (cursor < components.size()) {
             var component = components.get(cursor);
-            partition = new CountPartition(component.rows, component.lower, component.upper, budget);
+            // Aggregating identical providers can expose a new complement
+            // equality. Compile that relation before estimating an enumeration
+            // domain; a duplicate provider must not hide the small equation.
+            if (Arrays.stream(component.variables).anyMatch(id -> groups.get(id).size() > 1))
+                aggregationReduction = new CountReduction(component.rows, component.lower, component.upper, budget);
+            else equation = new CountDiophantine(component.rows, component.lower, component.upper, budget);
             return false;
         }
         complete = true;
@@ -407,6 +451,9 @@ final class CountComponents implements AutoCloseable {
 
     @Override
     public void close() {
+        if (equation != null) equation.close();
+        if (aggregationReduction != null) aggregationReduction.close();
+        aggregationReduction = null;
         if (partition != null) partition.close();
         if (scaling != null) scaling.close();
         budget.release(scalingMemory);

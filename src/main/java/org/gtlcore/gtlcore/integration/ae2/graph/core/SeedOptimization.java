@@ -33,6 +33,11 @@ final class SeedOptimization<K> implements AutoCloseable {
     private final List<ExactLinearProgram.Constraint> supportRows = new ArrayList<>();
     private final Set<BitSet> supportCuts = new HashSet<>();
     private CountBoolean selecting;
+    private CountDomainSearch learnedSelection;
+    private CountHittingSet supportPricing;
+    private int pricedSupports;
+    private long supportPricingWork;
+    private List<ExactLinearProgram.Constraint> selectionRows;
     private BitSet selected;
     private boolean enumerateSupports;
     private int supportPrunes;
@@ -125,6 +130,7 @@ final class SeedOptimization<K> implements AutoCloseable {
                 phase = 2;
             }
             case 2 -> {
+                if (priceSupports()) return false;
                 if (supportLowerBound > cardinality) {
                     cardinality = supportLowerBound;
                     nextLevel = false;
@@ -148,7 +154,7 @@ final class SeedOptimization<K> implements AutoCloseable {
                     return false;
                 }
                 if (cardinality > 0 && !enumerateSupports) {
-                    if (selecting == null) {
+                    if (selecting == null && learnedSelection == null) {
                         var rows = new ArrayList<>(supportRows);
                         Map<Integer, BigInteger> positive = new LinkedHashMap<>(), negative = new LinkedHashMap<>();
                         for (int i = 0; i < choices.size(); i++) {
@@ -161,12 +167,31 @@ final class SeedOptimization<K> implements AutoCloseable {
                         Arrays.fill(lower, BigInteger.ZERO);
                         Arrays.fill(upper, BigInteger.ONE);
                         selecting = new CountBoolean(rows, lower, upper, budget);
+                        selectionRows = rows;
                     }
-                    if (!selecting.step()) return false;
-                    BigInteger[] witness = selecting.counts();
-                    boolean closed = selecting.infeasible();
-                    selecting.close();
-                    selecting = null;
+                    BigInteger[] witness;
+                    boolean closed;
+                    if (learnedSelection != null) {
+                        if (!learnedSelection.step()) return false;
+                        witness = learnedSelection.counts();
+                        closed = learnedSelection.infeasible();
+                        learnedSelection.close();
+                        learnedSelection = null;
+                    } else {
+                        if (!selecting.step()) return false;
+                        witness = selecting.counts();
+                        closed = selecting.infeasible();
+                        selecting.close();
+                        selecting = null;
+                        if (witness == null && !closed) {
+                            BigInteger[] lower = new BigInteger[choices.size()], upper = new BigInteger[choices.size()];
+                            Arrays.fill(lower, BigInteger.ZERO);
+                            Arrays.fill(upper, BigInteger.ONE);
+                            learnedSelection = new CountDomainSearch(selectionRows, lower, upper, budget, 32768);
+                            return false;
+                        }
+                    }
+                    selectionRows = null;
                     if (witness == null) {
                         if (closed) nextLevel = true;
                         else {
@@ -352,6 +377,40 @@ final class SeedOptimization<K> implements AutoCloseable {
         lowerBound = Math.max(lowerBound, mandatory.size() + supportLowerBound);
     }
 
+    /**
+     * Strengthen the seed-type lower bound using only PROVED necessary
+     * supports. Search-only exclusions from UNKNOWN trials never enter this
+     * master, and its solution is not an executable seed plan.
+     */
+    private boolean priceSupports() {
+        long allowance = Math.min(16384, this.allowance / 16);
+        if (supportPricing == null) {
+            if (choices.size() > 64 || supportCuts.size() < 3 || supportCuts.size() > 128 ||
+                    pricedSupports == supportCuts.size() || supportPricingWork + 256 >= allowance)
+                return false;
+            pricedSupports = supportCuts.size();
+            var weights = new BigInteger[choices.size()];
+            Arrays.fill(weights, BigInteger.ONE);
+            long before = budget.threadWork();
+            try {
+                supportPricing = new CountHittingSet(List.copyOf(supportCuts), weights, budget, Math.min(4096, allowance - supportPricingWork));
+            } finally {
+                supportPricingWork += budget.threadWork() - before;
+            }
+        }
+        long before = budget.threadWork();
+        try {
+            if (!supportPricing.step()) return true;
+            supportLowerBound = Math.max(supportLowerBound, supportPricing.lowerBound().intValueExact());
+            lowerBound = Math.max(lowerBound, mandatory.size() + supportLowerBound);
+            supportPricing.close();
+            supportPricing = null;
+            return false;
+        } finally {
+            supportPricingWork += budget.threadWork() - before;
+        }
+    }
+
     private void excludeSupport() {
         // Search-only blocking of an unresolved trial. The unresolved
         // cardinality remains visible, so master exhaustion cannot certify it.
@@ -407,7 +466,7 @@ final class SeedOptimization<K> implements AutoCloseable {
         budget.note("global_seeds", detail + "; types=" + original.seeds().size() + "->" + best.seeds().size() +
                 "; lower_bound=" + lowerBound + "; cardinality_proven=" + cardinalityProven + "; amounts_proven=" + amountsProven +
                 "; all_source_recipes=" + recipes.size() + "; trials=" + trials + "; work=" + (budget.nodes() - started));
-        budget.note("seed_support", "checked_cuts=" + supportCuts.size() + "; startup_prunes=" + supportPrunes + "; enumerating=" + enumerateSupports);
+        budget.note("seed_support", "checked_cuts=" + supportCuts.size() + "; startup_prunes=" + supportPrunes + "; pricing_work=" + supportPricingWork + "; enumerating=" + enumerateSupports);
         close();
         return true;
     }
@@ -441,6 +500,11 @@ final class SeedOptimization<K> implements AutoCloseable {
 
     @Override
     public void close() {
+        if (supportPricing != null) supportPricing.close();
+        supportPricing = null;
+        if (learnedSelection != null) learnedSelection.close();
+        learnedSelection = null;
+        selectionRows = null;
         if (summarizing != null) summarizing.close();
         summarizing = null;
         if (selecting != null) selecting.close();

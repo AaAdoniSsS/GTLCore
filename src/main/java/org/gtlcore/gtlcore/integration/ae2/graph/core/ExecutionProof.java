@@ -29,6 +29,10 @@ public final class ExecutionProof {
     }
 
     public static CountProof.Verdict verify(Certificate proof, long maximumWork) {
+        return verify(proof, maximumWork, unused -> {});
+    }
+
+    static CountProof.Verdict verify(Certificate proof, long maximumWork, java.util.function.LongConsumer charged) {
         int size = proof.initial.size();
         if (size != proof.goal.size() || proof.inputs.size() != proof.outputs.size() || maximumWork <= 0) return CountProof.Verdict.INVALID;
         List<List<BigInteger>> vectors = new ArrayList<>(proof.inputs);
@@ -92,6 +96,8 @@ public final class ExecutionProof {
             return CountProof.Verdict.VERIFIED;
         } catch (Limit limit) {
             return CountProof.Verdict.INCOMPLETE;
+        } finally {
+            charged.accept(maximumWork - work[0]);
         }
     }
 

@@ -128,7 +128,7 @@ public class ConfigHolder {
     @Configurable
     @Configurable.Range(min = 10000, max = Integer.MAX_VALUE)
     @Configurable.Comment("config.gtlcore.option.ae2GraphPlannerMaxSteps.comment")
-    public int ae2GraphPlannerMaxSteps = 10000000;
+    public int ae2GraphPlannerMaxSteps = 20000000;
     @Configurable
     @Configurable.Range(min = 16, max = 1024)
     @Configurable.Comment("config.gtlcore.option.ae2GraphPlannerMemoryMiB.comment")

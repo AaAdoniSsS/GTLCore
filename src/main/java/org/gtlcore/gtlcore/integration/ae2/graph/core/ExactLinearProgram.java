@@ -21,7 +21,16 @@ final class ExactLinearProgram implements AutoCloseable {
     record Constraint(Map<Integer, BigInteger> terms, BigInteger upper) {
 
         Constraint {
-            terms = Map.copyOf(terms);
+            // Propagation and bounded candidate search must not depend on the
+            // per-JVM iteration salt of Map.copyOf. Keep coordinate order stable
+            // across launches, while retaining immutable constant-time lookup.
+            if (terms.size() < 2) terms = Map.copyOf(terms);
+            else {
+                Map<Integer, BigInteger> ordered = new LinkedHashMap<>();
+                terms.entrySet().stream().sorted(Map.Entry.comparingByKey())
+                        .forEach(entry -> ordered.put(entry.getKey(), Objects.requireNonNull(entry.getValue())));
+                terms = Collections.unmodifiableMap(ordered);
+            }
         }
     }
 
@@ -37,9 +46,15 @@ final class ExactLinearProgram implements AutoCloseable {
     private long memory, work;
     private Result result;
     private ExactRational[] point, certificate;
+    private ExactRational[] optimumDual;
     private final boolean keepBasis;
     private boolean hot;
     private Basis savedBasis;
+    private ExactRevisedProgram sparse;
+    private ExactColumnProgram priced;
+    private final boolean allowPricing;
+    private boolean pricingTried;
+    private boolean numericalTried;
 
     /** Completed tableau owned by a reference-counted immutable ancestor. */
     static final class Basis implements AutoCloseable {
@@ -48,6 +63,7 @@ final class ExactLinearProgram implements AutoCloseable {
         final BigInteger[] objective;
         final ExactRational[][] table;
         final int[] basic, nonbasic;
+        final int[] revised;
         final int variables;
         private final PlanningBudget budget;
         private final long memory;
@@ -59,9 +75,21 @@ final class ExactLinearProgram implements AutoCloseable {
             table = source.table;
             basic = source.basic;
             nonbasic = source.nonbasic;
+            revised = null;
             variables = source.variables;
             budget = source.budget;
             memory = source.memory;
+        }
+
+        Basis(int variables, List<Constraint> constraints, BigInteger[] objective, int[] revised, PlanningBudget budget, long memory) {
+            this.variables = variables;
+            this.constraints = constraints;
+            this.objective = objective.clone();
+            this.revised = revised.clone();
+            table = null;
+            basic = nonbasic = null;
+            this.budget = budget;
+            this.memory = memory;
         }
 
         Basis retain() {
@@ -80,6 +108,11 @@ final class ExactLinearProgram implements AutoCloseable {
     }
 
     ExactLinearProgram(int variables, List<Constraint> constraints, BigInteger[] objective, PlanningBudget budget, Basis ancestor, boolean keepBasis) {
+        this(variables, constraints, objective, budget, ancestor, keepBasis, true);
+    }
+
+    ExactLinearProgram(int variables, List<Constraint> constraints, BigInteger[] objective, PlanningBudget budget, Basis ancestor, boolean keepBasis, boolean allowPricing) {
+        this.allowPricing = allowPricing;
         this.variables = variables;
         if (ancestor != null && (ancestor.variables != variables || !Arrays.equals(ancestor.objective, objective))) ancestor = null;
         if (ancestor != null && !retainsConstraints(constraints, ancestor.constraints, budget)) ancestor = null;
@@ -89,7 +122,7 @@ final class ExactLinearProgram implements AutoCloseable {
             var known = new HashSet<>(ancestor.constraints);
             for (var row : constraints) if (known.add(row)) union.add(row);
             combined = List.copyOf(union);
-            if (combined.size() > 512 || (combined.size() + 2L) * (variables + 2L) > 65_536) {
+            if (ancestor.revised == null && (combined.size() > 512 || (combined.size() + 2L) * (variables + 2L) > 65_536) || combined.size() > 1024) {
                 ancestor = null;
                 combined = constraints;
             }
@@ -102,8 +135,18 @@ final class ExactLinearProgram implements AutoCloseable {
         rows = this.constraints.size();
         long cells = (rows + 2L) * (variables + 2L);
         long bytes = cells * 768L + 64L * (rows + variables + 2L);
+        if (ancestor != null && ancestor.revised != null) {
+            sparse = new ExactRevisedProgram(variables, this.constraints, this.objective, budget, ancestor);
+            return;
+        }
         if (allowance < 1024 || variables > 384 || rows > 512 || cells > 65_536 || !budget.tryReserve(bytes)) {
-            result = Result.UNKNOWN;
+            if (allowance >= 1024 && ExactRevisedProgram.suitable(variables, this.constraints))
+                sparse = new ExactRevisedProgram(variables, this.constraints, this.objective, budget);
+            else if (allowPricing && variables >= 64) {
+                priced = new ExactColumnProgram(variables, this.constraints, objective, budget);
+                pricingTried = true;
+            } else result = Result.UNKNOWN;
+            budget.note("count_lp_admission", "dense_cells=" + cells + "; dense_bytes=" + bytes + "; sparse=" + (sparse != null));
             return;
         }
         memory = bytes;
@@ -191,6 +234,29 @@ final class ExactLinearProgram implements AutoCloseable {
     boolean step() {
         budget.check();
         if (result != null) return true;
+        if (priced != null) {
+            if (!priced.step()) return false;
+            result = priced.result();
+            point = priced.point();
+            certificate = priced.certificate();
+            optimumDual = priced.dual();
+            priced.close();
+            priced = null;
+            return true;
+        }
+        if (sparse != null) {
+            if (!sparse.step()) return false;
+            result = sparse.result();
+            point = sparse.point();
+            certificate = sparse.certificate();
+            optimumDual = sparse.optimumDual();
+            if (keepBasis && result == Result.OPTIMAL) savedBasis = sparse.snapshot();
+            hot = sparse.hot();
+            sparse.close();
+            sparse = null;
+            if (result == Result.UNKNOWN && startPricing()) return false;
+            return true;
+        }
         if (work >= allowance) return finish(Result.UNKNOWN);
         try {
             if (pivotRow >= 0) {
@@ -347,6 +413,18 @@ final class ExactLinearProgram implements AutoCloseable {
         return true;
     }
 
+    private boolean startPricing() {
+        // Pricing is a fallback for large sparse models, not an extra toll on
+        // every small LP. Every master still checks the full original catalog.
+        if (!allowPricing || pricingTried || variables < 128 || budget.remainingWork() < 65536) return false;
+        pricingTried = true;
+        releaseTable();
+        point = certificate = optimumDual = null;
+        result = null;
+        priced = new ExactColumnProgram(variables, constraints, objective, budget);
+        return true;
+    }
+
     private boolean validCertificate() {
         ExactRational[] columns = new ExactRational[variables];
         Arrays.fill(columns, ExactRational.ZERO);
@@ -378,7 +456,9 @@ final class ExactLinearProgram implements AutoCloseable {
             if (columns[j].compareTo(ExactRational.of(objective[j])) < 0) return false;
             attained = attained.add(point[j].multiply(ExactRational.of(objective[j])));
         }
-        return upper.equals(attained);
+        if (!upper.equals(attained)) return false;
+        optimumDual = weights;
+        return true;
     }
 
     private void charge() {
@@ -387,6 +467,18 @@ final class ExactLinearProgram implements AutoCloseable {
     }
 
     private boolean finish(Result value) {
+        if (value == Result.UNKNOWN && !numericalTried && variables >= 16 && table != null) {
+            numericalTried = true;
+            releaseTable();
+            int[] proposal = CountLpProposal.propose(variables, constraints, objective, budget);
+            if (proposal != null) {
+                sparse = new ExactRevisedProgram(variables, constraints, objective, budget);
+                if (sparse.reconstruct(proposal)) return false;
+                sparse.close();
+                sparse = null;
+            }
+        }
+        if (value == Result.UNKNOWN && startPricing()) return false;
         if (value == Result.INFEASIBLE && certificate != null && budget.proofJournal() != null)
             budget.proofJournal().add(CountProof.certificate("rational_relaxation", variables, constraints, List.of(), certificate, true));
         result = value;
@@ -420,8 +512,20 @@ final class ExactLinearProgram implements AutoCloseable {
         return certificate == null ? null : certificate.clone();
     }
 
+    ExactRational[] optimumDual() {
+        return optimumDual == null ? null : optimumDual.clone();
+    }
+
     @Override
     public void close() {
+        if (priced != null) {
+            priced.close();
+            priced = null;
+        }
+        if (sparse != null) {
+            sparse.close();
+            sparse = null;
+        }
         if (savedBasis != null) {
             savedBasis.close();
             savedBasis = null;

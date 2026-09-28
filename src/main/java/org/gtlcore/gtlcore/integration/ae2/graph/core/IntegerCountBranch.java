@@ -28,6 +28,7 @@ final class IntegerCountBranch<K> implements AutoCloseable {
     final List<ExactLinearProgram.Constraint> current;
     final List<List<ExactLinearProgram.Constraint>> children = new ArrayList<>();
     final Set<ExactLinearProgram.Constraint> learnedMaterials = new LinkedHashSet<>();
+    final Set<ExactLinearProgram.Constraint> usedMaterials = new LinkedHashSet<>();
     final List<CountGuard> supportConflicts = new ArrayList<>();
     final Set<CountConflict> learnedChoices = new LinkedHashSet<>();
     private List<CountConflict> knownChoices = List.of();
@@ -39,17 +40,58 @@ final class IntegerCountBranch<K> implements AutoCloseable {
     boolean compiled, reducedLinear;
     CountPartition partition;
     CountComponents components;
+    CountSeparator separator;
+    CountNetwork network;
+    BigInteger[] separatorPartial;
+    boolean separatorCandidate;
     CountGroups groups;
     CountConditioning conditioning;
     CountRecovery<K> recovery;
     CountScale scaling;
+    CountDiophantine diophantine;
+    CountCongruence congruence;
+    CountPacking packing;
+    CountJump jumping;
+    CountProbing probing;
+    boolean probed, jumpCandidate, jumpLate;
+    CountCoverCuts covering;
+    CountCliques cliques;
+    CountRoundingCuts rounding;
+    boolean roundingTried;
+    ExactRational[] coverPoint, coverFallback;
+    final List<ExactLinearProgram.Constraint> relaxationCuts = new ArrayList<>();
+    int coverRounds;
+    CountQuickSolve sourceFace;
+    long sourceFaceWork;
+    int sourceFaceAttempt;
     boolean compileRecovery = true;
     CountMeetInMiddle matching;
-    CountLatticeRepair repair;
+    CountRepairPortfolio repair;
     ExactRational[] repairPoint;
+    ExactRational[] uncutRepairPoint;
     int repairAttempts;
+    long repairWork;
     CountBoolean binary;
     boolean earlyBinary, triedBinary;
+    CountDomainSearch cdcl;
+    CountLcg auxiliaryLcg;
+    int auxiliaryMode;
+    long auxiliaryWork;
+    CountDecisionDiagram diagram;
+    CountObbt obbt;
+    boolean gomoryTried;
+    Boolean feedbackRegion;
+    boolean obbtTried;
+    ExactRational[] obbtPoint;
+    boolean triedCdcl, domainCandidate;
+    CountNeighborhood neighborhood;
+    BigInteger[] incumbentCounts;
+    boolean incumbentTried;
+    ExactRational[] neighborhoodPoint;
+    boolean neighborhoodCandidate;
+    CountBranchProbe branchProbe;
+    CountBranchHistory branchHistory;
+    ExactRational[] branchProbePoint;
     ExactLinearProgram linear;
     ExactLinearProgram.Basis inheritedBasis, sharedBasis;
     CountReduction.Coordinates inheritedCoordinates;
@@ -137,6 +179,10 @@ final class IntegerCountBranch<K> implements AutoCloseable {
             if (propagating != null) propagating.learn(choices);
             do {
                 if (stopped.getAsBoolean()) return;
+                if (auxiliaryMode != 0 && auxiliaryWork + budget.threadWork() - before >= 262144) {
+                    state = State.UNRESOLVED;
+                    return;
+                }
                 budget.check();
                 if (incumbent != null && lowerCost != null && lowerCost.cannotImprove(incumbent)) {
                     state = State.PRUNED;
@@ -144,8 +190,23 @@ final class IntegerCountBranch<K> implements AutoCloseable {
                 }
                 long scheduleBefore = budget.threadWork();
                 boolean inSchedule = scheduling != null;
-                advance();
+                if (budget.metricsEnabled()) {
+                    String strategy = activeStrategy();
+                    long start = System.nanoTime();
+                    try {
+                        advance();
+                    } finally {
+                        budget.strategy(strategy, budget.threadWork() - scheduleBefore, System.nanoTime() - start);
+                    }
+                } else advance();
                 if (inSchedule) schedulingWork += budget.threadWork() - scheduleBefore;
+                if (scheduling != null && (jumpCandidate || neighborhoodCandidate || domainCandidate || separatorCandidate) && schedulingWork >= 8192) {
+                    scheduling.close();
+                    scheduling = null;
+                    counts = null;
+                    resumeSpeculativeCandidate();
+                    return;
+                }
                 if (scheduling != null && !partitioned && schedulingWork >= 8192) {
                     // Keep this exact scheduling continuation, while other counts
                     // get disjoint sibling subspaces and their own work slices.
@@ -159,7 +220,9 @@ final class IntegerCountBranch<K> implements AutoCloseable {
             limit = exhausted;
             state = State.UNRESOLVED;
         } finally {
-            work += budget.threadWork() - before;
+            long spent = budget.threadWork() - before;
+            work += spent;
+            if (auxiliaryMode != 0) auxiliaryWork += spent;
         }
     }
 
@@ -218,7 +281,16 @@ final class IntegerCountBranch<K> implements AutoCloseable {
             if (status == CountSchedule.Result.WITNESS) beginAssembly(scheduling.witness());
             scheduling.close();
             scheduling = null;
+            if ((jumpCandidate || neighborhoodCandidate || domainCandidate || separatorCandidate) && status != CountSchedule.Result.WITNESS) {
+                // Failure to schedule a local-search candidate must leave the
+                // original count domain and all the other strategies available.
+                counts = null;
+                resumeSpeculativeCandidate();
+                return;
+            }
             if (status == CountSchedule.Result.DEAD) {
+                execution.refine(model);
+                for (var proof : execution.proofs()) if (!supportConflicts.contains(proof.guard())) supportConflicts.add(proof.guard());
                 // This fixed vector was exhausted or rejected by a checked
                 // optimistic startup proof. Share the exact exclusion; an
                 // UNKNOWN scheduling result must never create this clause.
@@ -261,6 +333,155 @@ final class IntegerCountBranch<K> implements AutoCloseable {
         }
         if (rescue) {
             program = new CountProgram<>(model.recipes, counts, budget);
+            return;
+        }
+        if (congruence != null) {
+            if (!congruence.step()) return;
+            boolean impossible = congruence.infeasible();
+            congruence.close();
+            congruence = null;
+            if (impossible) {
+                learnedChoices.add(new CountConflict(current));
+                state = State.DEAD;
+            } else diophantine = new CountDiophantine(reduction.rows(), reduction.lower(), reduction.upper(), budget);
+            return;
+        }
+        if (diophantine != null) {
+            if (!diophantine.step()) return;
+            counts = reduction.expand(diophantine.counts());
+            diophantine.close();
+            diophantine = null;
+            if (counts != null) scheduling = new CountSchedule<>(model, counts, budget);
+            else if (current.isEmpty()) {
+                sourceFace = CountQuickSolve.sourceFace(reduction.rows(), reduction.lower(), reduction.upper(), budget, false);
+                sourceFaceAttempt = 1;
+                if (sourceFace == null) packing = new CountPacking(reduction.rows(), reduction.lower(), reduction.upper(), budget);
+            } else dispatchCompiledStrategies();
+            return;
+        }
+        if (sourceFace != null) {
+            long before = budget.threadWork();
+            boolean complete;
+            try {
+                complete = sourceFaceWork >= 262_144 || sourceFace.step();
+            } finally {
+                sourceFaceWork += budget.threadWork() - before;
+            }
+            if (!complete) return;
+            counts = reduction.expand(sourceFace.counts());
+            sourceFace.close();
+            sourceFace = null;
+            // A trial face cannot export its negative conclusions or conflicts.
+            if (counts != null) scheduling = new CountSchedule<>(model, counts, budget);
+            else {
+                if (sourceFaceAttempt++ == 1) {
+                    sourceFaceWork = 0;
+                    sourceFace = CountQuickSolve.sourceFace(reduction.rows(), reduction.lower(), reduction.upper(), budget, true);
+                }
+                if (sourceFace == null) packing = new CountPacking(reduction.rows(), reduction.lower(), reduction.upper(), budget);
+            }
+            return;
+        }
+        if (packing != null) {
+            if (!packing.step()) return;
+            counts = reduction.expand(packing.counts());
+            packing.close();
+            packing = null;
+            if (counts != null) scheduling = new CountSchedule<>(model, counts, budget);
+            else jumping = new CountJump(reduction.rows(), reduction.lower(), reduction.upper(), budget, 32_768);
+            return;
+        }
+        if (covering != null) {
+            if (!covering.step()) return;
+            var cuts = covering.cuts();
+            covering.close();
+            covering = null;
+            if (cuts.isEmpty() && !roundingTried) {
+                ExactRational[] local = reducedLinear ? Arrays.stream(reduction.representatives()).mapToObj(i -> coverPoint[i]).toArray(ExactRational[]::new) : coverPoint;
+                cliques = new CountCliques(relaxationRows(), reducedLinear ? reduction.lower() : lower,
+                        reducedLinear ? reduction.upper() : upper, local, budget);
+            } else acceptCuts(cuts);
+            return;
+        }
+        if (cliques != null) {
+            if (!cliques.step()) return;
+            var cuts = cliques.cuts();
+            cliques.close();
+            cliques = null;
+            if (cuts.isEmpty() && !roundingTried) {
+                roundingTried = true;
+                ExactRational[] local = reducedLinear ? Arrays.stream(reduction.representatives()).mapToObj(i -> coverPoint[i]).toArray(ExactRational[]::new) : coverPoint;
+                rounding = new CountRoundingCuts(relaxationRows(), reducedLinear ? reduction.lower() : lower, local, budget);
+            } else acceptCuts(cuts);
+            return;
+        }
+        if (rounding != null) {
+            if (!rounding.step()) return;
+            var cuts = rounding.cuts();
+            rounding.close();
+            rounding = null;
+            acceptCuts(cuts);
+            return;
+        }
+        if (neighborhood != null) {
+            if (!neighborhood.step()) return;
+            counts = reduction.expand(neighborhood.counts());
+            neighborhood.close();
+            neighborhood = null;
+            if (counts != null) {
+                neighborhoodCandidate = true;
+                schedulingWork = 0;
+                scheduling = new CountSchedule<>(model, counts, budget);
+            } else resumeSpeculativeCandidate();
+            return;
+        }
+        if (branchProbe != null) {
+            if (!branchProbe.step()) return;
+            int chosen = reduction.representatives()[branchProbe.chosen()];
+            branchProbe.close();
+            branchProbe = null;
+            splitPoint(branchProbePoint, chosen);
+            branchProbePoint = null;
+            return;
+        }
+        if (jumping != null) {
+            if (!jumping.step()) return;
+            counts = reduction.expand(jumping.counts());
+            jumping.close();
+            jumping = null;
+            if (counts != null) {
+                jumpCandidate = true;
+                scheduling = new CountSchedule<>(model, counts, budget);
+            } else afterJump();
+            return;
+        }
+        if (probing != null) {
+            if (!probing.step()) return;
+            var cuts = probing.cuts();
+            boolean impossible = probing.infeasible();
+            importReducedConflicts(probing.learnedConflicts());
+            probing.close();
+            probing = null;
+            if (impossible) {
+                learnedChoices.add(new CountConflict(current));
+                state = State.DEAD;
+            } else if (!cuts.isEmpty() && budget.tryReserve(256L * cuts.size())) {
+                workspace += 256L * cuts.size();
+                var mapping = CountMapping.representatives(reduction.representatives());
+                for (var cut : cuts) {
+                    var row = mapping.row(cut, budget);
+                    linearConstraints.add(row);
+                    var term = row.terms().entrySet().iterator().next();
+                    int id = term.getKey();
+                    if (term.getValue().signum() < 0) lower[id] = lower[id].max(row.upper().negate());
+                    else upper[id] = upper[id] == null ? row.upper() : upper[id].min(row.upper());
+                }
+                reduction.close();
+                reduction = new CountReduction(linearConstraints, lower, upper, budget);
+                compiled = false;
+                triedBinary = false;
+                triedCdcl = false;
+            } else dispatchCompiledStrategies();
             return;
         }
         if (recovery != null) {
@@ -314,7 +535,46 @@ final class IntegerCountBranch<K> implements AutoCloseable {
             } else if (impossible) {
                 learnedChoices.add(new CountConflict(current));
                 state = State.DEAD;
-            } else conditioning = new CountConditioning(reduction.rows(), reduction.lower(), reduction.upper(), partial, budget);
+            } else {
+                separatorPartial = partial;
+                separator = new CountSeparator(reduction.rows(), reduction.lower(), reduction.upper(), budget);
+            }
+            return;
+        }
+        if (separator != null) {
+            if (!separator.step()) return;
+            counts = reduction.expand(separator.counts());
+            boolean impossible = separator.infeasible();
+            separator.close();
+            separator = null;
+            if (counts != null) {
+                separatorCandidate = true;
+                schedulingWork = 0;
+                scheduling = new CountSchedule<>(model, counts, budget);
+            } else if (impossible) {
+                learnedChoices.add(new CountConflict(current));
+                state = State.DEAD;
+            } else network = new CountNetwork(reduction.rows(), reduction.lower(), reduction.upper(), budget)
+                    .minimize(Arrays.stream(reduction.objective(model.objective(true))).map(BigInteger::negate).toArray(BigInteger[]::new));
+            return;
+        }
+        if (network != null) {
+            if (!network.step()) return;
+            counts = reduction.expand(network.counts());
+            boolean impossible = network.infeasible();
+            network.close();
+            network = null;
+            if (counts != null) {
+                separatorCandidate = true;
+                schedulingWork = 0;
+                scheduling = new CountSchedule<>(model, counts, budget);
+            } else if (impossible) {
+                learnedChoices.add(new CountConflict(current));
+                state = State.DEAD;
+            } else {
+                conditioning = new CountConditioning(reduction.rows(), reduction.lower(), reduction.upper(), separatorPartial, budget);
+                separatorPartial = null;
+            }
             return;
         }
         if (conditioning != null) {
@@ -368,14 +628,97 @@ final class IntegerCountBranch<K> implements AutoCloseable {
             } else if (impossible) {
                 learnedChoices.add(new CountConflict(current));
                 state = State.DEAD;
-            } else if (earlyBinary) beginCompiledStrategies();
-            else if (preprocessingOnly) state = State.UNRESOLVED;
-            else beginLinear();
-            earlyBinary = false;
+            } else if (current.isEmpty() && !triedCdcl) {
+                triedCdcl = true;
+                cdcl = new CountDomainSearch(reduction.rows(), reduction.lower(), reduction.upper(), budget, 1_048_576);
+            } else afterBoolean();
+            return;
+        }
+        if (auxiliaryLcg != null) {
+            if (!auxiliaryLcg.step()) return;
+            counts = reduction.expand(auxiliaryLcg.counts());
+            boolean impossible = auxiliaryLcg.infeasible();
+            importReducedConflicts(auxiliaryLcg.learnedConflicts());
+            auxiliaryLcg.close();
+            auxiliaryLcg = null;
+            if (counts != null) {
+                domainCandidate = true;
+                schedulingWork = 0;
+                scheduling = new CountSchedule<>(model, counts, budget);
+            } else if (impossible) {
+                learnedChoices.add(new CountConflict(current));
+                state = State.DEAD;
+            } else state = State.UNRESOLVED;
+            return;
+        }
+        if (cdcl != null) {
+            if (!cdcl.step()) return;
+            counts = reduction.expand(cdcl.counts());
+            boolean impossible = cdcl.infeasible();
+            importReducedConflicts(cdcl.learnedConflicts());
+            cdcl.close();
+            cdcl = null;
+            if (counts != null) {
+                domainCandidate = true;
+                schedulingWork = 0;
+                scheduling = new CountSchedule<>(model, counts, budget);
+            } else if (impossible) {
+                learnedChoices.add(new CountConflict(current));
+                state = State.DEAD;
+            } else if (auxiliaryMode != 0) state = State.UNRESOLVED;
+            else diagram = new CountDecisionDiagram(reduction.rows(), reduction.lower(), reduction.upper(), budget, 65536);
+            return;
+        }
+        if (obbt != null) {
+            if (!obbt.step()) return;
+            boolean impossible = obbt.infeasible();
+            var cuts = obbt.cuts();
+            counts = reduction.expand(obbt.counts());
+            obbt.close();
+            obbt = null;
+            if (impossible) {
+                learnedChoices.add(new CountConflict(current));
+                state = State.DEAD;
+            } else if (counts != null) {
+                domainCandidate = true;
+                schedulingWork = 0;
+                scheduling = new CountSchedule<>(model, counts, budget);
+            } else if (!cuts.isEmpty()) {
+                if (!reducedLinear) {
+                    CountMapping mapping = CountMapping.representatives(reduction.representatives());
+                    cuts = cuts.stream().map(c -> mapping.row(c, budget)).toList();
+                }
+                coverPoint = obbtPoint;
+                acceptCuts(cuts);
+            } else branchPoint(obbtPoint);
+            obbtPoint = null;
+            return;
+        }
+        if (diagram != null) {
+            if (!diagram.step()) return;
+            counts = reduction.expand(diagram.counts());
+            boolean impossible = diagram.infeasible();
+            diagram.close();
+            diagram = null;
+            if (counts != null) {
+                domainCandidate = true;
+                schedulingWork = 0;
+                scheduling = new CountSchedule<>(model, counts, budget);
+            } else if (impossible) {
+                learnedChoices.add(new CountConflict(current));
+                state = State.DEAD;
+            } else afterBoolean();
             return;
         }
         if (repair != null) {
-            if (!repair.step()) return;
+            long before = budget.threadWork();
+            boolean repaired;
+            try {
+                repaired = repair.step();
+            } finally {
+                repairWork += budget.threadWork() - before;
+            }
+            if (!repaired) return;
             counts = reduction.expand(repair.counts());
             repair.close();
             repair = null;
@@ -383,10 +726,11 @@ final class IntegerCountBranch<K> implements AutoCloseable {
                 repairPoint = null;
                 if (refineSupport()) state = State.SPLIT;
                 else scheduling = new CountSchedule<>(model, counts, budget);
-            } else if (++repairAttempts < 4) {
-                beginRepair();
             } else {
-                branchPoint(repairPoint);
+                repairAttempts = 4;
+                neighborhoodPoint = repairPoint;
+                ExactRational[] local = Arrays.stream(reduction.representatives()).mapToObj(i -> repairPoint[i]).toArray(ExactRational[]::new);
+                neighborhood = new CountNeighborhood(reduction.rows(), reduction.lower(), reduction.upper(), local, budget).pump(repairWork < 262144);
                 repairPoint = null;
             }
             return;
@@ -412,25 +756,25 @@ final class IntegerCountBranch<K> implements AutoCloseable {
                 return;
             }
             linearConstraints.addAll(tightened);
-            reduction = new CountReduction(linearConstraints, lower, upper, budget);
+            reduction = new CountReduction(linearConstraints, lower, upper, budget, auxiliaryMode == 3);
             return;
         }
         if (!compiled) {
             if (!reduction.step()) return;
             compiled = true;
-            preprocessingOnly = reduction.variables() > 64 || reduction.rows().size() > 512;
+            preprocessingOnly = (reduction.variables() > 64 || reduction.rows().size() > 512) &&
+                    !ExactRevisedProgram.extendsDenseAdmission(reduction.variables(), reduction.rows());
             lowerCost = PlanPreference.compiledLowerBound(model, reduction, lower, seeds, budget);
-            if (current.isEmpty() && CountBoolean.preferred(reduction.rows(), reduction.lower(), reduction.upper(), budget)) {
-                earlyBinary = true;
-                beginBoolean();
-                budget.note("count_dispatch", "unit_boolean_first; variables=" + reduction.variables());
-            } else beginCompiledStrategies();
+            if (auxiliaryMode == 1) cdcl = new CountDomainSearch(reduction.rows(), reduction.lower(), reduction.upper(), budget, 131072, CountCdcl.Branching.LEARNING_RATE);
+            else if (auxiliaryMode >= 2) auxiliaryLcg = new CountLcg(reduction.rows(), reduction.lower(), reduction.upper(), budget, 131072);
+            else congruence = new CountCongruence(reduction.rows(), reduction.variables(), budget);
             return;
         }
         if (!linear.step()) return;
         var status = linear.result();
         ExactRational[] point = reducedLinear ? reduction.expand(linear.point()) : linear.point();
-        if (status == ExactLinearProgram.Result.INFEASIBLE && !reducedLinear && !linear.hot()) learnMaterialConflict(linear.certificate());
+        if (status == ExactLinearProgram.Result.INFEASIBLE && !reducedLinear && !linear.hot() && relaxationCuts.isEmpty()) learnMaterialConflict(linear.certificate());
+        if (sharedBasis != null) sharedBasis.close();
         sharedBasis = linear.takeBasis();
         linear.close();
         linear = null;
@@ -440,9 +784,47 @@ final class IntegerCountBranch<K> implements AutoCloseable {
             return;
         }
         if (status != ExactLinearProgram.Result.OPTIMAL) {
-            state = State.UNRESOLVED;
+            if (coverFallback != null) {
+                var previous = coverFallback;
+                coverFallback = null;
+                useRelaxation(previous);
+            } else finishCountSearch();
             return;
         }
+        coverFallback = null;
+        if (current.isEmpty() && coverRounds < 2 && fractionalChoice(point) >= 0) {
+            ExactRational[] local = reducedLinear ? Arrays.stream(reduction.representatives()).mapToObj(i -> point[i]).toArray(ExactRational[]::new) : point;
+            covering = new CountCoverCuts(relaxationRows(), reducedLinear ? reduction.lower() : lower,
+                    reducedLinear ? reduction.upper() : upper, local, budget);
+            coverPoint = point;
+            coverRounds++;
+            return;
+        }
+        useRelaxation(point);
+    }
+
+    private String activeStrategy() {
+        if (verifying != null) return "count_verify";
+        if (assembling != null || program != null) return "count_assemble";
+        if (scheduling != null || supportSearch != null) return "count_schedule";
+        if (matching != null) return "count_mitm";
+        if (binary != null) return "count_boolean";
+        if (cdcl != null) return "count_cdcl";
+        if (auxiliaryLcg != null) return "count_portfolio_lcg";
+        if (linear != null) return "count_lp";
+        if (propagating != null) return "count_bounds";
+        if (separator != null) return "count_separator";
+        if (network != null) return "count_network";
+        if (covering != null || cliques != null || rounding != null) return "count_cuts";
+        if (probing != null || branchProbe != null) return "count_probing";
+        if (neighborhood != null || repair != null || jumping != null) return "count_heuristics";
+        if (recovery != null || scaling != null) return "count_recovery";
+        if (components != null || groups != null || conditioning != null || sourceFace != null) return "count_decompose";
+        if (partition != null || packing != null) return "count_dp";
+        return "count_compile";
+    }
+
+    private void useRelaxation(ExactRational[] point) {
         ExactRational operations = ExactRational.ZERO;
         for (ExactRational value : point) operations = operations.add(value);
         lowerCost = PlanPreference.lowerBound(model, lower, seeds, operations.ceil(), budget);
@@ -455,7 +837,7 @@ final class IntegerCountBranch<K> implements AutoCloseable {
             state = State.SPLIT;
             return;
         }
-        if (current.isEmpty() && fractionalChoice(point) >= 0) {
+        if (current.isEmpty() && repairAttempts < 4 && fractionalChoice(point) >= 0) {
             repairPoint = point;
             beginRepair();
             return;
@@ -463,9 +845,84 @@ final class IntegerCountBranch<K> implements AutoCloseable {
         branchPoint(point);
     }
 
+    private void acceptCuts(List<ExactLinearProgram.Constraint> cuts) {
+        // Small finite or strongly eliminated allocation domains benefit from early tableau cuts.
+        // Keep the original LP point as a separate, resumable repair view.
+        if (cuts.isEmpty() && sharedBasis != null && current.isEmpty() && repairAttempts == 0 &&
+                earlyCutDomain()) {
+            ExactRational[] local = reducedLinear ? Arrays.stream(reduction.representatives()).mapToObj(i -> coverPoint[i]).toArray(ExactRational[]::new) : coverPoint;
+            cuts = CountGomory.separate(sharedBasis, local, budget);
+            if (!cuts.isEmpty()) {
+                if (uncutRepairPoint == null) uncutRepairPoint = coverPoint;
+                gomoryTried = true;
+            }
+        }
+        long bytes = cuts.stream().mapToLong(row -> 192L + 128L * row.terms().size()).sum();
+        if (cuts.isEmpty() || !budget.tryReserve(bytes)) {
+            var point = coverPoint;
+            coverPoint = null;
+            useRelaxation(point);
+        } else {
+            workspace += bytes;
+            relaxationCuts.addAll(cuts);
+            CountMapping mapping = CountMapping.representatives(reduction.representatives());
+            for (var cut : cuts) learnedMaterials.add(reducedLinear ? mapping.row(cut, budget) : cut);
+            coverFallback = coverPoint;
+            coverPoint = null;
+            if (inheritedBasis != null) inheritedBasis.close();
+            inheritedBasis = sharedBasis == null ? null : sharedBasis.retain();
+            inheritedCoordinates = reduction.coordinates();
+            beginLinear();
+        }
+    }
+
+    private boolean earlyCutDomain() {
+        if (reduction.variables() > 64) return false;
+        BigInteger[] low = reduction.lower(), high = reduction.upper();
+        boolean eliminated = 2 * reduction.variables() <= model.recipes.size();
+        for (int i = 0; i < low.length; i++) if (high[i] == null ||
+                !eliminated && high[i].subtract(low[i]).compareTo(BigInteger.valueOf(8)) > 0)
+            return false;
+        return true;
+    }
+
+    private void afterBoolean() {
+        if (earlyBinary) {
+            if (!probed) beginProbing();
+            else beginCompiledStrategies();
+        } else if (preprocessingOnly) finishCountSearch();
+        else beginLinear();
+        earlyBinary = false;
+    }
+
+    private void resumeSpeculativeCandidate() {
+        if (auxiliaryMode != 0) {
+            state = State.UNRESOLVED;
+            return;
+        }
+        if (separatorCandidate) {
+            separatorCandidate = false;
+            conditioning = new CountConditioning(reduction.rows(), reduction.lower(), reduction.upper(), separatorPartial, budget);
+            separatorPartial = null;
+        } else if (domainCandidate) {
+            domainCandidate = false;
+            afterBoolean();
+        } else if (neighborhoodPoint != null) {
+            neighborhoodCandidate = false;
+            var point = neighborhoodPoint;
+            neighborhoodPoint = null;
+            branchPoint(point);
+        } else {
+            jumpCandidate = false;
+            afterJump();
+        }
+    }
+
     private void beginRepair() {
         ExactRational[] reduced = Arrays.stream(reduction.representatives()).mapToObj(i -> repairPoint[i]).toArray(ExactRational[]::new);
-        repair = new CountLatticeRepair(reduction.rows(), reduction.lower(), reduction.upper(), reduced, repairAttempts, budget);
+        ExactRational[] alternative = uncutRepairPoint == null ? null : Arrays.stream(reduction.representatives()).mapToObj(i -> uncutRepairPoint[i]).toArray(ExactRational[]::new);
+        repair = new CountRepairPortfolio(reduction.rows(), reduction.lower(), reduction.upper(), reduced, alternative, budget);
+        uncutRepairPoint = null;
     }
 
     private void beginCompiledStrategies() {
@@ -473,6 +930,35 @@ final class IntegerCountBranch<K> implements AutoCloseable {
         else if (current.isEmpty()) beginGroups();
         else if (preprocessingOnly) state = State.UNRESOLVED;
         else beginLinear();
+    }
+
+    private void dispatchCompiledStrategies() {
+        if (current.isEmpty() && !triedBinary && CountBoolean.preferred(reduction.rows(), reduction.lower(), reduction.upper(), budget)) {
+            earlyBinary = true;
+            beginBoolean();
+            budget.note("count_dispatch", "unit_boolean_first; variables=" + reduction.variables());
+        } else beginCompiledStrategies();
+    }
+
+    private void afterJump() {
+        if (jumpLate) state = State.UNRESOLVED;
+        // Preserve the canonical Boolean search on its preferred unit rows.
+        // Only probe after that cheap attempt fails: valid domain deductions can
+        // otherwise change its branching order before it sees an easy witness.
+        else if (!probed && (triedBinary || !CountBoolean.preferred(reduction.rows(), reduction.lower(), reduction.upper(), budget))) beginProbing();
+        else dispatchCompiledStrategies();
+    }
+
+    private void beginProbing() {
+        probed = true;
+        probing = new CountProbing(reduction.rows(), reduction.lower(), reduction.upper(), budget);
+    }
+
+    private void finishCountSearch() {
+        if (current.isEmpty() && !jumpLate) {
+            jumpLate = true;
+            jumping = new CountJump(reduction.rows(), reduction.lower(), reduction.upper(), budget, 524_288);
+        } else state = State.UNRESOLVED;
     }
 
     private void beginGroups() {
@@ -483,7 +969,7 @@ final class IntegerCountBranch<K> implements AutoCloseable {
         // A local cutoff falls through to other representations, but revisiting
         // the identical rows and bounds would merely repeat the same search.
         if (triedBinary) {
-            if (preprocessingOnly) state = State.UNRESOLVED;
+            if (preprocessingOnly) finishCountSearch();
             else beginLinear();
         } else {
             triedBinary = true;
@@ -492,12 +978,52 @@ final class IntegerCountBranch<K> implements AutoCloseable {
     }
 
     private void branchPoint(ExactRational[] point) {
+        if (!incumbentTried && incumbentCounts != null && reduction != null && fractionalChoice(point) >= 0) {
+            incumbentTried = true;
+            neighborhoodPoint = point;
+            int[] representatives = reduction.representatives();
+            neighborhood = new CountNeighborhood(reduction.rows(), reduction.lower(), reduction.upper(),
+                    Arrays.stream(representatives).mapToObj(i -> point[i]).toArray(ExactRational[]::new), budget)
+                    .incumbent(Arrays.stream(representatives).mapToObj(i -> incumbentCounts[i]).toArray(BigInteger[]::new),
+                            Arrays.stream(reduction.objective(model.objective(true))).map(BigInteger::negate).toArray(BigInteger[]::new));
+            return;
+        }
         int chosen = fractionalChoice(point);
         if (chosen >= 0) {
-            int i = chosen;
-            enqueue(current, bound(i, point[i].floor(), false));
-            enqueue(current, bound(i, point[i].ceil(), true));
-            state = State.SPLIT;
+            // Retain the uncut relaxation for lattice repair and primal
+            // neighborhoods first. An equally valid, stronger relaxation can
+            // put those heuristics on a much harder face of the polytope.
+            if (current.isEmpty() && !gomoryTried && sharedBasis != null && repairWork < 262144) {
+                gomoryTried = true;
+                ExactRational[] local = reducedLinear ? Arrays.stream(reduction.representatives()).mapToObj(i -> point[i]).toArray(ExactRational[]::new) : point;
+                var cuts = CountGomory.separate(sharedBasis, local, budget);
+                if (!cuts.isEmpty()) {
+                    coverPoint = point;
+                    acceptCuts(cuts);
+                    return;
+                }
+            }
+            if (feedbackRegion == null) feedbackRegion = CountBranchProbe.feedback(model, budget);
+            // In small recycle regions inference exposes seed competition;
+            // objective probes often favor a cheaper but unstartable count
+            // vector. Leave the original inference search its opportunity.
+            if (current.isEmpty() && !obbtTried && !feedbackRegion && repairWork < 262144) {
+                obbtTried = true;
+                obbtPoint = point;
+                ExactRational[] local = Arrays.stream(reduction.representatives()).mapToObj(i -> point[i]).toArray(ExactRational[]::new);
+                obbt = new CountObbt(reduction.rows(), reduction.lower(), reduction.upper(), local, budget);
+                return;
+            }
+            if (current.size() <= 3) {
+                int[] representatives = reduction.representatives();
+                int localChoice = 0;
+                while (representatives[localChoice] != chosen) localChoice++;
+                ExactRational[] local = Arrays.stream(representatives).mapToObj(i -> point[i]).toArray(ExactRational[]::new);
+                branchProbePoint = point;
+                branchProbe = new CountBranchProbe(reduction.rows(), reduction.lower(), reduction.upper(), local, localChoice, budget,
+                        feedbackRegion).history(branchHistory, representatives);
+                if (!feedbackRegion) branchProbe.objective(reduction.objective(model.objective(true)));
+            } else splitPoint(point, chosen);
             return;
         }
         counts = Arrays.stream(point).map(ExactRational::numerator).toArray(BigInteger[]::new);
@@ -508,19 +1034,31 @@ final class IntegerCountBranch<K> implements AutoCloseable {
         scheduling = new CountSchedule<>(model, counts, budget);
     }
 
+    private void splitPoint(ExactRational[] point, int chosen) {
+        enqueue(current, bound(chosen, point[chosen].floor(), false));
+        enqueue(current, bound(chosen, point[chosen].ceil(), true));
+        state = State.SPLIT;
+    }
+
     private void beginLinear() {
         // Tiny tableaux are cheap to rebuild. Keep their canonical recipe
         // ordering instead of paying for basis reuse and changing degenerate ties.
         boolean reuse = (model.recipes.size() + 2L) * (model.constraints.size() + 2L) > 256;
         reducedLinear = reuse && reduction.variables() != model.recipes.size();
         linear = new ExactLinearProgram(reducedLinear ? reduction.variables() : model.recipes.size(),
-                reducedLinear ? reduction.rows() : linearConstraints,
+                relaxationRows(),
                 reducedLinear ? reduction.objective(model.objective(true)) : model.objective(true), budget,
                 reuse && reduction.coordinates().equals(inheritedCoordinates) ? inheritedBasis : null, reuse);
         if (inheritedBasis != null) {
             inheritedBasis.close();
             inheritedBasis = null;
         }
+    }
+
+    private List<ExactLinearProgram.Constraint> relaxationRows() {
+        var rows = new ArrayList<>(reducedLinear ? reduction.rows() : linearConstraints);
+        rows.addAll(relaxationCuts);
+        return rows;
     }
 
     private boolean weightedChoices() {
@@ -598,17 +1136,45 @@ final class IntegerCountBranch<K> implements AutoCloseable {
     }
 
     void releaseWorkspace() {
+        if (diophantine != null) diophantine.close();
+        diophantine = null;
         if (repair != null) repair.close();
         repair = null;
         repairPoint = null;
         if (linear != null) linear.close();
+        if (obbt != null) obbt.close();
+        obbt = null;
+        if (diagram != null) diagram.close();
+        diagram = null;
         if (propagating != null) propagating.close();
         if (partition != null) partition.close();
         if (components != null) components.close();
+        if (separator != null) separator.close();
+        if (network != null) network.close();
         if (groups != null) groups.close();
         if (conditioning != null) conditioning.close();
         if (recovery != null) recovery.close();
         if (scaling != null) scaling.close();
+        if (packing != null) packing.close();
+        if (jumping != null) jumping.close();
+        jumping = null;
+        if (probing != null) probing.close();
+        probing = null;
+        if (covering != null) covering.close();
+        if (cliques != null) cliques.close();
+        covering = null;
+        if (rounding != null) rounding.close();
+        rounding = null;
+        if (neighborhood != null) neighborhood.close();
+        neighborhood = null;
+        if (branchProbe != null) branchProbe.close();
+        branchProbe = null;
+        if (cdcl != null) cdcl.close();
+        cdcl = null;
+        branchProbePoint = neighborhoodPoint = null;
+        coverPoint = coverFallback = null;
+        if (congruence != null) congruence.close();
+        if (sourceFace != null) sourceFace.close();
         if (matching != null) matching.close();
         if (binary != null) binary.close();
         if (scheduling != null) scheduling.close();
@@ -690,6 +1256,7 @@ final class IntegerCountBranch<K> implements AutoCloseable {
                 sum = sum.add(point[term.getKey()].multiply(ExactRational.of(term.getValue())));
             }
             if (sum.compareTo(ExactRational.of(row.upper())) > 0) {
+                usedMaterials.add(row);
                 enqueue(current, row);
                 return true;
             }
@@ -795,6 +1362,8 @@ final class IntegerCountBranch<K> implements AutoCloseable {
 
     @Override
     public void close() {
+        if (auxiliaryLcg != null) auxiliaryLcg.close();
+        auxiliaryLcg = null;
         releaseWorkspace();
         if (inheritedBounds != null) {
             inheritedBounds.close();

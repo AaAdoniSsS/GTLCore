@@ -56,16 +56,6 @@ final class CountRecovery<K> implements AutoCloseable {
                 recipe.inputs().keySet().forEach(key -> consumers.computeIfAbsent(key, unused -> new ArrayList<>()).add(recipe));
                 recipe.outputs().keySet().forEach(key -> producers.computeIfAbsent(key, unused -> new ArrayList<>()).add(recipe));
             }
-            // Every start input already reaches its output through the start
-            // recipe. A return path exists exactly when they share an SCC.
-            // Reuse one topology pass instead of a full reachability search
-            // for each private seam of a long recovery chain.
-            var topology = new PlanTopology<>(List.copyOf(compiled.values()));
-            Map<K, Integer> groups = new HashMap<>();
-            for (var node : topology.nodes()) {
-                budget.check();
-                if (node.resource() != null) groups.put(node.resource(), topology.groupOf(node.id()));
-            }
             boolean changed = false;
             // Contract internal production stages before a joint-output return.
             // Otherwise a catalyst with one producer can rotate a whole route
@@ -88,7 +78,11 @@ final class CountRecovery<K> implements AutoCloseable {
                     if (exits.isEmpty() || exits.size() > 16 || exits.stream().anyMatch(exit -> !ordinary(exit) || exit == start ||
                             !compiled.containsKey(exit.id()) || exit.outputs().containsKey(pending)))
                         continue;
-                    if (start.inputs().keySet().stream().noneMatch(input -> Objects.equals(groups.get(input), groups.get(pending)))) continue;
+                    // The verified prefix summary also applies to an acyclic
+                    // private production chain. Requiring a return path here
+                    // left split sources uncompiled and amplified alias choices.
+                    // This optional view still leaves every original phase and
+                    // interleaving available to the caller.
                     var macros = new ArrayList<GraphRecipe<K>>();
                     var programs = new ArrayList<PlanStep>();
                     for (var exit : exits) {

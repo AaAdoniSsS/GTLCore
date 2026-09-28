@@ -42,6 +42,12 @@ final class BackwardCoverability<K> implements AutoCloseable {
     private long memory, expanded;
     private Result result;
     private PlanStep witness;
+    private PdrCoverability<K> pdr;
+    private boolean pdrTried;
+    private ForwardCoverability<K> forward;
+    private boolean forwardTried;
+    private CountInduction<K> induction;
+    private boolean inductionTried;
 
     BackwardCoverability(List<GraphRecipe<K>> recipes, Map<K, BigInteger> stock, Map<K, BigInteger> goals,
                          Set<K> external, Collection<Action<K>> macros, PlanningBudget budget, long allowance) {
@@ -75,6 +81,36 @@ final class BackwardCoverability<K> implements AutoCloseable {
 
     boolean step() {
         if (result != null) return true;
+        if (forward != null) {
+            if (!forward.step()) return false;
+            Result outcome = forward.result();
+            PlanStep path = forward.witness();
+            forward.close();
+            forward = null;
+            if (outcome == Result.UNKNOWN) return finish(Result.UNKNOWN);
+            result = outcome;
+            witness = path;
+            close();
+            return true;
+        }
+        if (pdr != null) {
+            if (!pdr.step()) return false;
+            Result outcome = pdr.result();
+            witness = pdr.witness();
+            pdr.close();
+            pdr = null;
+            if (outcome == Result.UNKNOWN) return finish(Result.UNKNOWN);
+            result = outcome;
+            close();
+            return true;
+        }
+        if (induction != null) {
+            if (!induction.step()) return false;
+            result = induction.result();
+            witness = induction.witness();
+            close();
+            return true;
+        }
         try {
             charge();
             if (!startupDone) return startupStep();
@@ -238,6 +274,20 @@ final class BackwardCoverability<K> implements AutoCloseable {
     }
 
     private boolean finish(Result value) {
+        if (value == Result.UNKNOWN && !forwardTried && keys.size() <= 32 && actions.size() <= 64) {
+            forwardTried = true;
+            forward = new ForwardCoverability<>(recipes, keys, initial, goal, actions, budget, Math.min(8192, allowance / 4));
+            if (forward.result() == null) return false;
+            forward.close();
+            forward = null;
+        }
+        if (value == Result.UNKNOWN && !pdrTried && keys.size() <= 32 && recipes.size() <= 64) {
+            pdrTried = true;
+            pdr = new PdrCoverability<>(recipes, keys, initial, goal, actions, budget, Math.min(16384, allowance / 2));
+            if (pdr.result() == null) return false;
+            pdr.close();
+            pdr = null;
+        }
         if (value == Result.CLOSED && budget.proofJournal() != null) {
             List<List<BigInteger>> inputs = new ArrayList<>(), outputs = new ArrayList<>();
             for (var recipe : recipes) {
@@ -246,6 +296,13 @@ final class BackwardCoverability<K> implements AutoCloseable {
             }
             budget.proofJournal().add(new ExecutionProof.Certificate("coverability:captured_stock_goals", startupVerifying ? ExecutionProof.Kind.STARTUP_BOX : ExecutionProof.Kind.BACKWARD_CLOSURE,
                     initial, goal, inputs, outputs, basis.stream().map(Node::required).toList(), startupVerifying ? unbounded.stream().boxed().collect(java.util.stream.Collectors.toSet()) : Set.of()));
+        }
+        if (value == Result.UNKNOWN && !inductionTried && keys.size() <= 12 && recipes.size() <= 16) {
+            inductionTried = true;
+            induction = new CountInduction<>(recipes, keys, initial, goal, budget, Math.min(65536, allowance));
+            if (induction.result() == null) return false;
+            induction.close();
+            induction = null;
         }
         result = value;
         budget.note("backward_cover", "result=" + value + "; antichain=" + basis.size() + "; expanded=" + expanded + "; work=" + (budget.nodes() - started));
@@ -263,6 +320,12 @@ final class BackwardCoverability<K> implements AutoCloseable {
 
     @Override
     public void close() {
+        if (induction != null) induction.close();
+        induction = null;
+        if (forward != null) forward.close();
+        forward = null;
+        if (pdr != null) pdr.close();
+        pdr = null;
         basis.clear();
         pending.clear();
         active = null;

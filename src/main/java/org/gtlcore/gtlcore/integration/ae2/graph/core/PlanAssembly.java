@@ -39,7 +39,7 @@ final class PlanAssembly<K> {
         this.target = target;
         this.amount = amount;
         this.preserve = preserve;
-        this.steps = steps;
+        this.steps = PlanEGraph.optimize(steps, budget);
         this.recipes = recipes;
         this.seeds = seeds;
         this.stock = stock;
@@ -48,8 +48,8 @@ final class PlanAssembly<K> {
         this.budget = budget;
         this.started = started;
         this.catalystPolicy = catalystPolicy;
-        computation = new SummaryComputation<>(steps, recipes, budget);
-        counting = new PlanCountComputation(steps);
+        computation = new SummaryComputation<>(this.steps, recipes, budget);
+        counting = new PlanCountComputation(this.steps);
     }
 
     boolean step() {

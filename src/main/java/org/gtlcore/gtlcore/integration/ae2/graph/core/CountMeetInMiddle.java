@@ -60,7 +60,8 @@ final class CountMeetInMiddle implements AutoCloseable {
     private final PlanningBudget budget;
     private final BigInteger[] lower, upper;
     private final List<Domain> domains = new ArrayList<>();
-    private final long allowance;
+    private long allowance;
+    private boolean costProbe;
     private BigInteger[][][] coefficients;
     private BigInteger[] goalLow, goalHigh, sum, counts;
     private Enumeration enumeratingLeft, enumeratingRight;
@@ -197,7 +198,7 @@ final class CountMeetInMiddle implements AutoCloseable {
             return false;
         } catch (LocalLimit limit) {
             counts = null;
-            return finish(false, "work_limit");
+            return finish(false, costProbe ? "estimated_cost_probe_limit" : "work_limit");
         }
     }
 
@@ -350,6 +351,18 @@ final class CountMeetInMiddle implements AutoCloseable {
         if (dims > 128) return finish(false, "dimension_workspace_limit");
         for (var dimension : dimensions) for (BigInteger value : dimension) bits = Math.max(bits, value.abs().bitLength());
         entryBytes = 160L + dims * (80L + (bits + 31L) / 8);
+        long estimatedBytes = entryBytes * leftStates;
+        long estimatedWork = ((long) leftStates + rightStates) * dims;
+        // Enumeration may prune or merge signatures, so retain a small scout
+        // even when the unpruned table is too expensive. Do not spend most of
+        // an order discovering an already predictable memory/work overrun.
+        if (estimatedBytes / 2 > budget.availableBytes() && estimatedWork > allowance) {
+            allowance = Math.min(allowance, work + 65536);
+            costProbe = true;
+        }
+        budget.note("count_match_admission", "left=" + leftStates + "; right=" + rightStates +
+                "; dimensions=" + dims + "; coefficient_bits=" + bits + "; estimated_bytes=" + estimatedBytes +
+                "; estimated_work=" + estimatedWork + "; allowance=" + allowance + "; scout=" + costProbe);
         long bytes = 48L * dims * width + 256L * dims * domains.size();
         if (!budget.tryReserve(bytes)) return finish(false, "memory_limit");
         memory += bytes;

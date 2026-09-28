@@ -38,6 +38,8 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
     private IntegerCountSearch<K> parkedCounts;
     private long countPausedAt;
     private int countResumePhase = -1;
+    private int allocationResumePhase;
+    private long allocationScoutStarted, allocationScoutAllowance;
     private OrderProofs<K> proofs;
     private boolean proofAttempted;
     private SourceExplanation<K> explaining;
@@ -118,15 +120,19 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
     private boolean step(PlanningScheduler.Slice slice) {
         try {
             budget.check();
-            if (parkedCounts != null && (phase == 0 || phase == 5 || phase == 6 || phase == 9) &&
-                    (budget.nodes() - countPausedAt >= 32_768 || phase == 0 && pending.isEmpty() || phase == 9)) {
+            // A scaled subproblem can finish without the original expensive
+            // large-number relaxation. Give that retained calculation a turn;
+            // ordinary count branches still need the quantity precheck first.
+            if (parkedCounts != null && (phase == 0 || phase == 5 || phase == 6 || phase == 9 ||
+                    phase == 12 && quantities != null && quantities.readyForHeavyAnalysis() && parkedCounts.hasScaledProgress()) &&
+                    (budget.nodes() - countPausedAt >= (phase == 6 || phase == 12 ? 1_048_576 : 32_768) || phase == 0 && pending.isEmpty() || phase == 9)) {
                 countResumePhase = phase;
                 countSearch = parkedCounts;
                 parkedCounts = null;
                 countSearch.resume();
                 phase = 14;
             }
-            if (quantityDeferred && phase != 4 && phase != 8 && phase != 10 &&
+            if (quantityDeferred && phase != 4 && phase != 8 && phase != 10 && phase != 18 &&
                     !(phase == 3 && candidate.feasible()) &&
                     (phase == 9 || budget.nodes() - quickSearchStarted >= quickSearchAllowance)) {
                 if (!countAttempted && quantities.hasLargeChoices()) {
@@ -174,6 +180,10 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
                     // One bad source must not send a large DAG straight into
                     // per-batch allocation search. Mixed sources still get their
                     // own attempt before enumerating the remaining combinations.
+                    if (allocating != null && (pending.isEmpty() || seen.size() >= 8)) {
+                        phase = 6;
+                        return false;
+                    }
                     if (!allocationAttempted && best != null &&
                             (pending.isEmpty() || seen.size() >= 8) && !provenMissing(best)) {
                         allocationAttempted = true;
@@ -416,6 +426,7 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
                             countBeforeQuantity = false;
                             phase = 12;
                         } else phase = allocating == null ? 0 : 6;
+                        if (!allocationAttempted) scoutAllocation();
                     }
                 }
                 case 15 -> startCountSearch();
@@ -435,6 +446,22 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
                     discardQuantityAnalysis();
                     budget.phase(PlanningBudget.Phase.COMPLETE);
                     phase = 8;
+                }
+                case 18 -> {
+                    if (budget.nodes() - allocationScoutStarted < allocationScoutAllowance) {
+                        if (!allocating.step()) return false;
+                        var allocated = allocating.result();
+                        allocating = null;
+                        if (allocated != null) {
+                            budget.note("allocation_scout", "witness; work=" + (budget.nodes() - allocationScoutStarted));
+                            candidate = allocated;
+                            verifying = new PlanVerification<>(candidate, budget);
+                            phase = 4;
+                            return false;
+                        }
+                    }
+                    budget.note("allocation_scout", "handoff; work=" + (budget.nodes() - allocationScoutStarted) + "; frontier_retained=" + (allocating != null));
+                    phase = allocationResumePhase == 6 && allocating == null ? 0 : allocationResumePhase;
                 }
                 default -> {
                     return true;
@@ -473,6 +500,20 @@ public final class GraphPlanningWork<K> implements PlanningScheduler.Work<GraphP
         countSearch = new IntegerCountSearch<>(compiler, target, amount, stock, requiredSeeds, external,
                 excluded, preserve, forceCraft, budget, started, proofs);
         phase = 14;
+    }
+
+    private void scoutAllocation() {
+        // An unfinished count strategy must not repeatedly regain the budget
+        // before inventory search has explored its own executable prefixes.
+        // Keep both frontiers; all work remains charged to the same order.
+        allocationAttempted = true;
+        allocating = new AllocationSearch<>(compiler, target, amount, stock, external, requiredSeeds,
+                preserve, forceCraft, excluded, budget, started).proofs(proofs);
+        allocationResumePhase = phase;
+        allocationScoutStarted = budget.nodes();
+        allocationScoutAllowance = Math.min(1_048_576, budget.remainingWork() / 8);
+        budget.note("allocation_scout", "start; allowance=" + allocationScoutAllowance);
+        phase = 18;
     }
 
     private void beginMissingPreview() {

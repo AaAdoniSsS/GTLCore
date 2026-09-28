@@ -15,7 +15,7 @@ final class CountConflictPool implements AutoCloseable {
 
     private final Map<CountConflict, Entry> entries = new LinkedHashMap<>();
     private final PlanningBudget budget;
-    private long memory, learned, reused, evicted, clock;
+    private long memory, learned, reused, evicted, clock, revision;
 
     CountConflictPool(PlanningBudget budget) {
         this.budget = budget;
@@ -38,6 +38,7 @@ final class CountConflictPool implements AutoCloseable {
                 evicted++;
             }
             entries.put(conflict, new Entry());
+            revision++;
             learned++;
         }
     }
@@ -62,6 +63,10 @@ final class CountConflictPool implements AutoCloseable {
 
     boolean isEmpty() {
         return entries.isEmpty();
+    }
+
+    long revision() {
+        return revision;
     }
 
     void report() {

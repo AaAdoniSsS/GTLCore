@@ -299,7 +299,7 @@ final class AllocationSearch<K> {
         // objective. A catalyst-returning productive recipe has nonzero other keys.
         if (summary.delta().values().stream().allMatch(value -> value.signum() == 0)) return 0;
         bound = bound.min(useful.max(BigInteger.ONE));
-        if (proofs != null && proofs.hasCountConflicts())
+        if (proofs != null && proofs.hasPrefixConflicts())
             bound = proofs.maximumAdditional(cumulativeCounts(), actionCounts.get(recipes.get(index).id()), bound);
         return ExactAmounts.capped(bound);
     }
@@ -425,7 +425,7 @@ final class AllocationSearch<K> {
     }
 
     private boolean backjump() {
-        if (proofs == null || !proofs.hasCountConflicts()) return false;
+        if (proofs == null || !proofs.hasPrefixConflicts()) return false;
         Map<String, BigInteger> counts = cumulativeCounts();
         if (!proofs.rejectedPrefix(counts)) return false;
         int firstForbidden = path.size();
@@ -504,7 +504,7 @@ final class AllocationSearch<K> {
         Candidate(PlanStep witness, Map<String, GraphRecipe<K>> relevant, K target, long amount, Map<K, Long> stock,
                   Map<K, Long> requiredSeeds, Set<K> external, boolean preserve, boolean force, boolean preview,
                   PlanningBudget budget, long started) {
-            this.witness = witness;
+            this.witness = PlanEGraph.optimize(witness, budget);
             this.relevant = relevant;
             this.target = target;
             this.amount = amount;

@@ -35,6 +35,8 @@ final class CountSchedule<K> implements AutoCloseable {
     private long orderedAway;
     private Result result;
     private CountRecurrence<K> recurrence;
+    private CountBoundedSchedule<K> bounded;
+    private boolean boundedTried;
     private long memory;
 
     CountSchedule(RecipeCountModel<K> model, BigInteger[] counts, PlanningBudget budget) {
@@ -67,6 +69,14 @@ final class CountSchedule<K> implements AutoCloseable {
     boolean step() {
         budget.check();
         if (result != null) return true;
+        if (bounded != null) {
+            if (!bounded.step()) return false;
+            witness = bounded.witness();
+            Result outcome = bounded.result();
+            bounded.close();
+            bounded = null;
+            return finish(outcome);
+        }
         if (!startupChecked) {
             startupChecked = true;
             if (blockedStartup()) return finish(Result.DEAD);
@@ -370,6 +380,16 @@ final class CountSchedule<K> implements AutoCloseable {
     }
 
     private boolean finish(Result value) {
+        if (value == Result.UNKNOWN && !boundedTried) {
+            boundedTried = true;
+            bounded = new CountBoundedSchedule<>(model, original, budget);
+            if (bounded.result() == null) {
+                result = null;
+                return false;
+            }
+            bounded.close();
+            bounded = null;
+        }
         if (exact) budget.note("count_schedule_por", "components=" + independentComponents +
                 "; states=" + seen.size() + "; sleep_labels=" + labels + "; independent_interleavings_skipped=" + orderedAway + "; result=" + value);
         result = value;
@@ -379,6 +399,10 @@ final class CountSchedule<K> implements AutoCloseable {
 
     @Override
     public void close() {
+        if (bounded != null) {
+            bounded.close();
+            bounded = null;
+        }
         if (summarizing != null) summarizing.close();
         summarizing = null;
         if (recurrence != null) {

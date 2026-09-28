@@ -5,6 +5,7 @@ import java.lang.management.ThreadMXBean;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -60,6 +61,7 @@ public final class PlanningBudget {
     private final AtomicLong activeWorkers = new AtomicLong(), peakWorkers = new AtomicLong(), maxSlice = new AtomicLong();
     private volatile boolean measuring;
     private volatile CountProof.Journal proofJournal;
+    private final Map<String, long[]> strategyTotals = new LinkedHashMap<>();
 
     /** Optional bounded certificate export; normal planning does not allocate proof archives. */
     public void proofJournal(CountProof.Journal journal) {
@@ -108,6 +110,15 @@ public final class PlanningBudget {
         checkpoint();
         if (countThreadWork) THREAD_NODES.get()[0]++;
         if (nodes.incrementAndGet() > maxNodes) throw exhausted(Limit.SEARCH_LIMIT, "cumulative_work=" + nodes.get() + "/" + maxNodes);
+    }
+
+    /** Account bounded independent checker work without a second per-unit loop. */
+    void charge(long units) {
+        if (units < 0) throw new IllegalArgumentException("Negative work");
+        checkpoint();
+        if (countThreadWork) THREAD_NODES.get()[0] += units;
+        long total = nodes.addAndGet(units);
+        if (total < 0 || total > maxNodes) throw exhausted(Limit.SEARCH_LIMIT, "cumulative_work=" + total + "/" + maxNodes);
     }
 
     /** Per-thread accounting prevents concurrent branches charging one another's work. */
@@ -189,6 +200,10 @@ public final class PlanningBudget {
         return Math.max(0, maxNodes - nodes.get());
     }
 
+    long availableBytes() {
+        return Math.max(0, maxBytes - reservedBytes.get());
+    }
+
     public long reservedBytes() {
         return reservedBytes.get();
     }
@@ -213,6 +228,25 @@ public final class PlanningBudget {
         measuring = true;
     }
 
+    boolean metricsEnabled() {
+        return measuring;
+    }
+
+    /** Worker-local charged work, not changes to another concurrent branch's counter. */
+    synchronized void strategy(String name, long work, long nanos) {
+        if (!measuring) return;
+        long[] totals = strategyTotals.computeIfAbsent(name, ignored -> new long[3]);
+        totals[0] += work;
+        totals[1] += nanos;
+        totals[2]++;
+    }
+
+    private synchronized Map<String, StrategyMetrics> strategies() {
+        Map<String, StrategyMetrics> result = new LinkedHashMap<>();
+        strategyTotals.forEach((name, totals) -> result.put(name, new StrategyMetrics(totals[0], totals[1], totals[2])));
+        return Map.copyOf(result);
+    }
+
     public WorkScope work(Phase initial) {
         if (!measuring) return null;
         if (currentScope.get() != null) throw new IllegalStateException("Nested planning timing scope");
@@ -232,11 +266,13 @@ public final class PlanningBudget {
             wall.put(value, phaseNanos.get(value.ordinal()));
             cpu.put(value, supported ? phaseCpuNanos.get(value.ordinal()) : -1L);
         }
-        return new Metrics(Map.copyOf(wall), Map.copyOf(cpu), peakWorkers.get(), maxSlice.get(), peakBytes());
+        return new Metrics(Map.copyOf(wall), Map.copyOf(cpu), peakWorkers.get(), maxSlice.get(), peakBytes(), strategies());
     }
 
+    public record StrategyMetrics(long chargedWork, long activeNanos, long steps) {}
+
     public record Metrics(Map<Phase, Long> activeNanos, Map<Phase, Long> cpuNanos, long peakActiveWorkers,
-                          long maxWorkSliceNanos, long peakReservedBytes) {}
+                          long maxWorkSliceNanos, long peakReservedBytes, Map<String, StrategyMetrics> strategies) {}
 
     public final class WorkScope implements AutoCloseable {
 

@@ -12,6 +12,8 @@ final class OrderProofs<K> implements AutoCloseable {
     private final List<Map<K, Integer>> sourceCores = new ArrayList<>();
     private final Map<String, Integer> ids = new HashMap<>();
     private long jumps, imported, propagated, memory;
+    private long prefixRevision = -1;
+    private List<CountConflict> prefixConflicts = List.of();
 
     OrderProofs(RecipeCountModel<K> model, PlanningBudget budget) {
         this.budget = budget;
@@ -79,7 +81,7 @@ final class OrderProofs<K> implements AutoCloseable {
         if (model == null) return false;
         BigInteger[] lower = new BigInteger[model.recipes.size()], upper = new BigInteger[lower.length];
         for (int i = 0; i < lower.length; i++) lower[i] = counts.getOrDefault(model.recipes.get(i).id(), BigInteger.ZERO);
-        for (var conflict : conflicts.snapshot()) if (conflict.impliedBy(lower, upper, budget)) {
+        for (var conflict : prefixConflicts()) if (conflict.impliedBy(lower, upper, budget)) {
             conflicts.used(List.of(conflict));
             return true;
         }
@@ -90,6 +92,23 @@ final class OrderProofs<K> implements AutoCloseable {
         return model != null && !conflicts.isEmpty();
     }
 
+    boolean hasPrefixConflicts() {
+        return model != null && !prefixConflicts().isEmpty();
+    }
+
+    private List<CountConflict> prefixConflicts() {
+        if (prefixRevision != conflicts.revision()) {
+            // A prefix has lower counts, but no upper bounds on future runs.
+            // An assumption with a positive coefficient cannot be implied.
+            // Negating such an unresolved assumption also cannot bound a
+            // monotone prefix. Keep it in the general pool, not this hot path.
+            prefixConflicts = conflicts.snapshot().stream().filter(conflict -> conflict.assumptions().stream()
+                    .allMatch(row -> row.terms().values().stream().allMatch(value -> value.signum() <= 0))).toList();
+            prefixRevision = conflicts.revision();
+        }
+        return prefixConflicts;
+    }
+
     /** Propagate a learned clause before allocation creates a forbidden batch. */
     BigInteger maximumAdditional(Map<String, BigInteger> counts, String recipe, BigInteger maximum) {
         return maximumAdditional(counts, Map.of(recipe, BigInteger.ONE), maximum);
@@ -97,10 +116,10 @@ final class OrderProofs<K> implements AutoCloseable {
 
     /** A compiled block uses the same recipe coordinates as every other strategy. */
     BigInteger maximumAdditional(Map<String, BigInteger> counts, Map<String, BigInteger> block, BigInteger maximum) {
-        if (!hasCountConflicts()) return maximum;
+        if (!hasPrefixConflicts()) return maximum;
         BigInteger[] lower = new BigInteger[model.recipes.size()], upper = new BigInteger[lower.length];
         for (int i = 0; i < lower.length; i++) lower[i] = counts.getOrDefault(model.recipes.get(i).id(), BigInteger.ZERO);
-        for (var conflict : conflicts.snapshot()) {
+        for (var conflict : prefixConflicts()) {
             var implication = conflict.propagate(lower, upper, budget);
             if (implication == null) continue;
             if (implication.row() == null) return BigInteger.ZERO;

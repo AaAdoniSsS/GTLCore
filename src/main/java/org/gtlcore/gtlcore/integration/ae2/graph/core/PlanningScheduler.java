@@ -177,6 +177,34 @@ public final class PlanningScheduler implements AutoCloseable {
             return CompletableFuture.allOf(children.toArray(CompletableFuture[]::new))
                     .thenApply(ignored -> children.stream().map(CompletableFuture::join).toList());
         }
+
+        /** Workers claim bounded continuations from the same order queue; no nested pools or blocking joins. */
+        public <R> CompletableFuture<List<R>> forkStealing(PlanningBudget.Phase phase, List<? extends Supplier<R>> partitions) {
+            if (partitions.size() <= workers) return fork(phase, partitions);
+            if (partitions.size() > 2 * workers) throw new IllegalArgumentException("Too many resident continuations");
+            var next = new AtomicInteger();
+            var outputs = new java.util.concurrent.atomic.AtomicReferenceArray<R>(partitions.size());
+            var failure = new java.util.concurrent.atomic.AtomicReference<Throwable>();
+            List<Supplier<Boolean>> runners = new ArrayList<>();
+            for (int worker = 0; worker < workers; worker++) runners.add(() -> {
+                int id;
+                while ((id = next.getAndIncrement()) < partitions.size()) {
+                    try {
+                        owner.budget.checkpoint();
+                        outputs.set(id, partitions.get(id).get());
+                    } catch (Throwable stopped) {
+                        failure.compareAndSet(null, stopped);
+                    }
+                }
+                return true;
+            });
+            return fork(phase, runners).thenApply(ignored -> {
+                if (failure.get() != null) throw new java.util.concurrent.CompletionException(failure.get());
+                List<R> values = new ArrayList<>();
+                for (int id = 0; id < partitions.size(); id++) values.add(outputs.get(id));
+                return List.copyOf(values);
+            });
+        }
     }
 
     private long enter() {

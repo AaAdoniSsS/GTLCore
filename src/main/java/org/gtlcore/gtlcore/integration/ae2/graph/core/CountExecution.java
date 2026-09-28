@@ -15,6 +15,7 @@ final class CountExecution<K> implements AutoCloseable {
     private final List<Pool<K>> pools = new ArrayList<>();
     private final PlanningBudget budget;
     private long memory;
+    private boolean separated;
 
     CountExecution(RecipeCountModel<K> model, PlanningBudget budget) {
         this.budget = budget;
@@ -40,9 +41,63 @@ final class CountExecution<K> implements AutoCloseable {
             if (keys.size() > 2 && keys.size() <= 16) for (K omitted : keys) {
                 if (!compile(model, keys.stream().filter(key -> !key.equals(omitted)).toList())) return;
             }
+            compileFeedbackPools(model, keys);
         } catch (RuntimeException | Error failure) {
             close();
             throw failure;
+        }
+    }
+
+    /**
+     * Intermediate catalyst forms need not fit in the former sixteen-key
+     * complement enumeration. SCCs only suggest pools; the first/last-firing
+     * inequality is then rebuilt from ALL original recipes, including exits
+     * and optional replenishment. No SCC membership is a seed requirement.
+     */
+    private void compileFeedbackPools(RecipeCountModel<K> model, List<K> keys) {
+        if (keys.size() < 3 || keys.size() > 192 || model.recipes.size() > 256) return;
+        long started = budget.threadWork(), allowance = Math.min(32768, budget.remainingWork() / 32);
+        if (allowance < 2048) return;
+        long bytes = 1024 + 256L * keys.size() + 8L * keys.size() * ((keys.size() + 63) / 64);
+        if (!budget.tryReserve(bytes)) return;
+        try {
+            Map<K, Integer> ids = new HashMap<>();
+            BitSet[] reachable = new BitSet[keys.size()];
+            for (int i = 0; i < keys.size(); i++) {
+                ids.put(keys.get(i), i);
+                reachable[i] = new BitSet();
+            }
+            for (var recipe : model.recipes) for (K input : recipe.inputs().keySet()) for (K output : recipe.outputs().keySet()) {
+                budget.check();
+                if (budget.threadWork() - started > allowance) return;
+                Integer a = ids.get(input), b = ids.get(output);
+                if (a != null && b != null) reachable[a].set(b);
+            }
+            for (int through = 0; through < keys.size(); through++) for (int from = 0; from < keys.size(); from++) {
+                budget.check();
+                if (budget.threadWork() - started > allowance) return;
+                if (reachable[from].get(through)) reachable[from].or(reachable[through]);
+            }
+            BitSet grouped = new BitSet();
+            int added = 0;
+            for (int first = 0; first < keys.size(); first++) if (!grouped.get(first)) {
+                List<K> members = new ArrayList<>();
+                for (int next = reachable[first].nextSetBit(0); next >= 0; next = reachable[first].nextSetBit(next + 1)) {
+                    budget.check();
+                    if (reachable[next].get(first)) {
+                        members.add(keys.get(next));
+                        grouped.set(next);
+                    }
+                }
+                if (members.size() < 2 || members.size() > 64 || members.size() == keys.size()) continue;
+                if (budget.threadWork() - started + (long) members.size() * model.recipes.size() > allowance) return;
+                int before = pools.size();
+                if (!compile(model, members)) return;
+                added += pools.size() - before;
+            }
+            if (added > 0) budget.note("count_startup_pools", "feedback_pools=" + added + "; all_sources_checked; work=" + (budget.threadWork() - started));
+        } finally {
+            budget.release(bytes);
         }
     }
 
@@ -83,13 +138,13 @@ final class CountExecution<K> implements AutoCloseable {
         return new Proof<>(use.recipe(), pool.materials(), use.delta().signum() < 0, guard);
     }
 
-    List<Proof<K>> proofs() {
+    synchronized List<Proof<K>> proofs() {
         var result = new ArrayList<Proof<K>>();
         for (var pool : pools) for (var use : pool.uses()) result.add(proof(pool, use));
         return List.copyOf(result);
     }
 
-    CountGuard violated(ExactRational[] point) {
+    synchronized CountGuard violated(ExactRational[] point) {
         for (var pool : pools) {
             ExactRational funded = ExactRational.of(pool.stock());
             for (var gain : pool.gains().entrySet()) {
@@ -111,8 +166,18 @@ final class CountExecution<K> implements AutoCloseable {
         return null;
     }
 
+    /** Difficult scheduling can request richer place sets without charging every easy order. */
+    synchronized void refine(RecipeCountModel<K> model) {
+        if (separated || model.recipes.stream().anyMatch(GraphRecipe::batchSensitiveInputs)) return;
+        separated = true;
+        for (var pool : CountPlaceSets.separate(model, budget)) {
+            if (pools.stream().anyMatch(old -> new HashSet<>(old.materials()).equals(new HashSet<>(pool)))) continue;
+            if (!compile(model, pool)) break;
+        }
+    }
+
     @Override
-    public void close() {
+    public synchronized void close() {
         budget.release(memory);
         memory = 0;
     }

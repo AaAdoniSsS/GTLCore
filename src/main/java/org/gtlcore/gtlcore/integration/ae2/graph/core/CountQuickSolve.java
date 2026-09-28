@@ -15,10 +15,18 @@ final class CountQuickSolve implements AutoCloseable {
     private CountReduction reduction;
     private CountPartition partition;
     private CountComponents components;
+    private CountSeparator separator;
+    private CountNetwork network;
     private CountMeetInMiddle matching;
     private CountBoolean binary;
+    private CountDomainSearch domainSearch;
+    private CountDecisionDiagram diagram;
     private ExactLinearProgram linear;
     private CountLatticeRepair repair;
+    private CountDiophantine diophantine;
+    private CountCongruence congruence;
+    private boolean congruenceAttempted;
+    private boolean equationAttempted;
     private ExactRational[] point;
     private BigInteger[] counts;
     private int phase, attempts;
@@ -26,6 +34,37 @@ final class CountQuickSolve implements AutoCloseable {
     private boolean trial;
     private long memory;
     private final List<CountConflict> learned = new ArrayList<>();
+
+    /** Optional exact-demand faces; extra raw stock need not be spent. */
+    static CountQuickSolve sourceFace(List<ExactLinearProgram.Constraint> rows, BigInteger[] lower,
+                                      BigInteger[] upper, PlanningBudget budget, boolean upperFace) {
+        if (lower.length > 512 || rows.size() > 1024) return null;
+        Map<Map<Integer, BigInteger>, BigInteger> known = new HashMap<>();
+        for (var row : rows) known.merge(row.terms(), row.upper(), BigInteger::min);
+        List<ExactLinearProgram.Constraint> candidate = new ArrayList<>(rows);
+        BitSet used = new BitSet();
+        for (var row : rows) {
+            budget.check();
+            if (row.terms().size() < 2 || row.terms().size() > 8 || row.upper().signum() >= 0 ||
+                    row.terms().entrySet().stream().anyMatch(e -> !e.getValue().equals(BigInteger.ONE.negate()) || used.get(e.getKey())) ||
+                    row.terms().keySet().stream().noneMatch(id -> upper[id] != null && upper[id].subtract(lower[id]).compareTo(BigInteger.ONE) > 0))
+                continue;
+            Map<Integer, BigInteger> reverse = new LinkedHashMap<>();
+            row.terms().keySet().forEach(id -> reverse.put(id, BigInteger.ONE));
+            BigInteger existing = known.get(reverse), bound = row.upper().negate();
+            if (existing != null && existing.compareTo(bound) <= 0) continue;
+            if (upperFace) {
+                if (existing == null) continue;
+                candidate.add(new ExactLinearProgram.Constraint(row.terms(), existing.negate()));
+            } else candidate.add(new ExactLinearProgram.Constraint(reverse, bound));
+            row.terms().keySet().forEach(used::set);
+        }
+        if (candidate.size() == rows.size()) return null;
+        var solving = new CountQuickSolve(candidate, lower, upper, budget, false, true, 65536);
+        solving.trial = true;
+        budget.note("count_source_face", "candidate_equalities=" + (candidate.size() - rows.size()) + "; upper=" + upperFace + "; original_domain_retained");
+        return solving;
+    }
 
     CountQuickSolve(List<ExactLinearProgram.Constraint> rows, BigInteger[] lower, BigInteger[] upper, PlanningBudget budget) {
         this(rows, lower, upper, budget, false);
@@ -94,6 +133,24 @@ final class CountQuickSolve implements AutoCloseable {
         }
         if (phase == 1) {
             if (!reduction.step()) return false;
+            if (!congruenceAttempted) {
+                if (congruence == null) congruence = new CountCongruence(reduction.rows(), reduction.variables(), budget);
+                if (!congruence.step()) return false;
+                boolean impossible = congruence.infeasible();
+                congruence.close();
+                congruence = null;
+                congruenceAttempted = true;
+                if (impossible) return finish(null, true);
+            }
+            if (!equationAttempted) {
+                if (diophantine == null) diophantine = new CountDiophantine(reduction.rows(), reduction.lower(), reduction.upper(), budget);
+                if (!diophantine.step()) return false;
+                var value = diophantine.counts();
+                diophantine.close();
+                diophantine = null;
+                equationAttempted = true;
+                if (value != null) return finish(value, false);
+            }
             if (factor) {
                 if (components == null) components = new CountComponents(reduction.rows(), reduction.lower(), reduction.upper(), budget);
                 if (!components.step()) return false;
@@ -104,8 +161,28 @@ final class CountQuickSolve implements AutoCloseable {
                 components = null;
                 if (value != null || impossible) return finish(value, impossible);
             }
+            separator = new CountSeparator(reduction.rows(), reduction.lower(), reduction.upper(), budget);
+            phase = 8;
+        }
+        if (phase == 8) {
+            if (!separator.step()) return false;
+            var value = separator.counts();
+            boolean impossible = separator.infeasible();
+            separator.close();
+            separator = null;
+            if (value != null || impossible) return finish(value, impossible);
+            network = new CountNetwork(reduction.rows(), reduction.lower(), reduction.upper(), budget);
+            phase = 9;
+        }
+        if (phase == 9) {
+            if (!network.step()) return false;
+            var value = network.counts();
+            boolean impossible = network.infeasible();
+            network.close();
+            network = null;
+            if (value != null || impossible) return finish(value, impossible);
             partition = new CountPartition(reduction.rows(), reduction.lower(), reduction.upper(), budget);
-            phase++;
+            phase = 2;
         }
         if (phase == 2) {
             if (!partition.step()) return false;
@@ -133,14 +210,20 @@ final class CountQuickSolve implements AutoCloseable {
             phase++;
         }
         if (phase == 4) {
-            if (!binary.step()) return false;
-            var value = binary.counts();
-            boolean impossible = binary.infeasible();
-            if (!trial) memory += CountMapping.retain(learned, CountMapping.representatives(reduction.representatives()).conflicts(binary.learnedConflicts(), budget), budget);
-            binary.close();
-            binary = null;
-            if (value != null || impossible) return finish(value, impossible);
-            if (reduction.variables() > 48 || reduction.rows().size() > 192) return finish(null, false);
+            if (binary != null) {
+                if (!binary.step()) return false;
+                var value = binary.counts();
+                boolean impossible = binary.infeasible();
+                if (!trial) memory += CountMapping.retain(learned, CountMapping.representatives(reduction.representatives()).conflicts(binary.learnedConflicts(), budget), budget);
+                binary.close();
+                binary = null;
+                if (value != null || impossible) return finish(value, impossible);
+            }
+            if ((reduction.variables() > 48 || reduction.rows().size() > 192) &&
+                    !ExactRevisedProgram.extendsDenseAdmission(reduction.variables(), reduction.rows())) {
+                phase = 7;
+                return false;
+            }
             BigInteger[] objective = new BigInteger[reduction.variables()];
             Arrays.fill(objective, BigInteger.ONE.negate());
             linear = new ExactLinearProgram(objective.length, reduction.rows(), objective, budget);
@@ -152,17 +235,43 @@ final class CountQuickSolve implements AutoCloseable {
             point = linear.point();
             linear.close();
             linear = null;
-            if (status != ExactLinearProgram.Result.OPTIMAL) return finish(null, status == ExactLinearProgram.Result.INFEASIBLE);
+            if (status == ExactLinearProgram.Result.INFEASIBLE) return finish(null, true);
+            if (status != ExactLinearProgram.Result.OPTIMAL) {
+                phase = 7;
+                return false;
+            }
             if (Arrays.stream(point).allMatch(ExactRational::integral))
                 return finish(Arrays.stream(point).map(ExactRational::numerator).toArray(BigInteger[]::new), false);
             phase++;
+        }
+        if (phase == 7) {
+            if (domainSearch == null) domainSearch = new CountDomainSearch(reduction.rows(), reduction.lower(), reduction.upper(), budget, 65536);
+            if (!domainSearch.step()) return false;
+            var value = domainSearch.counts();
+            boolean impossible = domainSearch.infeasible();
+            if (!trial) memory += CountMapping.retain(learned, CountMapping.representatives(reduction.representatives()).conflicts(domainSearch.learnedConflicts(), budget), budget);
+            domainSearch.close();
+            domainSearch = null;
+            if (value != null || impossible) return finish(value, impossible);
+            diagram = new CountDecisionDiagram(reduction.rows(), reduction.lower(), reduction.upper(), budget, 32768);
+            phase = 10;
+            return false;
+        }
+        if (phase == 10) {
+            if (!diagram.step()) return false;
+            var value = diagram.counts();
+            boolean impossible = diagram.infeasible();
+            diagram.close();
+            diagram = null;
+            return finish(value, impossible);
         }
         if (repair == null) repair = new CountLatticeRepair(reduction.rows(), reduction.lower(), reduction.upper(), point, attempts, budget);
         if (!repair.step()) return false;
         var value = repair.counts();
         repair.close();
         repair = null;
-        if (value != null || ++attempts >= 4) return finish(value, false);
+        if (value != null) return finish(value, false);
+        if (++attempts >= 4) phase = 7;
         return false;
     }
 
@@ -187,14 +296,20 @@ final class CountQuickSolve implements AutoCloseable {
 
     @Override
     public void close() {
+        if (diophantine != null) diophantine.close();
         if (bounds != null) bounds.close();
         if (reduction != null) reduction.close();
         if (partition != null) partition.close();
         if (components != null) components.close();
+        if (separator != null) separator.close();
+        if (network != null) network.close();
         if (matching != null) matching.close();
         if (binary != null) binary.close();
+        if (domainSearch != null) domainSearch.close();
+        if (diagram != null) diagram.close();
         if (linear != null) linear.close();
         if (repair != null) repair.close();
+        if (congruence != null) congruence.close();
         budget.release(memory);
         memory = 0;
     }
