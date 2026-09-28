@@ -211,6 +211,8 @@
     "gtm.cover.ConveyorCoverMixin",
     "gtm.cover.InfiniteWaterCoverMixin",
     "gtm.cover.PumpCoverMixin",
+    "gtm.cover.TagItemFilterMixin",
+    "gtm.cover.TagFluidFilterMixin",
     "gtm.fix.GTUtilMixin",
     "gtm.fix.WorkableElectricMultiblockMachineMixin",
     "gtm.ftb.TeleportFromMapPacketMixin",
