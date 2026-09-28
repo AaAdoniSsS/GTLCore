@@ -17,6 +17,27 @@ java {
     sourceCompatibility = targetCompatibility = JavaVersion.VERSION_17
 }
 
+// The integration test mod runs against the same optional APIs as production.
+sourceSets.test.compileClasspath += sourceSets.main.compileClasspath
+
+tasks.register('wildcardTestJar', Jar) {
+    dependsOn testClasses
+    archiveFileName = 'gtlcore-wildcard-test-dev.jar'
+    destinationDirectory = layout.buildDirectory.dir('dev/testmod')
+    from(sourceSets.test.output) {
+        include 'org/gtlcore/gtlcore/test/wildcard/**'
+        include 'META-INF/mods.toml'
+    }
+}
+
+tasks.register('remapWildcardTestJar', net.fabricmc.loom.task.RemapJarTask) {
+    dependsOn tasks.named('wildcardTestJar')
+    inputFile = tasks.named('wildcardTestJar').flatMap { it.archiveFile }
+    archiveFileName = 'gtlcore-wildcard-test.jar'
+    destinationDirectory = layout.buildDirectory.dir('dev/testmod')
+    addNestedDependencies = false
+}
+
 def mixinConfigNames = [
         "gtlcore.mixin.json"
 ]

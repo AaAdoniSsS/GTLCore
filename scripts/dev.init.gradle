@@ -1,0 +1,45 @@
+// Local development entry points, loaded explicitly by ./dev.
+// Extra regression entry points and runtime export for the development scripts.
+gradle.projectsEvaluated {
+    def project = gradle.rootProject
+    def regressionClasses = [
+        'org.gtlcore.gtlcore.api.pattern.FixedPatternLayoutTest',
+        'org.gtlcore.gtlcore.api.pattern.PatternLayoutSearchTest',
+        'org.gtlcore.gtlcore.integration.ae2.wireless.MeInventoryRequestLimiterTest',
+        'org.gtlcore.gtlcore.integration.ae2.WirelessTerminalGridResolverTest'
+    ]
+    def regressionTasks = regressionClasses.collect { testClass ->
+        project.tasks.register('dev' + testClass.tokenize('.').last(), JavaExec) {
+            group = 'verification'
+            description = "Run ${testClass} main-based regression checks."
+            dependsOn project.tasks.named('testClasses')
+            classpath = project.sourceSets.test.runtimeClasspath
+            mainClass.set(testClass)
+            enableAssertions = true
+            timeout = java.time.Duration.ofMinutes(2)
+            doFirst { logger.lifecycle("RUN: ${testClass}") }
+            doLast { logger.lifecycle("PASS: ${testClass}") }
+        }
+    }
+    def regression = project.tasks.register('devRegression') {
+        group = 'verification'
+        description = 'Execute all four existing main-based regression entry points.'
+        dependsOn regressionTasks
+        doLast { logger.lifecycle("PASS: ${regressionClasses.size()} regression entry points") }
+    }
+    project.tasks.named('check') { dependsOn regression }
+    project.tasks.register('devExportRuntime') {
+        dependsOn project.tasks.named('remapJar')
+        doLast {
+            def files = (project.configurations.modImplementation.files + project.configurations.modRuntimeOnly.files)
+            def data = [
+                artifact: project.tasks.named('remapJar').get().archiveFile.get().asFile.absolutePath,
+                dependencies: files.collect { it.absolutePath }.sort()
+            ]
+            def output = project.file('build/dev/native-runtime.json')
+            output.parentFile.mkdirs()
+            output.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(data)) + '\n'
+            logger.lifecycle("Runtime dependency manifest: ${output}")
+        }
+    }
+}

@@ -1,0 +1,16 @@
+modLoader = "javafml"
+loaderVersion = "[47,)"
+license = "LGPLv3.0"
+
+[[mods]]
+modId = "gtlcore_wildcard_test"
+version = "1.0"
+displayName = "GTLCore Wildcard Regression Tests"
+description = "Test-only entry point for the isolated Forge runtime."
+
+[[dependencies.gtlcore_wildcard_test]]
+modId = "gtlcore"
+mandatory = true
+versionRange = "[1,)"
+ordering = "AFTER"
+side = "BOTH"

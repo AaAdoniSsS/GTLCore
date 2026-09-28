@@ -5,6 +5,21 @@ build/
 out/
 classes/
 
+# local development configuration
+
+.dev.env
+
+# python tooling
+
+__pycache__/
+*.py[cod]
+
+# JVM crash diagnostics
+
+hs_err_pid*.log
+replay_pid*.log
+*.hprof
+
 # eclipse
 
 *.launch
@@ -28,6 +43,7 @@ bin/
 
 *.DS_Store
 
-# fabric
+# minecraft development
 
 run/
+/src/generated/resources/.cache/

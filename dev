@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+project_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+cd "$project_dir"
+
+# Optional shell configuration for this checkout; keep personal values out of Git.
+if [[ -f .dev.env ]]; then
+    set -a
+    source .dev.env
+    set +a
+fi
+
+export JAVA_HOME="${GTL_JAVA_HOME:-${JAVA_HOME:-}}"
+export GRADLE_USER_HOME="${GTL_GRADLE_USER_HOME:-$project_dir/.gradle/user-home}"
+export PATH="$JAVA_HOME/bin:$PATH"
+
+if [[ -z "$JAVA_HOME" || ! -x "$JAVA_HOME/bin/javac" ]] || ! "$JAVA_HOME/bin/java" -version 2>&1 | head -1 | grep -q 'version "17\.'; then
+    echo 'A JDK 17 installation is required; set GTL_JAVA_HOME to its directory.' >&2
+    exit 1
+fi
+
+command_name=${1:-help}
+if (($#)); then shift; fi
+gradle_args=(--console=plain --no-daemon --max-workers=4 --init-script scripts/dev.init.gradle)
+if [[ ${GTL_OFFLINE:-1} == 1 ]]; then gradle_args+=(--offline); fi
+
+case "$command_name" in
+    smoke-server) exec python3 scripts/smoke-server.py "$@" ;;
+    doctor) tasks=(help) ;;
+    test)
+        if [[ ${1:-} == wildcard ]]; then
+            shift
+            exec python3 scripts/test-wildcard.py "$@"
+        fi
+        tasks=(devRegression)
+        ;;
+    check) tasks=(check) ;;
+    build)
+        baseline=$(git rev-parse --short=8 HEAD)
+        base_version=$(sed -n 's/^mod_version=//p' gradle.properties)
+        tasks=(build "-Pmod_version=$base_version-local.$baseline")
+        ;;
+    gradle) tasks=() ;;
+    help)
+        echo 'Usage: ./dev {doctor|test|check|build|smoke-server|gradle <tasks...>}'
+        echo 'Wildcard runtime regression: ./dev test wildcard [--without-wildcard] [--artifact <jar>]'
+        echo 'JDK: GTL_JAVA_HOME; cache: GTL_GRADLE_USER_HOME; network: GTL_OFFLINE=0'
+        echo 'Optional local configuration: .dev.env (see .dev.env.example).'
+        echo 'Server tests: GTL_MODS_DIR and GTL_ACCEPT_EULA=true.'
+        echo 'Requires JDK 17; default: project-local cache, offline, 20-minute timeout.'
+        exit 0
+        ;;
+    *) echo "Unknown command: $command_name" >&2; exit 2 ;;
+esac
+
+mkdir -p build/dev/logs
+log_file="build/dev/logs/$(date -u +%Y%m%dT%H%M%S.%NZ)-$command_name.log"
+{
+    echo "Log: $log_file"
+    echo "Source: $(git rev-parse HEAD) ($(git branch --show-current))"
+    git status --short
+    echo "JAVA_HOME=$JAVA_HOME"
+    echo "GRADLE_USER_HOME=$GRADLE_USER_HOME"
+    "$JAVA_HOME/bin/java" -version
+    if [[ $command_name == doctor ]]; then ./gradlew --version; fi
+    printf 'Gradle arguments:'
+    printf ' %q' "${gradle_args[@]}" "${tasks[@]}" "$@"
+    printf '\n'
+    timeout --signal=TERM --kill-after=15s "${GTL_TIMEOUT:-1200}" \
+        ./gradlew "${gradle_args[@]}" "${tasks[@]}" "$@"
+} 2>&1 | tee "$log_file"
