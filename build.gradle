@@ -311,6 +311,7 @@ tasks.register("checkMixinPackageClasses") {
 tasks.named("check") {
     dependsOn(tasks.named("checkMixinPackageClasses"))
     dependsOn(tasks.named("multiblockPreviewTest"))
+    dependsOn(tasks.named("tagExprFilterTest"))
 }
 
 tasks.register("multiblockPreviewTest", JavaExec) {
@@ -321,4 +322,12 @@ tasks.register("multiblockPreviewTest", JavaExec) {
     classpath = files(sourceSets.main.output, sourceSets.test.output, sourceSets.test.compileClasspath)
     mainClass = "org.gtlcore.gtlcore.client.preview.MultiblockPreviewTest"
     workingDir = projectDir
+}
+
+tasks.register("tagExprFilterTest", JavaExec) {
+    group = "verification"
+    description = "Checks set-based tag filters, legacy patterns and incomplete expressions."
+    dependsOn(testClasses)
+    classpath = files(sourceSets.main.output, sourceSets.test.output, sourceSets.test.compileClasspath)
+    mainClass = "org.gtlcore.gtlcore.utils.TagExprFilterTest"
 }
