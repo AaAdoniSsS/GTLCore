@@ -7,7 +7,6 @@ import com.lowdragmc.lowdraglib.gui.texture.ResourceTexture;
 
 import net.minecraft.client.gui.GuiGraphics;
 
-/** Uses JEI's own button skin without depending on its internal Java UI classes. */
 final class PreviewButtonTexture implements IGuiTexture {
 
     static final IGuiTexture EXPAND = new PreviewButtonTexture("expand");
@@ -16,6 +15,7 @@ final class PreviewButtonTexture implements IGuiTexture {
             "jei:textures/jei/atlas/gui/button_enabled.png", 20, 20, 2, 2);
     private static final IGuiTexture HOVER = new ResourceBorderTexture(
             "jei:textures/jei/atlas/gui/button_highlight.png", 20, 20, 2, 2);
+    private static final int ICON_SIZE = 16;
     private final ResourceTexture icon;
 
     private PreviewButtonTexture(String name) {
@@ -27,6 +27,6 @@ final class PreviewButtonTexture implements IGuiTexture {
         boolean hovered = mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + height;
         var background = LDLib.isJeiLoaded() ? (hovered ? HOVER : NORMAL) : ResourceBorderTexture.BUTTON_COMMON;
         background.draw(graphics, mouseX, mouseY, x, y, width, height);
-        icon.draw(graphics, mouseX, mouseY, x + (width - 10) / 2f, y + (height - 10) / 2f, 10, 10);
+        icon.draw(graphics, mouseX, mouseY, x + (width - ICON_SIZE) / 2f, y + (height - ICON_SIZE) / 2f, ICON_SIZE, ICON_SIZE);
     }
 }

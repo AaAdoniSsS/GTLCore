@@ -845,7 +845,7 @@
   "gui.gtlcore.preview.restore": "退出全屏",
   "gui.gtlcore.preview.height": "主方块距离底层 %s 格",
   "gui.gtlcore.preview.height_unknown": "主方块高度暂不可用",
-  "gui.gtlcore.preview.dimensions": "结构尺寸（宽×深×高）：%s×%s×%s",
+  "gui.gtlcore.preview.dimensions": "结构尺寸（长×宽×高）：%s×%s×%s",
   "gui.gtlcore.preview.dimensions_unknown": "结构尺寸暂不可用",
   "gui.gtlcore.preview.loading": "正在准备结构：%s%%",
   "gui.gtlcore.preview.failed": "结构预览准备失败，请稍后重试"
