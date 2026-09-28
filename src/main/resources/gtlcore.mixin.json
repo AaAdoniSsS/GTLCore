@@ -289,7 +289,12 @@
     "mc.PlayerMixin",
     "mc.SlotAccessor",
     "meRequester.RequestMixin",
-    "travelanchors.EventListenerMixin"
+    "travelanchors.EventListenerMixin",
+    "wildcard.FlagFilterComponentMixin",
+    "wildcard.PropertyFilterComponentMixin",
+    "wildcard.SimpleIOComponentMixin",
+    "wildcard.WildcardFilterFancyConfiguratorMixin",
+    "wildcard.WildcardIOFancyConfiguratorMixin"
   ],
   "injectors": {
     "defaultRequire": 1,
