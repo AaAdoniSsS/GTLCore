@@ -504,7 +504,7 @@ final class AllocationSearch<K> {
         Candidate(PlanStep witness, Map<String, GraphRecipe<K>> relevant, K target, long amount, Map<K, Long> stock,
                   Map<K, Long> requiredSeeds, Set<K> external, boolean preserve, boolean force, boolean preview,
                   PlanningBudget budget, long started) {
-            this.witness = PlanEGraph.optimize(witness, budget);
+            this.witness = PlanFlowPruning.optimize(PlanEGraph.optimize(witness, budget), relevant, budget);
             this.relevant = relevant;
             this.target = target;
             this.amount = amount;

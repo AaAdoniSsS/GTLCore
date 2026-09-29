@@ -39,7 +39,7 @@ final class PlanAssembly<K> {
         this.target = target;
         this.amount = amount;
         this.preserve = preserve;
-        this.steps = PlanEGraph.optimize(steps, budget);
+        this.steps = PlanFlowPruning.optimize(PlanEGraph.optimize(steps, budget), recipes, budget);
         this.recipes = recipes;
         this.seeds = seeds;
         this.stock = stock;
