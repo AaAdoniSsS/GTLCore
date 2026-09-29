@@ -13,6 +13,8 @@ import net.minecraftforge.network.NetworkEvent;
 import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
+import appeng.core.sync.network.NetworkHandler;
+import appeng.core.sync.packets.CraftConfirmPlanPacket;
 import appeng.hooks.ticking.TickHandler;
 import appeng.menu.me.crafting.CraftConfirmMenu;
 
@@ -52,11 +54,6 @@ public final class GraphRingPackets {
             context.enqueueWork(() -> {
                 var player = context.getSender();
                 if (player == null || !(player.containerMenu instanceof CraftConfirmMenu menu) || menu.containerId != container || !menu.isValidMenu()) return;
-                var selected = ((GraphPlanMenu) menu).gtlcore$graphPlan();
-                if (selected == null || !selected.id().equals(plan)) {
-                    failure(player, "PLAN_CHANGED");
-                    return;
-                }
                 if (offset < 0 || offset > GraphRingView.MAX_ROWS) return;
                 long tick = TickHandler.instance().getCurrentTick();
                 long[] rate = RATES.computeIfAbsent(player, ignored -> new long[2]);
@@ -68,13 +65,18 @@ public final class GraphRingPackets {
                     failure(player, "RATE_LIMIT");
                     return;
                 }
+                var selected = ((GraphPlanMenu) menu).gtlcore$graphPlan();
+                if (selected == null || !selected.id().equals(plan)) {
+                    planChanged(player, menu);
+                    return;
+                }
                 long start = System.nanoTime();
                 var server = player.getServer();
                 if (server == null) return;
                 selected.displayAsync().whenComplete((view, error) -> server.execute(() -> {
                     if (player.containerMenu != menu || !menu.isValidMenu()) return;
                     if (((GraphPlanMenu) menu).gtlcore$graphPlan() != selected) {
-                        failure(player, "PLAN_CHANGED");
+                        planChanged(player, menu);
                         return;
                     }
                     if (error != null) {
@@ -95,6 +97,14 @@ public final class GraphRingPackets {
                 }));
             });
             context.setPacketHandled(true);
+        }
+
+        private void planChanged(ServerPlayer player, CraftConfirmMenu menu) {
+            var current = ((GraphPlanMenu) menu).gtlcore$graphPlan();
+            var summary = menu.getPlan();
+            if (current != null && summary instanceof GraphPlanSummaryView view && current.id().equals(view.gtlcore$graphPlanId()))
+                NetworkHandler.instance().sendTo(new CraftConfirmPlanPacket(summary), player);
+            failure(player, "PLAN_CHANGED");
         }
 
         private void failure(ServerPlayer player, String reason) {

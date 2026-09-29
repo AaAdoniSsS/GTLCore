@@ -985,5 +985,7 @@
   "gui.gtlcore.preview.dimensions": "结构尺寸（长×宽×高）：%s×%s×%s",
   "gui.gtlcore.preview.dimensions_unknown": "结构尺寸暂不可用",
   "gui.gtlcore.preview.loading": "正在准备结构：%s%%",
-  "gui.gtlcore.preview.failed": "结构预览准备失败，请稍后重试"
+  "gui.gtlcore.preview.failed": "结构预览准备失败，请稍后重试",
+  "gtlcore.ae.ring.updating": "计划已更新，正在重新读取…",
+  "gtlcore.ae.graph.inventory_changed": "预留材料时库存发生变化，请重试计算。"
 }

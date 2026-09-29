@@ -11,6 +11,7 @@ import org.gtlcore.gtlcore.integration.ae2.crafting.transfinite.MissingCraftingP
 import org.gtlcore.gtlcore.integration.ae2.crafting.transfinite.TransfiniteCraftingCPU;
 import org.gtlcore.gtlcore.integration.ae2.graph.AeGraphPlan;
 import org.gtlcore.gtlcore.integration.ae2.graph.GraphPlanMenu;
+import org.gtlcore.gtlcore.integration.ae2.graph.GraphPlanSummaryView;
 import org.gtlcore.gtlcore.integration.ae2.graph.GraphPlanningFailure;
 import org.gtlcore.gtlcore.integration.ae2.graph.GraphPlanningRequest;
 
@@ -170,6 +171,9 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
     private @Nullable KeyCounter gtlcore$lastSentStored = null;
 
     @Unique
+    private @Nullable CraftingPlanSummary gtlcore$storedPlan;
+
+    @Unique
     private final IncrementalUpdateHelper gtlcore$updateHelper = new IncrementalUpdateHelper();
 
     @Unique
@@ -200,6 +204,9 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
     private @Nullable ICraftingPlan gtlcore$reservedPlan;
 
     @Unique
+    private int gtlcore$reservationRetries;
+
+    @Unique
     private CalculationStrategy gtlcore$calculationStrategy = CalculationStrategy.REPORT_MISSING_ITEMS;
 
     @Unique
@@ -209,6 +216,11 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
     @Inject(method = "<init>", at = @At("RETURN"), remap = false)
     private void onConstructed(int id, Inventory ip, ISubMenuHost host, CallbackInfo ci) {
         registerClientAction("gtlcore_retry_graph_planning", this::gtlcore$retryPlanning);
+        gtlcore$resetLiveStored();
+    }
+
+    @Unique
+    private void gtlcore$resetLiveStored() {
         var repo = new Repo(() -> 0, new ISortSource() {
 
             @Override
@@ -234,6 +246,23 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
         // repo 每次收到更新回调此监听器，客户端缓存按版本号惰性失效
         repo.setUpdateViewListener(() -> gtlcore$liveVersion++);
         this.gtlcore$repo = repo;
+        gtlcore$liveVersion = 0;
+        gtlcore$liveStoredVersion = gtlcore$missingVersion = -1;
+        gtlcore$liveStoredCache = null;
+        gtlcore$missingPlan = null;
+        gtlcore$missingCache = List.of();
+    }
+
+    @Inject(method = "setPlan", at = @At("HEAD"), remap = false)
+    private void gtlcore$replaceLiveSnapshot(CraftingPlanSummary incoming, CallbackInfo ci) {
+        // A repeated summary during graph-page recovery keeps the same inventory
+        // stream. A new plan receives a full snapshot with a fresh serial mapping.
+        if (this.plan == incoming) return;
+        if (this.plan instanceof GraphPlanSummaryView previous &&
+                incoming instanceof GraphPlanSummaryView next &&
+                previous.gtlcore$graphPlanId() != null && previous.gtlcore$graphPlanId().equals(next.gtlcore$graphPlanId()))
+            return;
+        gtlcore$resetLiveStored();
     }
 
     @Override
@@ -243,6 +272,10 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
 
     @Override
     public @Nullable KeyCounter gtlcore$getLiveStored() {
+        // Graph quantities and missing-item bookmarks belong to the captured
+        // plan. Production elsewhere must not change this preview while browsing.
+        // Submission still checks the real inventory before taking any material.
+        if (this.plan instanceof GraphPlanSummaryView view && view.gtlcore$graphPlanId() != null) return null;
         // 首个同步包到达前 repo 是空的，不能拿来判定"库存已被消耗"
         if (gtlcore$liveVersion == 0) {
             return null;
@@ -291,11 +324,13 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
     @Override
     public boolean gtlcore$planLongAmountJob(AEKey whatToCraft, long amount, CalculationStrategy strategy) {
         this.gtlcore$releaseInventoryReservation();
+        this.gtlcore$reservationRetries = 0;
         this.gtlcore$calculationStrategy = strategy;
         if (this.job != null) {
             this.job.cancel(true);
         }
         this.result = null;
+        this.plan = null;
         this.clearError();
         this.whatToCraft = whatToCraft;
         this.amount = CraftAmountReturnState.legacyAmount(amount);
@@ -312,16 +347,37 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
         return true;
     }
 
+    @Inject(method = "broadcastChanges",
+            at = @At(value = "INVOKE",
+                     target = "Lappeng/api/networking/crafting/ICraftingPlan;simulation()Z",
+                     remap = false),
+            cancellable = true)
+    private void gtlcore$reserveBeforePublishingPlan(CallbackInfo ci) {
+        if (result instanceof AeGraphPlan && ConfigHolder.INSTANCE.enableAe2ManualCraftingInventoryLock && !gtlcore$tryReserveInventory(result)) {
+            // Do not publish a summary which will be invalidated later in this
+            // tick, or auto-start it before acquiring the requested reservation.
+            job = null;
+            gtlcore$restartCalculationAfterReservationConflict();
+            ci.cancel();
+        }
+    }
+
     @Inject(method = "broadcastChanges", at = @At("RETURN"))
     private void onBroadcastChanges(CallbackInfo ci) {
         if (this.isClientSide() || this.plan == null) return;
         if (!ConfigHolder.INSTANCE.enableAe2ManualCraftingInventoryLock) {
             this.gtlcore$releaseInventoryReservation();
-        } else if (this.result != null && this.result != this.gtlcore$reservedPlan &&
+        } else if (!(this.result instanceof AeGraphPlan) && this.result != null && this.result != this.gtlcore$reservedPlan &&
                 !this.gtlcore$tryReserveInventory(this.result)) {
                     this.gtlcore$restartCalculationAfterReservationConflict();
                     return;
                 }
+        if (this.result instanceof AeGraphPlan) return;
+        if (this.plan != gtlcore$storedPlan) {
+            gtlcore$storedPlan = this.plan;
+            gtlcore$lastSentStored = null;
+            gtlcore$updateHelper.reset();
+        }
         // 计划算完后库存仍可能被其他产线消耗，持续同步实时库存供客户端复核缺失
         if (gtlcore$lastSentStored != null && --gtlcore$storedSyncCooldown > 0) return;
         gtlcore$storedSyncCooldown = 10;
@@ -331,6 +387,7 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
             var builder = MEInventoryUpdatePacket.builder(containerId, true);
             builder.addFull(gtlcore$updateHelper, current, Set.of(), new KeyCounter());
             builder.buildAndSend(this::sendPacketToClient);
+            gtlcore$updateHelper.commitChanges();
             gtlcore$lastSentStored = current;
             return;
         }
@@ -384,6 +441,8 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
     private void gtlcore$prepareForPlan(AEKey whatToCraft, int amount, CalculationStrategy strategy,
                                         CallbackInfoReturnable<Boolean> cir) {
         this.gtlcore$releaseInventoryReservation();
+        this.gtlcore$reservationRetries = 0;
+        this.plan = null;
         this.gtlcore$calculationStrategy = strategy;
     }
 
@@ -489,12 +548,20 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
         this.result = null;
         this.plan = null;
         this.gtlcore$lastSentStored = null;
+        int retries = this.gtlcore$reservationRetries + 1;
+        if (retries > 1) {
+            // A changing or inconsistent storage must not cause endless silent
+            // replanning. The existing retry UI keeps the original long request.
+            this.gtlcore$planningFailure = "gtlcore.ae.graph.inventory_changed";
+            return;
+        }
         if (this.whatToCraft == null || !this.gtlcore$planLongAmountJob(
                 this.whatToCraft,
                 CraftAmountReturnState.displayAmount(this.gtlcore$longAmount, this.amount),
                 this.gtlcore$calculationStrategy)) {
             this.gtlcore$returnToPreviousMenu();
         }
+        this.gtlcore$reservationRetries = retries;
     }
 
     @Unique

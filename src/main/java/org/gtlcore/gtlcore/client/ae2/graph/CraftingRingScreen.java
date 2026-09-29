@@ -35,8 +35,9 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
     private static final int INK = 0xFF40404C, MUTED = 0xFF707078, ACCENT = 0xFF786296, SEED = 0xFF168F99, INITIAL = 0xFFAD6518;
     private static final int VIEW_X = 10, VIEW_Y = 48;
     private static Cache cached;
-    private final UUID planId;
-    private final GraphPlan.SeedOptimality seedProof;
+    private UUID planId;
+    private GraphPlan.SeedOptimality seedProof;
+    private boolean waitingForPlan;
     private final List<GraphRingView.Row> rows = new ArrayList<>();
     private GenericStack target;
     private int total = -1, graphRows = -1, requested = -1, mode = 1, page, nodePage;
@@ -187,6 +188,7 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
     @Override
     protected void updateBeforeRender() {
         super.updateBeforeRender();
+        synchronizePlan();
         for (int i = 0; i < tabs.length; i++) tabs[i].active = i != mode;
         previous.active = model != null && page > 0;
         next.active = model != null && page + 1 < pageCount();
@@ -209,7 +211,7 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
             }
             treeLoading = null;
         }
-        if (planId == null || error != null) return;
+        if (planId == null || error != null || !((GraphPlanMenu) menu).gtlcore$planningFailure().isEmpty()) return;
         long now = System.nanoTime();
         if ((total < 0 || rows.size() < total) && now >= retryAfter &&
                 (requested != rows.size() || now - lastRequest > 2_000_000_000L)) {
@@ -235,8 +237,10 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
         if (model != null && rows.size() == total && total <= 20_000 && (cached == null || !cached.id().equals(planId)))
             cached = new Cache(planId, target, graphRows, List.copyOf(rows), model);
         if (model != null && mode == 1 && page > 0 && fullLayout == null) {
-            if (fullLoading == null) fullLoading = CompletableFuture.supplyAsync(() -> new PlanGraphLayout<>(model.topology()));
-            else if (fullLoading.isDone()) {
+            if (fullLoading == null) {
+                var source = model;
+                fullLoading = CompletableFuture.supplyAsync(() -> new PlanGraphLayout<>(source.topology()));
+            } else if (fullLoading.isDone()) {
                 try {
                     fullLayout = fullLoading.join();
                     resetView();
@@ -247,9 +251,48 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
         }
     }
 
+    private void synchronizePlan() {
+        if (!(menu.getPlan() instanceof GraphPlanSummaryView summary)) return;
+        UUID next = summary.gtlcore$graphPlanId();
+        if (Objects.equals(next, planId)) return;
+        clearPlan();
+        planId = next;
+        seedProof = summary.gtlcore$seedOptimality();
+        waitingForPlan = false;
+        if (next == null) error = "PLAN_UNAVAILABLE";
+    }
+
+    private void clearPlan() {
+        // All page offsets, layouts and node indices belong to one plan UUID.
+        // In-flight responses and old layout completions must never enter its replacement.
+        rows.clear();
+        target = null;
+        total = graphRows = requested = -1;
+        page = nodePage = selectedEntry = 0;
+        lastRequest = retryAfter = 0;
+        loading = null;
+        fullLoading = null;
+        treeLoading = null;
+        model = null;
+        fullLayout = null;
+        tree = null;
+        error = null;
+        hits.clear();
+        tooltips.clear();
+        history.clear();
+        focus = null;
+        dragging = false;
+        hoveredNode = hoveredEntry = -1;
+        lastViewport = null;
+        visibleNodes = visibleLinks = visibleRings = List.of();
+        visibleTreeNodes = visibleTreeLinks = List.of();
+        filteredNodes.clear();
+    }
+
     public static void receive(GraphRingPackets.Response response) {
-        if (Minecraft.getInstance().screen instanceof CraftingRingScreen screen && screen.menu.containerId == response.container() &&
-                response.page().id().equals(screen.planId)) {
+        if (Minecraft.getInstance().screen instanceof CraftingRingScreen screen && screen.menu.containerId == response.container()) {
+            screen.synchronizePlan();
+            if (!response.page().id().equals(screen.planId) || screen.waitingForPlan) return;
             var data = response.page();
             if (data.offset() != screen.rows.size()) return;
             if (screen.total >= 0 && (data.total() != screen.total || data.graphRows() != screen.graphRows)) {
@@ -264,10 +307,16 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
     }
 
     public static void fail(GraphRingPackets.Failure failure) {
-        if (Minecraft.getInstance().screen instanceof CraftingRingScreen screen && screen.menu.containerId == failure.container() && failure.plan().equals(screen.planId)) {
+        if (Minecraft.getInstance().screen instanceof CraftingRingScreen screen && screen.menu.containerId == failure.container()) {
+            screen.synchronizePlan();
+            if (!failure.plan().equals(screen.planId)) return;
             if (failure.reason().equals("RATE_LIMIT")) {
                 screen.requested = -1;
                 screen.retryAfter = System.nanoTime() + 100_000_000L;
+            } else if (failure.reason().equals("PLAN_CHANGED")) {
+                screen.clearPlan();
+                screen.waitingForPlan = true;
+                screen.retryAfter = System.nanoTime() + 500_000_000L;
             } else screen.error = failure.reason();
         }
     }
@@ -330,7 +379,10 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
             graphics.drawString(font, font.plainSubstrByWidth(target.what().getDisplayName().getString(), imageWidth - x - 56), x + 20, 11, INK, false);
             hits.add(new Hit(x, 6, imageWidth - x - 30, 18, List.of(target.what().getDisplayName(), text("exact", Long.toString(target.amount())))));
         }
-        if (error != null) centered(graphics, text("error", error), 128, 0xFFAE3030);
+        String planningFailure = ((GraphPlanMenu) menu).gtlcore$planningFailure();
+        if (!planningFailure.isEmpty()) centered(graphics, Component.translatable(planningFailure), 128, 0xFFAE3030);
+        else if (waitingForPlan) centered(graphics, text("updating"), 118, INK);
+        else if (error != null) centered(graphics, text("error", error), 128, 0xFFAE3030);
         else if (model == null) {
             centered(graphics, text(loading == null ? "loading" : "arranging", rows.size(), Math.max(0, total)), 118, INK);
             graphics.fill(32, 138, imageWidth - 32, 141, 0xFFB4B4BA);

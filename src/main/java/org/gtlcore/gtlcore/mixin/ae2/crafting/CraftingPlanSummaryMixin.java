@@ -3,6 +3,7 @@ package org.gtlcore.gtlcore.mixin.ae2.crafting;
 import org.gtlcore.gtlcore.integration.ae2.crafting.CraftingPlanSummaryCraftTimes;
 import org.gtlcore.gtlcore.integration.ae2.crafting.ICraftingPlanSummaryEntry;
 import org.gtlcore.gtlcore.integration.ae2.graph.AeGraphPlan;
+import org.gtlcore.gtlcore.integration.ae2.graph.GraphPlanSummary;
 import org.gtlcore.gtlcore.integration.ae2.graph.GraphPlanSummaryView;
 import org.gtlcore.gtlcore.integration.ae2.graph.GraphSeedStatus;
 import org.gtlcore.gtlcore.integration.ae2.graph.GraphSummaryContext;
@@ -13,6 +14,8 @@ import net.minecraft.network.FriendlyByteBuf;
 import appeng.api.networking.IGrid;
 import appeng.api.networking.crafting.ICraftingPlan;
 import appeng.api.networking.security.IActionSource;
+import appeng.api.stacks.KeyCounter;
+import appeng.crafting.CraftingPlan;
 import appeng.menu.me.crafting.CraftingPlanSummary;
 import appeng.menu.me.crafting.CraftingPlanSummaryEntry;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
@@ -25,6 +28,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.ArrayList;
+import java.util.Map;
 import java.util.UUID;
 
 @Mixin(CraftingPlanSummary.class)
@@ -99,8 +103,12 @@ public class CraftingPlanSummaryMixin implements GraphPlanSummaryView {
         // Keep addon packet envelopes intact, but skip AE2CT's redundant tree for
         // this graph view only. Legacy plans, including nested calls, retain their data.
         // The menu and CPU continue to hold the original graph plan.
-        var graphView = graph.summaryView();
-        CraftingPlanSummary summary = GraphSummaryContext.withGraphPlan(graphView,
+        // AE's legacy summary adds long used/missing counters and samples the
+        // live inventory again. Both lose the graph's exact, captured quantities.
+        // Retain addon hooks/envelopes; populate entries from the native plan below.
+        var graphView = new CraftingPlan(graph.finalOutput(), graph.bytes(), graph.simulation(), graph.multiplePaths(),
+                new KeyCounter(), new KeyCounter(), new KeyCounter(), Map.of());
+        CraftingPlanSummary summary = GraphSummaryContext.withGraphPlan(graphView, graph,
                 () -> original.call(grid, actionSource, graphView));
         ((GraphPlanSummaryView) summary).gtlcore$graphPlanId(graph.id());
         ((GraphPlanSummaryView) summary).gtlcore$seedOptimality(graph.graph().seedOptimality());
@@ -119,6 +127,11 @@ public class CraftingPlanSummaryMixin implements GraphPlanSummaryView {
 
     @Inject(method = "fromJob", at = @At(value = "INVOKE", target = "Ljava/util/Collections;sort(Ljava/util/List;)V"), remap = false)
     private static void injectCraftTimes(IGrid grid, IActionSource actionSource, ICraftingPlan job, CallbackInfoReturnable<CraftingPlanSummary> cir, @Local ArrayList<CraftingPlanSummaryEntry> entries) {
+        var graph = GraphSummaryContext.graphPlan(job);
+        if (graph != null) {
+            entries.addAll(GraphPlanSummary.entries(graph));
+            return;
+        }
         var craftTimesByOutput = CraftingPlanSummaryCraftTimes.aggregateByOutput(job.patternTimes());
         for (var entry : entries) {
             ((ICraftingPlanSummaryEntry) entry).gtlcore$setCraftTimes(craftTimesByOutput.getLong(entry.getWhat()));

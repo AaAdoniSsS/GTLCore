@@ -985,5 +985,7 @@
   "gui.gtlcore.preview.dimensions": "Dimensions (L x W x H): %s x %s x %s",
   "gui.gtlcore.preview.dimensions_unknown": "Structure dimensions unavailable",
   "gui.gtlcore.preview.loading": "Preparing structure: %s%%",
-  "gui.gtlcore.preview.failed": "Structure preview failed. Please try again."
+  "gui.gtlcore.preview.failed": "Structure preview failed. Please try again.",
+  "gtlcore.ae.ring.updating": "The plan changed. Reloading...",
+  "gtlcore.ae.graph.inventory_changed": "Inventory changed while reserving materials. Please retry the calculation."
 }
