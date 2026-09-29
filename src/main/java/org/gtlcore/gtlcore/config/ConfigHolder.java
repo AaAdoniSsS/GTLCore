@@ -130,6 +130,9 @@ public class ConfigHolder {
     @Configurable.Comment("config.gtlcore.option.ae2GraphPlannerMaxSteps.comment")
     public int ae2GraphPlannerMaxSteps = 20000000;
     @Configurable
+    @Configurable.Comment("config.gtlcore.option.ae2GraphFallback.comment")
+    public boolean ae2GraphFallback = true;
+    @Configurable
     @Configurable.Range(min = 16, max = 1024)
     @Configurable.Comment("config.gtlcore.option.ae2GraphPlannerMemoryMiB.comment")
     public int ae2GraphPlannerMemoryMiB = 128;

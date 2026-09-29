@@ -14,4 +14,8 @@ public interface GraphPlanSummaryView {
     GraphPlan.SeedOptimality gtlcore$seedOptimality();
 
     void gtlcore$seedOptimality(GraphPlan.SeedOptimality proof);
+
+    boolean gtlcore$fallback();
+
+    void gtlcore$fallback(boolean fallback);
 }

@@ -35,6 +35,19 @@ public class CraftingPlanSummaryMixin implements GraphPlanSummaryView {
     @Unique
     private GraphPlan.SeedOptimality gtlcore$seedProof;
 
+    @Unique
+    private boolean gtlcore$fallback;
+
+    @Override
+    public boolean gtlcore$fallback() {
+        return gtlcore$fallback;
+    }
+
+    @Override
+    public void gtlcore$fallback(boolean fallback) {
+        gtlcore$fallback = fallback;
+    }
+
     @Override
     public GraphPlan.SeedOptimality gtlcore$seedOptimality() {
         return gtlcore$seedProof;
@@ -62,6 +75,7 @@ public class CraftingPlanSummaryMixin implements GraphPlanSummaryView {
         if (gtlcore$graphId != null) {
             buffer.writeUUID(gtlcore$graphId);
             GraphSeedStatus.write(buffer, gtlcore$seedProof);
+            buffer.writeBoolean(gtlcore$fallback);
         }
     }
 
@@ -72,6 +86,7 @@ public class CraftingPlanSummaryMixin implements GraphPlanSummaryView {
             var view = (GraphPlanSummaryView) summary;
             view.gtlcore$graphPlanId(buffer.readUUID());
             view.gtlcore$seedOptimality(GraphSeedStatus.read(buffer));
+            view.gtlcore$fallback(buffer.readBoolean());
         }
         return summary;
     }
@@ -85,6 +100,7 @@ public class CraftingPlanSummaryMixin implements GraphPlanSummaryView {
         CraftingPlanSummary summary = original.call(grid, actionSource, graph.summaryView());
         ((GraphPlanSummaryView) summary).gtlcore$graphPlanId(graph.id());
         ((GraphPlanSummaryView) summary).gtlcore$seedOptimality(graph.graph().seedOptimality());
+        ((GraphPlanSummaryView) summary).gtlcore$fallback(graph.fallback());
         for (var entry : summary.getEntries()) {
             long seed = graph.graph().seeds().getOrDefault(entry.getWhat(), 0L);
             ((ICraftingPlanSummaryEntry) entry).gtlcore$setGraphSeed(seed);

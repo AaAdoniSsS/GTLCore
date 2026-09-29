@@ -187,6 +187,7 @@ public final class CraftingEngineRouter {
         private final GraphJobRuntime.ReplanCheckpoint<AEKey> checkpoint;
         private final boolean preserve;
         private final GraphPlanningRequest request;
+        private final boolean fallbackEnabled;
         private GtlPatternCatalog.Snapshot snapshot;
         private CapturedPatternCatalog.Build preparing;
         private CapturedPatternCatalog.Prepared prepared;
@@ -195,6 +196,7 @@ public final class CraftingEngineRouter {
         private CatalystPlanningWork<AEKey> current;
         private GraphPlan<AEKey> selected;
         private boolean partialSearch, directEmission, unavailableTarget, tryEstimate, tryNeighbor;
+        private boolean fallbackAttempted, fallbackMode;
         private long low, high, middle, snapshotNanos, snapshotElapsedNanos, catalogPreparationNanos;
         private long estimatedAmount;
         private long catalogPreparationStarted, catalogPreparationElapsed, catalogParallelNanos;
@@ -215,6 +217,7 @@ public final class CraftingEngineRouter {
             this.checkpoint = checkpoint;
             this.preserve = preserve;
             this.request = request;
+            this.fallbackEnabled = ConfigHolder.INSTANCE.ae2GraphFallback;
         }
 
         @Override
@@ -337,13 +340,13 @@ public final class CraftingEngineRouter {
         }
 
         private boolean finish() {
-            if (!selected.feasible() && selected.missing().isEmpty()) throw limitOrUnknown(selected);
-            if (!selected.feasible() && snapshot.structure().boundedAlternatives())
+            if (!selected.feasible() && selected.missing().isEmpty() && !fallback(selected.result())) throw limitOrUnknown(selected);
+            if (!selected.feasible() && snapshot.structure().boundedAlternatives() && !fallbackMode && !fallback(GraphPlan.Result.SEARCH_LIMIT))
                 throw budget.exhausted(PlanningBudget.Limit.SEARCH_LIMIT, "input_alternatives_bounded; missing preview is not a proof for omitted alternatives");
             Map<AEKey, Long> extractionStock = new LinkedHashMap<>(available);
             if (directEmission && checkpoint == null) extractionStock.remove(target);
             long assemblyStarted = System.nanoTime();
-            result = new AeGraphPlan(selected, prepared.bindings(), snapshot.emitable(), extractionStock);
+            result = new AeGraphPlan(selected, prepared.bindings(), snapshot.emitable(), extractionStock, fallbackMode);
             long assemblyNanos = System.nanoTime() - assemblyStarted;
             long skipped = ConfigHolder.INSTANCE.ae2GraphDiagnosticLogging ? logAllowance(grid,
                     new PlanLogKey(target, amount, strategy, selected.result(), snapshot.epoch(), selected.missingExact().hashCode())) : -1;
@@ -359,6 +362,38 @@ public final class CraftingEngineRouter {
             if (skipped >= 0) GTLCore.LOGGER.info("[Graph Crafting] phases={} wall_ms={} order_amount={}",
                     budget.metrics(), budget.runningWallNanos() / 1_000_000.0, selected.amount());
             return true;
+        }
+
+        /** One bounded ordinary expansion, never another cycle solver or a legacy engine request. */
+        private boolean fallback(GraphPlan.Result reason) {
+            if (!fallbackEnabled || fallbackAttempted || request.isCancelled() || compiler == null || prepared == null || available == null)
+                return false;
+            if (!switch (reason) {
+                case UNKNOWN, INFEASIBLE, TIMEOUT, SEARCH_LIMIT, MEMORY_LIMIT, GRAPH_LIMIT -> true;
+                default -> false;
+            }) return false;
+            fallbackAttempted = true;
+            // Stop any count-search siblings before releasing their state. The
+            // fallback has its own small allowance, not a refund of spent work.
+            budget.cancel();
+            if (current != null) {
+                current.close();
+                current = null;
+            }
+            PlanningBudget quick = new PlanningBudget(250, 131_072, 16L << 20, request::isCancelled, System::nanoTime);
+            try {
+                selected = GraphFallback.plan(compiler, target, amount, available, snapshot.emitable(),
+                        checkpoint == null ? Map.of() : checkpoint.recoverySeeds(), preserve, checkpoint == null && !directEmission, quick);
+                fallbackMode = true;
+                budget.note("fallback", "cycle_solving=false; reason=" + reason + "; work=" + quick.nodes() + "; result=" + selected.result());
+                if (ConfigHolder.INSTANCE.ae2GraphDiagnosticLogging) GTLCore.LOGGER.info(
+                        "[Graph Crafting] fallback target={} amount={} trigger={} cycle_solving=false result={} work={} elapsed_ms={}",
+                        target, amount, reason, selected.result(), quick.nodes(), quick.elapsedNanos() / 1_000_000.0);
+                return true;
+            } catch (PlanningBudget.Exhausted exhausted) {
+                budget.note("fallback", "cycle_solving=false; trigger=" + reason + "; stopped=" + exhausted.limit() + "; work=" + quick.nodes());
+                return false;
+            }
         }
 
         @Override
@@ -379,7 +414,11 @@ public final class CraftingEngineRouter {
                 GraphPlan<AEKey> retained = current.limited(limit);
                 if (retained.feasible()) selected = retained;
             }
-            if (selected == null || !selected.feasible() && (!partialSearch || selected.missingExact().isEmpty())) throw limit;
+            if (selected == null || !selected.feasible() && (!partialSearch || selected.missingExact().isEmpty())) {
+                if (!fallback(GraphPlan.Result.valueOf(limit.limit().name()))) throw limit;
+                finish();
+                return result;
+            }
             budget.note("craft_less", "limit=" + limit.limit() + "; retained_amount=" + selected.amount() + "; result=" + selected.result());
             finishReduced();
             return result;

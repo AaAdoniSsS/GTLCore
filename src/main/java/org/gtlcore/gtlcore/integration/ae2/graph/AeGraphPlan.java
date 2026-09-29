@@ -28,6 +28,7 @@ public final class AeGraphPlan implements ICraftingPlan {
     private final long bytes;
     private final BigInteger exactBytes;
     private final CraftingCostModel.Mode costMode;
+    private final boolean fallback;
     private final UUID id = UUID.randomUUID();
     private final Map<String, BigInteger> selectedCounts;
     private final Map<IPatternDetails, Long> selectedPatterns;
@@ -36,7 +37,13 @@ public final class AeGraphPlan implements ICraftingPlan {
 
     public AeGraphPlan(GraphPlan<AEKey> graph, Map<String, IPatternDetails> bindings, Set<AEKey> emitable,
                        Map<AEKey, Long> stock) {
+        this(graph, bindings, emitable, stock, false);
+    }
+
+    public AeGraphPlan(GraphPlan<AEKey> graph, Map<String, IPatternDetails> bindings, Set<AEKey> emitable,
+                       Map<AEKey, Long> stock, boolean fallback) {
         this.graph = graph;
+        this.fallback = fallback;
         this.bindings = Collections.unmodifiableMap(new LinkedHashMap<>(bindings));
         selectedCounts = graph.patternTimesExact();
         Map<IPatternDetails, BigInteger> selected = new LinkedHashMap<>();
@@ -61,6 +68,10 @@ public final class AeGraphPlan implements ICraftingPlan {
 
     public GraphPlan<AEKey> graph() {
         return graph;
+    }
+
+    public boolean fallback() {
+        return fallback;
     }
 
     public UUID id() {
