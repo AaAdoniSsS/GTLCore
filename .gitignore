@@ -32,11 +32,20 @@ bin/
 
 run/
 
-# Local validation only: do not commit tests, fixtures, reports or workflows.
+# Newly added validation stays local; preserve tests already tracked upstream.
 /.local/
 /AGENTS.md
 /.github/workflows/
-/src/test/
+/src/test/**
+!/src/test/**/
+!/src/test/java/org/gtlcore/gtlcore/api/pattern/FixedPatternLayoutTest.java
+!/src/test/java/org/gtlcore/gtlcore/api/pattern/PatternLayoutSearchTest.java
+!/src/test/java/org/gtlcore/gtlcore/client/preview/MultiblockPreviewTest.java
+!/src/test/java/org/gtlcore/gtlcore/client/preview/PreviewControlsRegression.java
+!/src/test/java/org/gtlcore/gtlcore/client/preview/PreviewPerformanceRegression.java
+!/src/test/java/org/gtlcore/gtlcore/integration/ae2/WirelessTerminalGridResolverTest.java
+!/src/test/java/org/gtlcore/gtlcore/integration/ae2/wireless/MeInventoryRequestLimiterTest.java
+!/src/test/java/org/gtlcore/gtlcore/utils/TagExprFilterTest.java
 /src/gametest/
 /test/
 /tests/

@@ -310,4 +310,24 @@ tasks.register("checkMixinPackageClasses") {
 
 tasks.named("check") {
     dependsOn(tasks.named("checkMixinPackageClasses"))
+    dependsOn(tasks.named("multiblockPreviewTest"))
+    dependsOn(tasks.named("tagExprFilterTest"))
+}
+
+tasks.register("multiblockPreviewTest", JavaExec) {
+    group = "verification"
+    description = "Checks preview bounds, camera-plane panning, cache ownership and cancellation."
+    dependsOn(testClasses)
+    // Pure checks do not launch Minecraft or need the runtime-only client mods.
+    classpath = files(sourceSets.main.output, sourceSets.test.output, sourceSets.test.compileClasspath)
+    mainClass = "org.gtlcore.gtlcore.client.preview.MultiblockPreviewTest"
+    workingDir = projectDir
+}
+
+tasks.register("tagExprFilterTest", JavaExec) {
+    group = "verification"
+    description = "Checks set-based tag filters, legacy patterns and incomplete expressions."
+    dependsOn(testClasses)
+    classpath = files(sourceSets.main.output, sourceSets.test.output, sourceSets.test.compileClasspath)
+    mainClass = "org.gtlcore.gtlcore.utils.TagExprFilterTest"
 }
