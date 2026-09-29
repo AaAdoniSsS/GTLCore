@@ -184,6 +184,28 @@ public class ConfigHolder {
     public DebugLoggingOptions debugLogging = new DebugLoggingOptions();
 
     @Configurable
+    public PreviewOptions multiblockPreview = new PreviewOptions();
+
+    public static class PreviewOptions {
+
+        @Configurable
+        public boolean enabled = true;
+        @Configurable
+        @Configurable.Range(min = 1, max = 1048576)
+        public int minPositions = 512;
+        @Configurable
+        @Configurable.Comment("Worker limit; restart the client after changing this value.")
+        @Configurable.Range(min = 1, max = 4)
+        public int workers = Math.min(2, Math.max(1, Runtime.getRuntime().availableProcessors() / 4));
+        @Configurable
+        @Configurable.Range(min = 1, max = 12)
+        public int frameBudgetMs = 3;
+        @Configurable
+        @Configurable.Range(min = 0, max = 1024)
+        public int cacheMb = 192;
+    }
+
+    @Configurable
     public String[] mobList1 = new String[] { "chicken", "rabbit", "sheep", "cow", "horse", "pig", "donkey", "skeleton_horse", "iron_golem", "wolf", "goat", "parrot", "camel", "cat", "fox", "llama", "panda", "polar_bear" };
     @Configurable
     public String[] mobList2 = new String[] { "ghast", "zombie", "pillager", "zombie_villager", "skeleton", "drowned", "witch", "spider", "creeper", "husk", "wither_skeleton", "blaze", "zombified_piglin", "slime", "vindicator", "enderman" };

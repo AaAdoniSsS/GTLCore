@@ -2,6 +2,8 @@ package org.gtlcore.gtlcore.api.pattern;
 
 import org.gtlcore.gtlcore.common.item.UltimateTerminalBehavior;
 import org.gtlcore.gtlcore.integration.ae2.WirelessTerminalGridResolver;
+import org.gtlcore.gtlcore.integration.terminal.StableBlockCandidates;
+import org.gtlcore.gtlcore.mixin.gtm.api.machine.IMultiblockStateInvoker;
 
 import com.gregtechceu.gtceu.api.machine.IMachineBlockEntity;
 import com.gregtechceu.gtceu.api.machine.MetaMachine;
@@ -63,6 +65,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.*;
 import java.util.function.*;
+import java.util.function.Supplier;
 
 /**
  * 代码参考自gtmthings
@@ -156,6 +159,12 @@ public class AdvancedBlockPattern extends BlockPattern {
         boolean isFlipped = autoBuildSetting.isFlipped();
         boolean aeMode = autoBuildSetting.isAeMode();
 
+        Map<Supplier<BlockInfo[]>, BlockInfo[]> candidateCache = new IdentityHashMap<>();
+        // The original transform is linear; resolve the orientation once per build.
+        BlockPos basisX = setActualRelativeOffset(1, 0, 0, facing, upwardsFacing, isFlipped);
+        BlockPos basisY = setActualRelativeOffset(0, 1, 0, facing, upwardsFacing, isFlipped);
+        BlockPos basisZ = setActualRelativeOffset(0, 0, 1, facing, upwardsFacing, isFlipped);
+
         GlobalPos boundCoord = autoBuildSetting.getBoundAE();
         IGrid grid = aeMode ? findBestGrid(world, player, boundCoord) : null;
         var aeInventory = grid != null ? grid.getStorageService().getInventory() : null;
@@ -178,8 +187,10 @@ public class AdvancedBlockPattern extends BlockPattern {
                     for (int a = 0, x = -centerOffset[0]; a < this.palmLength; a++, x++) {
                         TraceabilityPredicate predicate = this.blockMatches[c][b][a];
                         if (predicate.isAny()) continue;
-                        BlockPos pos = setActualRelativeOffset(x, y, z, facing, upwardsFacing, isFlipped)
-                                .offset(centerPos.getX(), centerPos.getY(), centerPos.getZ());
+                        BlockPos pos = new BlockPos(
+                                centerPos.getX() + basisX.getX() * x + basisY.getX() * y + basisZ.getX() * z,
+                                centerPos.getY() + basisX.getY() * x + basisY.getY() * y + basisZ.getY() * z,
+                                centerPos.getZ() + basisX.getZ() * x + basisY.getZ() * y + basisZ.getZ() * z);
                         updateWorldState(worldState, pos, predicate);
                         ItemStack itemStack = null;
                         if (!world.isEmptyBlock(pos)) {
@@ -196,13 +207,13 @@ public class AdvancedBlockPattern extends BlockPattern {
                         boolean find = false;
                         BlockInfo[] infos = new BlockInfo[0];
                         for (var limit : predicate.limited) {
-                            if (limit.candidates != null && !autoBuildSetting.isPlaceHatch(limit.candidates.get())) continue;
+                            if (limit.candidates != null && !autoBuildSetting.isPlaceHatch(buildCandidates(candidateCache, limit.candidates))) continue;
                             if (limit.minLayerCount > 0) {
                                 int curr = cacheLayer.getInt(limit);
                                 if (curr < limit.minLayerCount &&
                                         (limit.maxLayerCount == -1 || curr < limit.maxLayerCount)) {
                                     cacheLayer.addTo(limit, 1);
-                                    infos = limit.candidates == null ? null : limit.candidates.get();
+                                    infos = buildCandidates(candidateCache, limit.candidates);
                                     find = true;
                                     break;
                                 }
@@ -210,12 +221,12 @@ public class AdvancedBlockPattern extends BlockPattern {
                         }
                         if (!find) {
                             for (var limit : predicate.limited) {
-                                if (limit.candidates != null && !autoBuildSetting.isPlaceHatch(limit.candidates.get())) continue;
+                                if (limit.candidates != null && !autoBuildSetting.isPlaceHatch(buildCandidates(candidateCache, limit.candidates))) continue;
                                 if (limit.minCount > 0) {
                                     int curr = cacheGlobal.getInt(limit);
                                     if (curr < limit.minCount && (limit.maxCount == -1 || curr < limit.maxCount)) {
                                         cacheGlobal.addTo(limit, 1);
-                                        infos = limit.candidates == null ? null : limit.candidates.get();
+                                        infos = buildCandidates(candidateCache, limit.candidates);
                                         find = true;
                                         break;
                                     }
@@ -224,7 +235,7 @@ public class AdvancedBlockPattern extends BlockPattern {
                         }
                         if (!find) { // no limited
                             for (SimplePredicate limit : predicate.limited) {
-                                if (limit.candidates != null && !autoBuildSetting.isPlaceHatch(limit.candidates.get()))
+                                if (limit.candidates != null && !autoBuildSetting.isPlaceHatch(buildCandidates(candidateCache, limit.candidates)))
                                     continue;
                                 if (limit.maxLayerCount != -1 &&
                                         cacheLayer.getOrDefault(limit, Integer.MAX_VALUE) == limit.maxLayerCount) {
@@ -236,13 +247,13 @@ public class AdvancedBlockPattern extends BlockPattern {
                                 }
                                 cacheLayer.addTo(limit, 1);
                                 cacheGlobal.addTo(limit, 1);
-                                infos = ArrayUtils.addAll(infos, limit.candidates == null ? null : limit.candidates.get());
+                                infos = ArrayUtils.addAll(infos, buildCandidates(candidateCache, limit.candidates));
                             }
                             for (SimplePredicate common : predicate.common) {
-                                if (common.candidates != null && predicate.common.size() > 1 && !autoBuildSetting.isPlaceHatch(common.candidates.get())) {
+                                if (common.candidates != null && predicate.common.size() > 1 && !autoBuildSetting.isPlaceHatch(buildCandidates(candidateCache, common.candidates))) {
                                     continue;
                                 }
-                                infos = ArrayUtils.addAll(infos, common.candidates == null ? null : common.candidates.get());
+                                infos = ArrayUtils.addAll(infos, buildCandidates(candidateCache, common.candidates));
                             }
                         }
 
@@ -760,21 +771,17 @@ public class AdvancedBlockPattern extends BlockPattern {
     }
 
     private void clearWorldState(MultiblockState worldState) {
-        try {
-            Class<?> clazz = Class.forName("com.gregtechceu.gtceu.api.pattern.MultiblockState");
-            Method method = clazz.getDeclaredMethod("clean");
-            method.setAccessible(true);
-            method.invoke(worldState);
-        } catch (Exception ignored) {}
+        ((IMultiblockStateInvoker) worldState).cleanState();
     }
 
     private void updateWorldState(MultiblockState worldState, BlockPos posIn, TraceabilityPredicate predicate) {
-        try {
-            Class<?> clazz = Class.forName("com.gregtechceu.gtceu.api.pattern.MultiblockState");
-            Method method = clazz.getDeclaredMethod("update", BlockPos.class, TraceabilityPredicate.class);
-            method.setAccessible(true);
-            method.invoke(worldState, posIn, predicate);
-        } catch (Exception ignored) {}
+        ((IMultiblockStateInvoker) worldState).updateState(posIn, predicate);
+    }
+
+    private static BlockInfo[] buildCandidates(Map<Supplier<BlockInfo[]>, BlockInfo[]> cache,
+                                               Supplier<BlockInfo[]> supplier) {
+        if (supplier == null) return null;
+        return StableBlockCandidates.contains(supplier) ? cache.computeIfAbsent(supplier, Supplier::get) : supplier.get();
     }
 
     private BlockPos setActualRelativeOffset(int x, int y, int z, Direction facing, Direction upwardsFacing,
