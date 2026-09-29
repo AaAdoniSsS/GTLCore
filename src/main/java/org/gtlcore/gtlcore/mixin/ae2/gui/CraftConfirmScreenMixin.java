@@ -59,7 +59,7 @@ public abstract class CraftConfirmScreenMixin extends AEBaseScreen<CraftConfirmM
     private void gtlcore$addFavoriteMissingButton(CraftConfirmMenu menu, Inventory playerInventory,
                                                   Component title, ScreenStyle style, CallbackInfo ci) {
         gtlcore$craftingRing = addToLeftToolbar(new CraftingRingButton(() -> switchToScreen(new CraftingRingScreen((CraftConfirmScreen) (Object) this))));
-        gtlcore$craftingRing.active = false;
+        gtlcore$craftingRing.visible = gtlcore$craftingRing.active = false;
         if (LDLib.isJeiLoaded()) {
             this.gtlcore$favoriteMissing = this.widgets.addButton(
                     GTLCORE$FAVORITE_MISSING_WIDGET_ID,
@@ -72,7 +72,7 @@ public abstract class CraftConfirmScreenMixin extends AEBaseScreen<CraftConfirmM
     @Inject(method = "updateBeforeRender", at = @At("TAIL"), remap = false)
     private void gtlcore$updateFavoriteMissingButton(CallbackInfo ci) {
         var plan = this.menu.getPlan();
-        gtlcore$craftingRing.active = plan instanceof GraphPlanSummaryView view && view.gtlcore$graphPlanId() != null;
+        gtlcore$craftingRing.visible = gtlcore$craftingRing.active = plan instanceof GraphPlanSummaryView view && view.gtlcore$graphPlanId() != null;
         if (plan instanceof GraphPlanSummaryView view && view.gtlcore$fallback())
             setTextContent("cpu_status", Component.translatable(plan.isSimulation() ?
                     "gtlcore.ae.graph.fallback_preview" : "gtlcore.ae.graph.fallback_plan"));

@@ -1,6 +1,8 @@
 package org.gtlcore.gtlcore.integration.jei;
 
 import org.gtlcore.gtlcore.GTLCore;
+import org.gtlcore.gtlcore.client.ae2.graph.CraftingRingScreen;
+import org.gtlcore.gtlcore.client.ae2.graph.GraphViewSettingsScreen;
 import org.gtlcore.gtlcore.client.ae2.wireless.MEChamberManagerTerminalScreen;
 import org.gtlcore.gtlcore.common.data.machines.MultiBlockMachineA;
 
@@ -73,6 +75,26 @@ public class GTLJEIPlugin implements IModPlugin {
 
     @Override
     public void registerGuiHandlers(@NotNull IGuiHandlerRegistration registration) {
+        registration.addGuiContainerHandler(CraftingRingScreen.class, new IGuiContainerHandler<>() {
+
+            @Override
+            public List<Rect2i> getGuiExtraAreas(CraftingRingScreen screen) {
+                return screen.getExclusionZones();
+            }
+
+            @Override
+            public Optional<IClickableIngredient<?>> getClickableIngredientUnderMouse(CraftingRingScreen screen, double x, double y) {
+                var stack = screen.getStackUnderMouse(x, y);
+                return stack == null ? Optional.empty() : JeiMissingIngredientBookmarks.createClickableIngredient(stack.stack().what(), stack.bounds());
+            }
+        });
+        registration.addGuiContainerHandler(GraphViewSettingsScreen.class, new IGuiContainerHandler<>() {
+
+            @Override
+            public List<Rect2i> getGuiExtraAreas(GraphViewSettingsScreen screen) {
+                return screen.getExclusionZones();
+            }
+        });
         registration.addGuiContainerHandler(
                 MEChamberManagerTerminalScreen.class,
                 new IGuiContainerHandler<>() {

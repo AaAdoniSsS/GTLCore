@@ -4,57 +4,37 @@
     "common/common.json"
   ],
   "generatedBackground": {
-    "width": 360,
-    "height": 264
+    "width": 320,
+    "height": 232
   },
   "widgets": {
     "back": {
-      "left": 292,
-      "top": 7,
-      "width": 56,
-      "height": 18
-    },
-    "overview": {
-      "left": 12,
-      "top": 30,
-      "width": 80,
-      "height": 18
-    },
-    "rings": {
-      "left": 97,
-      "top": 30,
-      "width": 80,
-      "height": 18
-    },
-    "recipes": {
-      "left": 182,
-      "top": 30,
-      "width": 80,
-      "height": 18
-    },
-    "steps": {
-      "left": 267,
-      "top": 30,
-      "width": 80,
-      "height": 18
+      "right": 28,
+      "top": 2
     },
     "previous": {
-      "left": 12,
-      "top": 238,
-      "width": 30,
+      "left": 10,
+      "bottom": 26,
+      "width": 18,
       "height": 18
     },
     "next": {
-      "left": 318,
-      "top": 238,
-      "width": 30,
+      "right": 28,
+      "bottom": 26,
+      "width": 18,
       "height": 18
     },
     "reset": {
-      "left": 280,
-      "top": 52,
-      "width": 68,
-      "height": 17
+      "right": 80,
+      "top": 26,
+      "width": 70,
+      "height": 14
+    },
+    "focusBack": {
+      "right": 100,
+      "top": 26,
+      "width": 16,
+      "height": 14
     }
   }
 }

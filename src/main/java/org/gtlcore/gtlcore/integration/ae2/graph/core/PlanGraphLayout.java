@@ -161,7 +161,7 @@ public final class PlanGraphLayout<K> {
     }
 
     /** Bounding-volume tree: rendering work follows the viewport, not total plan size. */
-    private static final class Index {
+    static final class Index {
 
         private record Branch(Box box, Branch left, Branch right, List<Integer> items) {}
 

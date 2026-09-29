@@ -64,7 +64,10 @@ public final class GraphRingPackets {
                     rate[0] = tick;
                     rate[1] = 0;
                 }
-                if (++rate[1] > 2) return;
+                if (++rate[1] > 4) {
+                    failure(player, "RATE_LIMIT");
+                    return;
+                }
                 long start = System.nanoTime();
                 var server = player.getServer();
                 if (server == null) return;

@@ -17,6 +17,10 @@ public final class PlanTopology<K> {
     private final int[] groupOf;
 
     public PlanTopology(List<GraphRecipe<K>> selected) {
+        this(selected, List.of());
+    }
+
+    public PlanTopology(List<GraphRecipe<K>> selected, Collection<K> standalone) {
         List<Node<K>> vertices = new ArrayList<>();
         List<Edge> links = new ArrayList<>();
         Map<K, Integer> resources = new LinkedHashMap<>();
@@ -28,6 +32,7 @@ public final class PlanTopology<K> {
             recipe.inputs().forEach((key, count) -> links.add(new Edge(resource(vertices, resources, key), recipeNode, count)));
             recipe.outputs().forEach((key, count) -> links.add(new Edge(recipeNode, resource(vertices, resources, key), count)));
         }
+        for (K key : standalone) resource(vertices, resources, key);
         nodes = List.copyOf(vertices);
         edges = List.copyOf(links);
         int size = nodes.size();

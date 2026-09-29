@@ -5,6 +5,7 @@ import org.gtlcore.gtlcore.integration.ae2.crafting.ICraftingPlanSummaryEntry;
 import org.gtlcore.gtlcore.integration.ae2.graph.AeGraphPlan;
 import org.gtlcore.gtlcore.integration.ae2.graph.GraphPlanSummaryView;
 import org.gtlcore.gtlcore.integration.ae2.graph.GraphSeedStatus;
+import org.gtlcore.gtlcore.integration.ae2.graph.GraphSummaryContext;
 import org.gtlcore.gtlcore.integration.ae2.graph.core.GraphPlan;
 
 import net.minecraft.network.FriendlyByteBuf;
@@ -95,9 +96,12 @@ public class CraftingPlanSummaryMixin implements GraphPlanSummaryView {
     private static CraftingPlanSummary gtlcore$graphSummary(IGrid grid, IActionSource actionSource,
                                                             ICraftingPlan job, Operation<CraftingPlanSummary> original) {
         if (!(job instanceof AeGraphPlan graph)) return original.call(grid, actionSource, job);
-        // Keep addon summary/packet hooks intact, including AE2CT's CraftingPlan cast.
-        // Only the nested UI call sees this view; the menu and CPU retain the graph plan.
-        CraftingPlanSummary summary = original.call(grid, actionSource, graph.summaryView());
+        // Keep addon packet envelopes intact, but skip AE2CT's redundant tree for
+        // this graph view only. Legacy plans, including nested calls, retain their data.
+        // The menu and CPU continue to hold the original graph plan.
+        var graphView = graph.summaryView();
+        CraftingPlanSummary summary = GraphSummaryContext.withGraphPlan(graphView,
+                () -> original.call(grid, actionSource, graphView));
         ((GraphPlanSummaryView) summary).gtlcore$graphPlanId(graph.id());
         ((GraphPlanSummaryView) summary).gtlcore$seedOptimality(graph.graph().seedOptimality());
         ((GraphPlanSummaryView) summary).gtlcore$fallback(graph.fallback());

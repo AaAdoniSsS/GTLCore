@@ -37,7 +37,8 @@ public final class GraphSeedStatus {
         if (proof == null) return List.of(Component.translatable("gtlcore.ae.graph.seed_unproven"));
         List<Component> lines = new ArrayList<>();
         lines.add(proof.cardinalityProven() ? Component.translatable("gtlcore.ae.graph.seed_types_proven", proof.types()) :
-                Component.translatable("gtlcore.ae.graph.seed_types_bound", proof.types(), proof.lowerTypeBound()));
+                proof.lowerTypeBound() > 0 ? Component.translatable("gtlcore.ae.graph.seed_types_bound", proof.types(), proof.lowerTypeBound()) :
+                        Component.translatable("gtlcore.ae.graph.seed_types_unproven", proof.types()));
         lines.add(Component.translatable(proof.quantitiesParetoProven() ? "gtlcore.ae.graph.seed_quantities_proven" : "gtlcore.ae.graph.seed_quantities_unproven"));
         lines.add(Component.translatable(proof.baseMaterialTradeoff() ? "gtlcore.ae.graph.seed_scope_material_tradeoff" :
                 proof.fundedPreview() ? "gtlcore.ae.graph.seed_scope_refill" : "gtlcore.ae.graph.seed_scope_stock"));

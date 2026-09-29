@@ -4,6 +4,7 @@
   "package": "org.gtlcore.gtlcore.mixin",
   "compatibilityLevel": "JAVA_17",
   "client": [
+    "ae2.gui.CraftingVisualizationToolbarMixin",
     "ae2ct.CraftingTreeWidgetMixin",
     "gtm.client.PreviewShapesMixin",
     "gtm.client.WorldPreviewAccessor",
@@ -152,6 +153,7 @@
     "ae2.storage.NetworkStorageMixin",
     "ae2.ticking.TickHandlerMixin",
     "ae2wtlib.ItemWUTMixin",
+    "ae2ct.RecipeHelperMixin",
     "ae2ct.CraftingTreeHelperMixin",
     "ae2ct.CraftingTreeNodeMixin",
     "emi.EmiStackListMixin",
