@@ -311,7 +311,11 @@
     "mc.LivingEntityMixin",
     "mc.PlayerMixin",
     "mc.SlotAccessor",
+    "meRequester.ExportStateMixin",
+    "meRequester.RequesterBlockEntityMixin",
     "meRequester.RequestMixin",
+    "meRequester.StorageAccountingMixin",
+    "meRequester.StorageManagerMixin",
     "travelanchors.EventListenerMixin"
   ],
   "injectors": {
