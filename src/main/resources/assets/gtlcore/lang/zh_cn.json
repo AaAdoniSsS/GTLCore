@@ -498,8 +498,8 @@
   "gui.gtlcore.dismantle_mode": "拆除模式",
   "gui.gtlcore.ae_mode": "AE模式",
   "gui.gtlcore.rename.desc": "重命名分子操纵者端口",
-  "gui.gtlcore.visible_in_terminal":"在样板管理终端中显示",
-  "gui.gtlcore.hidden_in_terminal":"在样板管理终端中隐藏",
+  "gui.gtlcore.visible_in_terminal": "在样板管理终端中显示",
+  "gui.gtlcore.hidden_in_terminal": "在样板管理终端中隐藏",
   "gtlcore.terminal.ae_bound": "绑定终端到AE节点:%s",
   "gtlcore.source_tooltip.default.shift": "§按 [§7Shift§8] 查看§7来源",
   "gtlcore.source_tooltip.default.control": "§8按 [§7Ctrl§8] 查看§7来源",
@@ -840,5 +840,7 @@
   "gtlcore.jei.pattern_status.craftable": "可合成",
   "message.gtlcore.structure_detection_running": "结构检测正在进行中",
   "tooltip.gtlcore.infinity_cell.uuid": "UUID: ",
-  "tooltip.gtlcore.infinity_cell.bytes": "字节: "
+  "tooltip.gtlcore.infinity_cell.bytes": "字节: ",
+  "config.gtlcore.option.enableAe2PatternCapacityScanLogging": "启用样板容量扫描日志（调试智能翻倍性能）",
+  "config.gtlcore.option.enableAe2PatternCapacityScanLogging.comment": "调试功能：记录智能翻倍容量扫描的每 tick 统计（新扫描次数/缓存命中/耗时）与超慢扫描告警\n用于定位 AE 合成发配卡顿"
 }

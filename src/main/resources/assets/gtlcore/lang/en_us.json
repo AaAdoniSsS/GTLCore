@@ -257,8 +257,8 @@
   "gui.gtlcore.voltage_format": "Voltage: %s (%s)",
   "gui.gtlcore.wildcard_info": "Supports wildcards * and ?",
   "gui.gtlcore.rename.desc": "Rename Molecular Assembler Io",
-  "gui.gtlcore.visible_in_terminal":"Show on Pattern Access Terminal",
-  "gui.gtlcore.hidden_in_terminal":"Hide on Pattern Access Terminal",
+  "gui.gtlcore.visible_in_terminal": "Show on Pattern Access Terminal",
+  "gui.gtlcore.hidden_in_terminal": "Hide on Pattern Access Terminal",
   "item.gtlcore.bifidobacteriumm_petri_dish": "Bifidobacterium Petri Dish",
   "item.gtlcore.brevibacterium_petri_dish": "Brevibacterium Petri Dish",
   "item.gtlcore.cell_component_16m": "16M Storage Component",
@@ -840,5 +840,7 @@
   "gtlcore.jei.pattern_status.craftable": "Craftable",
   "message.gtlcore.structure_detection_running": "Structure detection is already running.",
   "tooltip.gtlcore.infinity_cell.uuid": "UUID: ",
-  "tooltip.gtlcore.infinity_cell.bytes": "Byte: "
+  "tooltip.gtlcore.infinity_cell.bytes": "Byte: ",
+  "config.gtlcore.option.enableAe2PatternCapacityScanLogging": "Enable pattern capacity scan logging (debug auto-expand performance)",
+  "config.gtlcore.option.enableAe2PatternCapacityScanLogging.comment": "Debug: log per-tick capacity scan stats (fresh scans / cache hits / time) and slow-scan warnings\nUsed to diagnose AE crafting dispatch stalls"
 }

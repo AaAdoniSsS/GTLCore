@@ -1,5 +1,6 @@
 package org.gtlcore.gtlcore.mixin.ae2.logic;
 
+import org.gtlcore.gtlcore.GTLCore;
 import org.gtlcore.gtlcore.api.crafting.IAutoExpandSettings;
 import org.gtlcore.gtlcore.config.ConfigHolder;
 import org.gtlcore.gtlcore.integration.ae2.AEUtils;
@@ -33,6 +34,8 @@ import appeng.helpers.InterfaceLogicHost;
 import appeng.helpers.patternprovider.PatternProviderLogic;
 import appeng.helpers.patternprovider.PatternProviderLogicHost;
 import appeng.helpers.patternprovider.PatternProviderTarget;
+import appeng.hooks.ticking.TickHandler;
+import com.hepdd.gtmthings.common.block.machine.multiblock.part.HugeBusPartMachine;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -192,14 +195,134 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
         if (side != null) {
             targetBE = host.getBlockEntity().getLevel().getBlockEntity(host.getBlockEntity().getBlockPos().relative(side));
         }
-        cir.setReturnValue(gtlcore$canTargetAccept(target, targetBE,
+        boolean accepted = gtlcore$canTargetAccept(target, targetBE,
                 side == null ? null : side.getOpposite(),
-                gtlcore$toInputCounter(inputHolder), 1));
+                gtlcore$toInputCounter(inputHolder), 1);
+        if (!accepted) {
+            // The cached capacity estimate was stale - drop it so the next evaluation rescans.
+            gtlcore$capCacheTick = Long.MIN_VALUE;
+            // But not within the same tick: the dispatch loop retries every round, and each
+            // retry would otherwise rescan a machine that just told us it is full. Cool down
+            // until next tick - the machine drains over ticks anyway, so this cannot deadlock.
+            gtlcore$rejectTick = TickHandler.instance().getCurrentTick();
+        }
+        cir.setReturnValue(accepted);
+    }
+
+    @Unique
+    private static final long CAP_CACHE_TTL_TICKS = 20;
+
+    @Unique
+    private long gtlcore$rejectTick = Long.MIN_VALUE;
+
+    @Unique
+    private long gtlcore$capCacheTick = Long.MIN_VALUE;
+    @Unique
+    private IPatternDetails gtlcore$capCachePattern;
+    @Unique
+    private long gtlcore$capCacheCapacity;
+    @Unique
+    private long gtlcore$capCacheCeiling;
+
+    @Unique
+    private static long gtlcore$scanStatTick = Long.MIN_VALUE;
+    @Unique
+    private static int gtlcore$scanStatScans;
+    @Unique
+    private static int gtlcore$scanStatHits;
+    @Unique
+    private static long gtlcore$scanStatNanos;
+
+    @Unique
+    private static boolean gtlcore$scanLoggingEnabled() {
+        return ConfigHolder.INSTANCE != null &&
+                ConfigHolder.INSTANCE.debugLogging.enableAe2PatternCapacityScanLogging;
+    }
+
+    @Unique
+    private static void gtlcore$scanStatTick(long now) {
+        if (gtlcore$scanStatTick != now) {
+            if (gtlcore$scanStatScans + gtlcore$scanStatHits > 0) {
+                GTLCore.LOGGER.info("[GTLCore] pattern capacity scan: tick={} freshScans={} cacheHits={} scanTime={}ms",
+                        gtlcore$scanStatTick, gtlcore$scanStatScans, gtlcore$scanStatHits, gtlcore$scanStatNanos / 1_000_000);
+            }
+            gtlcore$scanStatTick = now;
+            gtlcore$scanStatScans = 0;
+            gtlcore$scanStatHits = 0;
+            gtlcore$scanStatNanos = 0;
+        }
     }
 
     @Override
     public long gtlcore$getMaxPatternOperations(IPatternDetails pattern, long requestedOperations) {
+        // The capacity scan walks every active side and simulates inserts per slot, which is
+        // expensive; the crafting dispatch loop calls this per task per provider per round,
+        // and with pack-wide auto-expand the distinct (provider, pattern) pairs alone reach
+        // tens of thousands per tick. Cache with a 1-second TTL: overestimates are caught by
+        // adapterAcceptsAll at push time (which also invalidates this cache), so a stale
+        // value can never cause a wrong push.
+        long now = TickHandler.instance().getCurrentTick();
+        boolean log = gtlcore$scanLoggingEnabled();
+        if (log) {
+            gtlcore$scanStatTick(now);
+        }
+        if (now == gtlcore$rejectTick) {
+            // A push was already rejected this tick - the target has not had time to drain.
+            // Report "1" without rescanning; next tick reevaluates normally.
+            if (log) {
+                gtlcore$scanStatHits++;
+            }
+            return 1;
+        }
+        // The cache stores a capacity LOWER BOUND (pattern-keyed, request-independent):
+        // dispatch calls arrive with a shrinking "remaining" count every round, so keying on
+        // the requested amount would miss forever. min(bound, requested) is always safe -
+        // overestimates get caught by adapterAcceptsAll at push time (and invalidate this).
+        if (now - gtlcore$capCacheTick < CAP_CACHE_TTL_TICKS && gtlcore$capCachePattern == pattern) {
+            boolean ceilingWasHit = gtlcore$capCacheCapacity == gtlcore$capCacheCeiling;
+            boolean needRescan = ceilingWasHit && requestedOperations > gtlcore$capCacheCapacity;
+            if (!needRescan) {
+                if (log) {
+                    gtlcore$scanStatHits++;
+                }
+                return Math.min(gtlcore$capCacheCapacity, requestedOperations);
+            }
+        }
+        long t0 = log ? System.nanoTime() : 0;
+        long computed = gtlcore$computeMaxPatternOperations(pattern, requestedOperations);
+        if (log) {
+            long elapsed = System.nanoTime() - t0;
+            gtlcore$scanStatScans++;
+            gtlcore$scanStatNanos += elapsed;
+            if (elapsed > 50_000_000L) {
+                GTLCore.LOGGER.warn(
+                        "[GTLCore] slow pattern capacity scan: {}ms at {} for pattern {} (result={}, requested={})",
+                        elapsed / 1_000_000, host.getBlockEntity().getBlockPos().toShortString(),
+                        pattern.getPrimaryOutput().what().toString(), computed, requestedOperations);
+            }
+        }
+        // Only cache real capacity results: the "blocked / no target → 1" verdicts are cheap
+        // to recompute and state-critical - caching them across ticks locks blocking-mode
+        // providers into a one-per-push loop after the machine drains.
+        if (computed > 1) {
+            gtlcore$capCacheTick = now;
+            gtlcore$capCachePattern = pattern;
+            gtlcore$capCacheCapacity = computed;
+            gtlcore$capCacheCeiling = requestedOperations;
+        } else {
+            gtlcore$capCacheTick = Long.MIN_VALUE;
+        }
+        return computed;
+    }
+
+    @Unique
+    private long gtlcore$computeMaxPatternOperations(IPatternDetails pattern, long requestedOperations) {
         if (!gtlcore$autoExpand || requestedOperations <= 1 || !pattern.supportsPushInputsToExternalInventory()) {
+            if (gtlcore$scanLoggingEnabled()) {
+                GTLCore.LOGGER.info("[GTLCore] capacity early-return 1 for {}: autoExpand={} requested={} supportsPush={}",
+                        pattern.getPrimaryOutput().what().toString(), gtlcore$autoExpand,
+                        requestedOperations, pattern.supportsPushInputsToExternalInventory());
+            }
             return Math.min(requestedOperations, 1);
         }
 
@@ -252,6 +375,10 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
 
             var target = findAdapter(direction);
             if (target == null || (isBlocking() && target.containsPatternInput(patternInputs))) {
+                if (gtlcore$scanLoggingEnabled() && target != null) {
+                    GTLCore.LOGGER.info("[GTLCore] capacity skip: blocked target at {} (blocking mode, contains pattern input)",
+                            targetPosition.toShortString());
+                }
                 continue;
             }
             hasAdapter = true;
@@ -269,6 +396,10 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
             // by blocking mode). Vanilla pushPattern will reject the push with the same
             // side/target view, so only extract a single operation's worth of inputs
             // instead of churning the whole remaining batch in and out every tick.
+            if (gtlcore$scanLoggingEnabled()) {
+                GTLCore.LOGGER.info("[GTLCore] capacity path: no usable target for {} (requested={}, blocking={})",
+                        pattern.getPrimaryOutput().what().toString(), requestedOperations, isBlocking());
+            }
             return 1;
         }
 
@@ -288,22 +419,51 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
     @Unique
     private long gtlcore$findMaxOperations(PatternProviderTarget target, BlockEntity targetBE, Direction side,
                                            KeyCounter baseInputs, long requestedOperations) {
-        if (!gtlcore$canTargetAccept(target, targetBE, side, baseInputs, requestedOperations)) {
-            long low = 0;
-            long high = requestedOperations - 1;
-            while (low < high) {
-                long middle = low + ((high - low + 1) >>> 1);
-                if (gtlcore$canTargetAccept(target, targetBE, side, baseInputs, middle)) {
-                    low = middle;
-                } else {
-                    high = middle - 1;
-                }
-            }
-            return low;
+        // Giant GTMThings buses/hatches are built for bulk intake: one huge shared inventory,
+        // no per-slot filter reality to respect. Capacity checks exist to stop over-expanded
+        // batches from stranding items in sendList, which cannot happen there.
+        if (targetBE instanceof com.gregtechceu.gtceu.api.machine.IMachineBlockEntity machineBE &&
+                machineBE.getMetaMachine() instanceof HugeBusPartMachine) {
+            return requestedOperations;
         }
-        return requestedOperations;
+        // Fast path: full batch fits (verified against the real handler).
+        if (gtlcore$canTargetAccept(target, targetBE, side, baseInputs, requestedOperations)) {
+            return requestedOperations;
+        }
+        // Binary search with the full batch check per step: the only approach that gets
+        // slot sharing right (greedy single-pass estimates starve shared slots).
+        long result = gtlcore$binarySearchCapacity(target, targetBE, side, baseInputs, requestedOperations);
+        if (gtlcore$scanLoggingEnabled() && result < requestedOperations) {
+            GTLCore.LOGGER.info("[GTLCore] capacity path: target={}@{} requested={} result={}",
+                    targetBE == null ? "null" : targetBE.getClass().getSimpleName(),
+                    targetBE == null ? "?" : targetBE.getBlockPos().toShortString(),
+                    requestedOperations, result);
+        }
+        return result;
     }
 
+    @Unique
+    private long gtlcore$binarySearchCapacity(PatternProviderTarget target, BlockEntity targetBE, Direction side,
+                                              KeyCounter baseInputs, long requestedOperations) {
+        long low = 0;
+        long high = requestedOperations - 1;
+        while (low < high) {
+            long middle = low + ((high - low + 1) >>> 1);
+            if (gtlcore$canTargetAccept(target, targetBE, side, baseInputs, middle)) {
+                low = middle;
+            } else {
+                high = middle - 1;
+            }
+        }
+        return low;
+    }
+
+    /**
+     * Single-pass capacity estimate: for each input key, walk slots once, reserving space for
+     * keys already processed (most-constrained first), and floor the taken amount by the
+     * per-operation amount. Used as an estimate only - callers verify with the real batch
+     * acceptance check before trusting it.
+     */
     @Unique
     private boolean gtlcore$canTargetAccept(PatternProviderTarget target, BlockEntity targetBE, Direction side,
                                             KeyCounter baseInputs, long operations) {
