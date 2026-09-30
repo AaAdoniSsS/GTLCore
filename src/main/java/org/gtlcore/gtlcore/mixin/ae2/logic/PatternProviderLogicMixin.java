@@ -91,6 +91,16 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
         throw new AssertionError();
     }
 
+    @Unique
+    private PatternProviderTarget gtlcore$findAdapterCached(Direction direction) {
+        long now = TickHandler.instance().getCurrentTick();
+        if (now != gtlcore$adapterTick) {
+            gtlcore$adapterTick = now;
+            gtlcore$adapterCache.clear();
+        }
+        return gtlcore$adapterCache.computeIfAbsent(direction, this::findAdapter);
+    }
+
     @Shadow(remap = false)
     private boolean isBlocking() {
         throw new AssertionError();
@@ -253,6 +263,17 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
     @Unique
     private long gtlcore$rejectTick = Long.MIN_VALUE;
 
+    /**
+     * Per-tick per-side adapter cache: AE2's own target cache is invalidated on every target
+     * change (i.e. every insert), and each rebuild calls getCapability on the machine - which
+     * constructs the whole merged inventory view. One cache entry per tick per side is safe
+     * because targets cannot meaningfully change within a tick.
+     */
+    @Unique
+    private long gtlcore$adapterTick = Long.MIN_VALUE;
+    @Unique
+    private final Map<Direction, PatternProviderTarget> gtlcore$adapterCache = new HashMap<>();
+
     /** Per-tick probe results shared across patterns hitting the same side of this provider. */
     @Unique
     private long gtlcore$probeTick = Long.MIN_VALUE;
@@ -387,7 +408,7 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
                 }
             }
 
-            var target = findAdapter(direction);
+            var target = gtlcore$findAdapterCached(direction);
             if (target == null || (isBlocking() && target.containsPatternInput(patternInputs))) {
                 continue;
             }
