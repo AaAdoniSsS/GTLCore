@@ -22,7 +22,7 @@
   "message.gtlcore.no_clip.armor_required": "No-clip requires a complete matching armor set",
   "gui.gtlcore.pattern_provider.auto_expand": "Pattern Auto-Expand Mode",
   "gui.gtlcore.pattern_provider.auto_expand.off": "Dispatch patterns at original amount",
-  "gui.gtlcore.pattern_provider.auto_expand.on": "Multiply processing patterns by requested amount",
+  "gui.gtlcore.pattern_provider.auto_expand.on": "Batch-dispatch processing patterns by target capacity (capped at the requested amount)",
   "block.gtceu.performance_monitor": "Performance Monitor",
   "block.gtlcore.16m_storage": "16M Crafting Storage",
   "block.gtlcore.1m_storage": "1M Crafting Storage",

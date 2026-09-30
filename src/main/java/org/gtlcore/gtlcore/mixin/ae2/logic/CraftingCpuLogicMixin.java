@@ -14,6 +14,7 @@ import net.minecraft.world.level.Level;
 import appeng.api.config.Actionable;
 import appeng.api.config.PowerMultiplier;
 import appeng.api.crafting.IPatternDetails;
+import appeng.api.networking.crafting.ICraftingProvider;
 import appeng.api.networking.energy.IEnergyService;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
@@ -23,6 +24,7 @@ import appeng.crafting.execution.CraftingCpuHelper;
 import appeng.crafting.execution.CraftingCpuLogic;
 import appeng.crafting.execution.ExecutingCraftingJob;
 import appeng.crafting.inv.ListCraftingInventory;
+import appeng.hooks.ticking.TickHandler;
 import appeng.me.cluster.implementations.CraftingCPUCluster;
 import appeng.me.service.CraftingService;
 import org.jetbrains.annotations.Nullable;
@@ -32,7 +34,9 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -84,6 +88,12 @@ public abstract class CraftingCpuLogicMixin implements ICraftingJobSuspension, I
 
     @Unique
     private boolean gtlcore$collectDispatchReasons;
+
+    /** Providers that failed a push during the current tick; skipped for the rest of the tick. */
+    @Unique
+    private final Set<ICraftingProvider> gtlcore$rejectedThisTick = Collections.newSetFromMap(new IdentityHashMap<>());
+    @Unique
+    private long gtlcore$rejectedTick = Long.MIN_VALUE;
 
     @Inject(method = "<init>", at = @At("RETURN"), remap = false)
     private void gtlcore$initializeDispatchReasons(CraftingCPUCluster cluster, CallbackInfo ci) {
@@ -172,6 +182,12 @@ public abstract class CraftingCpuLogicMixin implements ICraftingJobSuspension, I
         var job = (ExecutingCraftingJobAccessor) (this.job);
         if (job == null) return 0;
 
+        long nowTick = TickHandler.instance().getCurrentTick();
+        if (nowTick != gtlcore$rejectedTick) {
+            gtlcore$rejectedTick = nowTick;
+            gtlcore$rejectedThisTick.clear();
+        }
+
         var pushedPatterns = 0;
 
         var it = job.getTasks().entrySet().iterator();
@@ -194,6 +210,12 @@ public abstract class CraftingCpuLogicMixin implements ICraftingJobSuspension, I
             for (var provider : craftingService.getProviders(details)) {
                 providerSeen = true;
                 if (provider.isBusy()) {
+                    continue;
+                }
+                if (gtlcore$rejectedThisTick.contains(provider)) {
+                    // This provider already failed a push this tick; retrying every round is
+                    // the dominant dispatch cost with high co-processor budgets, and nothing
+                    // about the target changes within a tick.
                     continue;
                 }
                 idleProviderSeen = true;
@@ -266,6 +288,7 @@ public abstract class CraftingCpuLogicMixin implements ICraftingJobSuspension, I
                 } else {
                     CraftingCpuHelper.reinjectPatternInputs(inventory, craftingContainer);
                     providerRejected = true;
+                    gtlcore$rejectedThisTick.add(provider);
                 }
             }
 

@@ -22,7 +22,7 @@
   "message.gtlcore.no_clip.armor_required": "穿墙需要一整套匹配的装备",
   "gui.gtlcore.pattern_provider.auto_expand": "智能翻倍模式",
   "gui.gtlcore.pattern_provider.auto_expand.off": "按原始样板数量进行发配",
-  "gui.gtlcore.pattern_provider.auto_expand.on": "根据请求量对处理样板进行翻倍",
+  "gui.gtlcore.pattern_provider.auto_expand.on": "按目标可接收容量成批发配处理样板（不超过请求量）",
   "block.gtceu.performance_monitor": "性能监控器",
   "block.gtlcore.16m_storage": "16M 合成存储器",
   "block.gtlcore.1m_storage": "1M 合成存储器",

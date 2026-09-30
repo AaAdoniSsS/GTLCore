@@ -22,6 +22,7 @@ import appeng.api.features.IPlayerRegistry;
 import appeng.api.networking.IGrid;
 import appeng.api.networking.crafting.ICraftingLink;
 import appeng.api.networking.crafting.ICraftingPlan;
+import appeng.api.networking.crafting.ICraftingProvider;
 import appeng.api.networking.crafting.ICraftingRequester;
 import appeng.api.networking.crafting.ICraftingSubmitResult;
 import appeng.api.networking.energy.IEnergyService;
@@ -46,7 +47,9 @@ import it.unimi.dsi.fastutil.objects.Object2LongMaps;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -73,6 +76,10 @@ public final class TransfiniteCraftingLogic implements ICraftingJobSuspension, I
     private boolean batchingChanges;
     private boolean dirty;
     private long lastModifiedOnTick = TickHandler.instance().getCurrentTick();
+
+    /** Providers that failed a push during the current tick; skipped for the rest of the tick. */
+    private final Set<ICraftingProvider> gtlcore$rejectedThisTick = Collections.newSetFromMap(new IdentityHashMap<>());
+    private long gtlcore$rejectedTick = Long.MIN_VALUE;
 
     TransfiniteCraftingLogic(TransfiniteCraftingCPU cpu) {
         this.cpu = cpu;
@@ -158,6 +165,12 @@ public final class TransfiniteCraftingLogic implements ICraftingJobSuspension, I
     private long tickCraftingLogicInternal(IEnergyService energyService, CraftingService craftingService) {
         this.collectDispatchReasons = !this.listeners.isEmpty();
         this.workingDispatchReasons.clear();
+
+        long nowTick = TickHandler.instance().getCurrentTick();
+        if (nowTick != gtlcore$rejectedTick) {
+            gtlcore$rejectedTick = nowTick;
+            gtlcore$rejectedThisTick.clear();
+        }
 
         if (!this.cpu.isActive()) {
             markAllRemaining(CraftingDispatchReason.CPU_INACTIVE);
@@ -253,6 +266,11 @@ public final class TransfiniteCraftingLogic implements ICraftingJobSuspension, I
                 if (provider.isBusy()) {
                     continue;
                 }
+                if (gtlcore$rejectedThisTick.contains(provider)) {
+                    // Same-tick retry of a provider that already rejected a push is the main
+                    // cost multiplier with high dispatch budgets; nothing changes within a tick.
+                    continue;
+                }
                 idleProviderSeen = true;
 
                 boolean autoExpand = CraftingPatternAutoExpand.canAutoExpand(processing, provider);
@@ -288,6 +306,7 @@ public final class TransfiniteCraftingLogic implements ICraftingJobSuspension, I
                 if (!pushed) {
                     CraftingCpuHelper.reinjectPatternInputs(this.inventory, craftingContainer);
                     providerRejected = true;
+                    gtlcore$rejectedThisTick.add(provider);
                     continue;
                 }
 
