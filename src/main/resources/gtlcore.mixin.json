@@ -99,6 +99,7 @@
     "ae2.crafting.CraftingCpuHelperMixin",
     "ae2.crafting.CraftingPlanSummaryEntryMixin",
     "ae2.crafting.CraftingPlanSummaryMixin",
+    "ae2.crafting.ListCraftingInventoryMixin",
     "ae2.crafting.CraftingSimulationStateMixin",
     "ae2.crafting.CraftingStatusMixin",
     "ae2.crafting.CraftingTreeNodeMixin",

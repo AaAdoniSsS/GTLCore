@@ -542,12 +542,26 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
             // Per-tank probe: list-level fill() would happily land in a different tank (e.g. the
             // input tank) and mislabel an output tank as usable.
             IFluidTransfer ft = gtlcore$asFluidTransfer(fh);
-            ok = ft != null ? ft.fill(s.slot(), FluidHelperImpl.toFluidStack(((AEFluidKey) key).toStack(1)), true, false) == 1 : fh.isFluidValid(s.slot(), ((AEFluidKey) key).toStack(1));
+            ok = ft != null ? gtlcore$probeTankAccepts(ft, s.slot(), (AEFluidKey) key) : fh.isFluidValid(s.slot(), ((AEFluidKey) key).toStack(1));
         } else {
             ok = true;
         }
         memo.put(memoKey, ok);
         return ok;
+    }
+
+    /**
+     * Per-tank fill probe with a guard: some wrappers (LDLib FluidTransferWrapper) implement
+     * IFluidTransfer but throw NotImplementedException on the per-tank overload - treat those
+     * tanks as unusable rather than letting the exception kill the server tick.
+     */
+    @Unique
+    private static boolean gtlcore$probeTankAccepts(IFluidTransfer transfer, int tank, AEFluidKey key) {
+        try {
+            return transfer.fill(tank, FluidHelperImpl.toFluidStack(key.toStack(1)), true, false) == 1;
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     @Unique
@@ -643,7 +657,8 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
                     fluids.add(new SlotSnap(null, cap, cap, fluidHandler, i));
                 } else {
                     AEFluidKey key = AEFluidKey.of(cur);
-                    long accepted = fluidHandler instanceof IFluidTransfer transfer ? transfer.fill(i, FluidHelperImpl.toFluidStack(key.toStack(Integer.MAX_VALUE)), true, false) : fluidHandler.fill(key.toStack(Integer.MAX_VALUE), IFluidHandler.FluidAction.SIMULATE);
+                    IFluidTransfer transfer = gtlcore$asFluidTransfer(fluidHandler);
+                    long accepted = transfer != null ? transfer.fill(i, FluidHelperImpl.toFluidStack(key.toStack(Integer.MAX_VALUE)), true, false) : fluidHandler.fill(key.toStack(Integer.MAX_VALUE), IFluidHandler.FluidAction.SIMULATE);
                     fluids.add(new SlotSnap(key, accepted, fluidHandler.getTankCapacity(i), fluidHandler, i));
                 }
             }
@@ -791,7 +806,8 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
         for (var tier : ((NetworkStorageAccessor) net).gtlcore$getPriorityInventory().values()) {
             for (MEStorage storage : tier) {
                 MEStorage core = storage;
-                while (core instanceof DelegatingMEInventory delegating) {
+                int unwrapDepth = 0;
+                while (core instanceof DelegatingMEInventory delegating && unwrapDepth++ < 8) {
                     core = ((DelegatingMEInventoryAccessor) delegating).gtlcore$getDelegate();
                 }
                 if (core instanceof CompositeStorage composite) {
@@ -832,7 +848,8 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
                     fluids.add(new SlotSnap(null, cap, cap, handler, i));
                 } else {
                     AEFluidKey key = AEFluidKey.of(cur);
-                    long accepted = handler instanceof IFluidTransfer transfer ? transfer.fill(i, FluidHelperImpl.toFluidStack(key.toStack(Integer.MAX_VALUE)), true, false) : handler.fill(key.toStack(Integer.MAX_VALUE), IFluidHandler.FluidAction.SIMULATE);
+                    IFluidTransfer transfer = gtlcore$asFluidTransfer(handler);
+                    long accepted = transfer != null ? transfer.fill(i, FluidHelperImpl.toFluidStack(key.toStack(Integer.MAX_VALUE)), true, false) : handler.fill(key.toStack(Integer.MAX_VALUE), IFluidHandler.FluidAction.SIMULATE);
                     fluids.add(new SlotSnap(key, accepted, handler.getTankCapacity(i), handler, i));
                 }
             }
