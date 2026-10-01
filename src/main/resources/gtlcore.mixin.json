@@ -72,6 +72,7 @@
     "mc.BufferBuilderAccessor",
     "mc.GuiGraphicsMixin",
     "meRequester.NumberFieldMixin",
+    "configuration.ConfigScreenVisibilityMixin",
     "configuration.ConfigValueLocalizationMixin"
   ],
   "mixins": [
