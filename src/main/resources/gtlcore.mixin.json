@@ -316,6 +316,10 @@
     "meRequester.RequestMixin",
     "meRequester.StorageAccountingMixin",
     "meRequester.StorageManagerMixin",
+    "ae2.storage.TerminalCounterAccessor",
+    "ae2.storage.TerminalVariantMixin",
+    "ae2.storage.MEInventoryHandlerDisplayMixin",
+    "ae2.service.TerminalCraftingProvidersMixin",
     "travelanchors.EventListenerMixin"
   ],
   "injectors": {

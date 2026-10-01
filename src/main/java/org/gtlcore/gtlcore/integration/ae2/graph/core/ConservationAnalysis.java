@@ -29,7 +29,7 @@ final class ConservationAnalysis<K> implements AutoCloseable {
     private long memory, eliminationWork;
 
     ConservationAnalysis(GraphCompiler<K> compiler, K target, long amount, Map<K, Long> stock, Set<K> external,
-                     Map<K, Long> required, Set<String> excluded, PlanningBudget budget) {
+                         Map<K, Long> required, Set<String> excluded, PlanningBudget budget) {
         recipes = compiler.catalog().stream().filter(r -> !excluded.contains(r.id())).toList();
         this.compiler = compiler;
         this.excluded = excluded;

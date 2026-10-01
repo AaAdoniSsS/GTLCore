@@ -21,6 +21,9 @@ import appeng.api.storage.cells.StorageCell;
 import appeng.core.AELog;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 
+import java.math.BigInteger;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -32,6 +35,8 @@ public class FastInfinityCellInventory implements StorageCell, PreciseStorageAmo
     private final ItemStack stack;
     private boolean isPersisted = true;
     private final KeyCounter lists = new KeyCounter();
+    private final TerminalSourceIndex displayIndex = new TerminalSourceIndex();
+    private final Map<AEKey, BigInteger> displayOverflow = new HashMap<>();
 
     // Pool
     private final Int128 tempInt128 = Int128.ZERO();
@@ -190,7 +195,19 @@ public class FastInfinityCellInventory implements StorageCell, PreciseStorageAmo
     @Override
     public void getAvailableStacks(KeyCounter out) {
         this.getCellItems();
-        out.addAll(lists);
+        if (TerminalDisplayRead.tracks(out)) TerminalDisplayRead.append(out, lists, displayOverflow, displayIndex);
+        else out.addAll(lists);
+    }
+
+    private void updateDisplayAmount(AEKey key, Int128 amount) {
+        long nativeAmount = amount.longValue();
+        lists.set(key, nativeAmount);
+        if (nativeAmount == Long.MAX_VALUE || nativeAmount == Long.MIN_VALUE) {
+            BigInteger exact = amount.toBigInteger();
+            if (exact.bitLength() >= 64) displayOverflow.put(key, exact);
+            else displayOverflow.remove(key);
+        } else displayOverflow.remove(key);
+        displayIndex.set(key, nativeAmount, displayOverflow.get(key));
     }
 
     private void loadCellItems() {
@@ -214,7 +231,7 @@ public class FastInfinityCellInventory implements StorageCell, PreciseStorageAmo
                 var longArray = longArrayTag.getAsLongArray();
                 var count = new Int128(longArray[0], longArray[1]);
                 storedMap.put(key, count);
-                lists.add(key, count.longValue());
+                updateDisplayAmount(key, count);
                 this.storedItemCount += count.doubleValue();
             }
         }
@@ -265,7 +282,7 @@ public class FastInfinityCellInventory implements StorageCell, PreciseStorageAmo
                 }
             });
             // 直接设置为Int128转换后的long值，而不是累加
-            lists.set(what, newValue.longValue());
+            updateDisplayAmount(what, newValue);
             this.saveChanges(amount);
         }
 
@@ -283,6 +300,8 @@ public class FastInfinityCellInventory implements StorageCell, PreciseStorageAmo
                 if (mode == Actionable.MODULATE) {
                     this.storedMap.remove(what);
                     lists.remove(what);
+                    displayOverflow.remove(what);
+                    displayIndex.set(what, 0, null);
                     this.saveChanges(-currentAmount.longValue());
                 }
                 return currentAmount.longValue();
@@ -291,7 +310,7 @@ public class FastInfinityCellInventory implements StorageCell, PreciseStorageAmo
                     // 直接修改现有对象以减少对象创建
                     currentAmount.subtract(tempInt128);
                     // 直接设置为Int128转换后的long值
-                    lists.set(what, currentAmount.longValue());
+                    updateDisplayAmount(what, currentAmount);
                     this.saveChanges(-amount);
                 }
                 return amount;

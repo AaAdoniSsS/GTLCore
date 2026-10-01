@@ -10,5 +10,5 @@ public interface PreciseDisplayMenu {
 
     Map<AEKey, BigInteger> gtlcore$displayAmounts();
 
-    void gtlcore$acceptDisplayChanges(Map<AEKey, BigInteger> changes, boolean complete);
+    void gtlcore$acceptDisplayChanges(Map<AEKey, BigInteger> changes, boolean reset, boolean complete);
 }
