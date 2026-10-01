@@ -27,4 +27,7 @@ public interface IConfirmStartMenu {
 
     /** 客户端：当前选中的 CPU 是否支持在材料缺失时创建等待任务。 */
     boolean gtlcore$isMissingCraftAvailable();
+
+    /** The confirmed order is refreshing inventory and will resume submission if still feasible. */
+    boolean gtlcore$isSubmitting();
 }

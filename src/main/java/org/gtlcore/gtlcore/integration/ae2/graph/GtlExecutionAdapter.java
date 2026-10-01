@@ -11,6 +11,7 @@ import appeng.api.stacks.AEKey;
 import appeng.api.stacks.KeyCounter;
 import appeng.crafting.CraftingLink;
 import appeng.crafting.execution.CraftingCpuHelper;
+import appeng.crafting.pattern.AEProcessingPattern;
 import appeng.me.service.CraftingService;
 
 import java.util.ArrayList;
@@ -89,28 +90,59 @@ public final class GtlExecutionAdapter implements GraphJobRuntime.Adapter<AEKey>
     }
 
     public IPatternDetails resolve(GraphRecipe<AEKey> recipe) {
+        return resolve(recipe, null);
+    }
+
+    public IPatternDetails resolve(GraphRecipe<AEKey> recipe, IPatternDetails captured) {
         bindingFailure = "NO_REGISTERED_PATTERN";
         bindingDetail = "";
         IPatternDetails existing = bindings.get(recipe.binding());
-        if (existing != null && matches(existing, recipe)) return existing;
+        if (existing != null && matches(existing, recipe, true)) return existing;
         bindings.remove(recipe.binding());
+        List<IPatternDetails> candidates = new ArrayList<>();
+        var seen = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<IPatternDetails, Boolean>());
         for (AEKey key : recipe.executionOutputs().keySet()) {
             for (IPatternDetails pattern : service.getCraftingFor(key)) {
-                if (matches(pattern, recipe)) {
+                if (!seen.add(pattern)) continue;
+                candidates.add(pattern);
+                if (matches(pattern, recipe, false)) {
                     bindings.put(recipe.binding(), pattern);
                     return pattern;
                 }
             }
         }
+        // A captured secondary-output source can be absent from AE's primary-output
+        // index. Check the provider's current handles, never trust an old handle solely
+        // because its definition still compares equal in AE's provider map.
+        if (captured != null) {
+            for (var provider : service.getProviders(captured)) {
+                for (var pattern : provider.getAvailablePatterns()) {
+                    if (pattern == captured && matches(pattern, recipe, false)) {
+                        bindings.put(recipe.binding(), pattern);
+                        return pattern;
+                    }
+                }
+            }
+        }
+        // Encoding identity is stricter than execution identity for ordinary processing
+        // patterns (e.g. a re-encoded definition or cosmetic NBT). The complete selected
+        // inputs, slot multipliers, remainders and outputs must still match exactly.
+        for (var pattern : candidates) {
+            if (matches(pattern, recipe, true)) {
+                bindings.put(recipe.binding(), pattern);
+                return pattern;
+            }
+        }
         return null;
     }
 
-    private boolean matches(IPatternDetails pattern, GraphRecipe<AEKey> recipe) {
+    private boolean matches(IPatternDetails pattern, GraphRecipe<AEKey> recipe, boolean equivalentProcessing) {
         String fingerprint = PatternFingerprint.of(pattern);
         if (!fingerprint.equals(recipe.binding())) {
             if (bindingFailure.equals("NO_REGISTERED_PATTERN")) mismatch("PATTERN_FINGERPRINT_CHANGED",
-                    "current=" + fingerprint + " pattern=" + pattern.getClass().getName());
-            return false;
+                    "current=" + fingerprint + " pattern=" + pattern.getClass().getName() + " outputs=" + java.util.Arrays.toString(pattern.getOutputs()));
+            // Custom patterns may have additional dispatch semantics encoded in NBT.
+            if (!equivalentProcessing || pattern.getClass() != AEProcessingPattern.class) return false;
         }
         long[] selectedMultipliers = new long[pattern.getInputs().length];
         Map<AEKey, Long> currentOutputs = new LinkedHashMap<>();

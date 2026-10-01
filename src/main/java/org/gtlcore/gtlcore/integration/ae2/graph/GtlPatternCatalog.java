@@ -61,8 +61,13 @@ public final class GtlPatternCatalog {
 
     public Capture begin(IGrid grid, CraftingService service, Level level, IActionSource source, AEKey target,
                          Set<AEKey> recovery, PlanningBudget budget) {
+        return begin(grid, service, level, source, target, recovery, budget, false);
+    }
+
+    public Capture begin(IGrid grid, CraftingService service, Level level, IActionSource source, AEKey target,
+                         Set<AEKey> recovery, PlanningBudget budget, boolean refreshInventory) {
         return new Capture(grid, service, level, source,
-                new Roots(target, Set.copyOf(recovery), ConfigHolder.INSTANCE.ae2GraphDiscoverByproducts), budget);
+                new Roots(target, Set.copyOf(recovery), ConfigHolder.INSTANCE.ae2GraphDiscoverByproducts), budget, refreshInventory);
     }
 
     /** World access is split between ticks; each request keeps its frontier and captured bindings. */
@@ -80,6 +85,7 @@ public final class GtlPatternCatalog {
         private final long dataRevision;
         private final long invalidationRevision;
         private final boolean simulate;
+        private final boolean refreshInventory;
         private final Map<AEKey, List<Signature>> dependencies = new LinkedHashMap<>();
         private final Set<AEKey> seen = new LinkedHashSet<>();
         // IGNORE_ALL fuzzy scans use only the primary key. Cache one representative
@@ -108,7 +114,8 @@ public final class GtlPatternCatalog {
         private ByproductPatternIndex.Build indexing;
         private long indexingRevision = -1;
 
-        Capture(IGrid grid, CraftingService service, Level level, IActionSource source, Roots roots, PlanningBudget budget) {
+        Capture(IGrid grid, CraftingService service, Level level, IActionSource source, Roots roots, PlanningBudget budget,
+                boolean refreshInventory) {
             if (!level.getServer().isSameThread()) throw new IllegalStateException("Graph snapshot requires server thread");
             this.grid = grid;
             this.service = service;
@@ -117,6 +124,7 @@ public final class GtlPatternCatalog {
             this.source = source;
             this.roots = roots;
             this.budget = budget;
+            this.refreshInventory = refreshInventory;
             available = source == null ? new KeyCounter() : storage.getCachedInventory();
             revision = ((GraphRequestTracker) service).gtlcore$graphProviderGeneration();
             dataRevision = dataGeneration;
@@ -127,7 +135,7 @@ public final class GtlPatternCatalog {
                 recipeManager = level.getRecipeManager();
                 cachedDataGeneration = dataRevision;
             }
-            simulate = source != null && (AEConfig.instance().isCraftingSimulatedExtraction() ||
+            simulate = source != null && (refreshInventory || AEConfig.instance().isCraftingSimulatedExtraction() ||
                     ManualCraftingInventoryLock.hasReservations(storage.getInventory()));
             structure = cache.get(roots);
             if (structure != null) {
@@ -265,7 +273,7 @@ public final class GtlPatternCatalog {
                             // its end-tick event. Query an empty cached key before
                             // diagnosing absence; this never transfers material.
                             if (simulate || count == 0) count = storage.getInventory().extract(resource,
-                                    count == 0 ? Long.MAX_VALUE : count, Actionable.SIMULATE, source);
+                                    refreshInventory || count == 0 ? Long.MAX_VALUE : count, Actionable.SIMULATE, source);
                             if (count > 0) stock.put(resource, count);
                         }
                         if (service.canEmitFor(resource)) emitted.add(resource);

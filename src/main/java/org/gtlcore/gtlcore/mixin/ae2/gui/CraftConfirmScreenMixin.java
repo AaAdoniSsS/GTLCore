@@ -87,6 +87,14 @@ public abstract class CraftConfirmScreenMixin extends AEBaseScreen<CraftConfirmM
             this.start.active = true;
         }
 
+        if (((IConfirmStartMenu) menu).gtlcore$isSubmitting()) {
+            this.start.active = false;
+            this.selectCPU.active = false;
+            this.gtlcore$craftingRing.active = false;
+            this.start.setMessage(Component.translatable("gtlcore.ae.graph.submitting"));
+            setTextContent("cpu_status", Component.translatable("gtlcore.ae.graph.refreshing_submission"));
+        }
+
         if (this.gtlcore$favoriteMissing == null) {
             return;
         }

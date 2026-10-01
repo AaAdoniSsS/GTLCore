@@ -10,6 +10,7 @@ import org.gtlcore.gtlcore.integration.ae2.crafting.ManualCraftingInventoryLock;
 import org.gtlcore.gtlcore.integration.ae2.crafting.transfinite.MissingCraftingPlan;
 import org.gtlcore.gtlcore.integration.ae2.crafting.transfinite.TransfiniteCraftingCPU;
 import org.gtlcore.gtlcore.integration.ae2.graph.AeGraphPlan;
+import org.gtlcore.gtlcore.integration.ae2.graph.CraftingEngineRouter;
 import org.gtlcore.gtlcore.integration.ae2.graph.GraphPlanMenu;
 import org.gtlcore.gtlcore.integration.ae2.graph.GraphPlanSummaryView;
 import org.gtlcore.gtlcore.integration.ae2.graph.GraphPlanningFailure;
@@ -205,7 +206,20 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
     private @Nullable ICraftingPlan gtlcore$reservedPlan;
 
     @Unique
+    private static final int GTLCORE$MAX_SUBMIT_REFRESHES = 2;
+
+    @Unique
+    @GuiSync(102)
+    private boolean gtlcore$submitting;
+
+    @Unique
+    private boolean gtlcore$resumingSubmit;
+
+    @Unique
     private boolean gtlcore$refreshAfterSubmit;
+
+    @Unique
+    private int gtlcore$submitRefreshes;
 
     @Unique
     private CalculationStrategy gtlcore$calculationStrategy = CalculationStrategy.REPORT_MISSING_ITEMS;
@@ -323,8 +337,20 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
     }
 
     @Override
+    public boolean gtlcore$isSubmitting() {
+        return gtlcore$submitting;
+    }
+
+    @Override
     public boolean gtlcore$planLongAmountJob(AEKey whatToCraft, long amount, CalculationStrategy strategy) {
+        return gtlcore$planLongAmountJob(whatToCraft, amount, strategy, false);
+    }
+
+    @Unique
+    private boolean gtlcore$planLongAmountJob(AEKey whatToCraft, long amount, CalculationStrategy strategy,
+                                              boolean submissionRefresh) {
         this.gtlcore$releaseInventoryReservation();
+        this.gtlcore$submitting = false;
         this.gtlcore$refreshAfterSubmit = false;
         this.gtlcore$calculationStrategy = strategy;
         if (this.job != null) {
@@ -344,7 +370,8 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
 
         var player = this.getPlayer();
         this.job = grid.getCraftingService().beginCraftingCalculation(
-                player.level(), this::getActionSource, whatToCraft, amount, strategy);
+                player.level(), submissionRefresh ? CraftingEngineRouter.submissionRefresh(getActionSource()) : this::getActionSource,
+                whatToCraft, amount, strategy);
         return true;
     }
 
@@ -429,9 +456,21 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
     private void gtlcore$prepareForPlan(AEKey whatToCraft, int amount, CalculationStrategy strategy,
                                         CallbackInfoReturnable<Boolean> cir) {
         this.gtlcore$releaseInventoryReservation();
+        this.gtlcore$submitting = false;
         this.gtlcore$refreshAfterSubmit = false;
         this.plan = null;
         this.gtlcore$calculationStrategy = strategy;
+    }
+
+    @Inject(method = "startJob", at = @At("HEAD"), cancellable = true, remap = false)
+    private void gtlcore$guardPendingSubmission(CallbackInfo ci) {
+        // An extra click while refreshing belongs to the same confirmation. It
+        // must neither reset its retry allowance nor submit the old preview.
+        if (gtlcore$submitting) {
+            ci.cancel();
+            return;
+        }
+        if (!isClientSide() && !gtlcore$resumingSubmit) gtlcore$submitRefreshes = 0;
     }
 
     @Redirect(
@@ -467,8 +506,9 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
         } finally {
             if (plan instanceof AeGraphPlan) gtlcore$releaseInventoryReservation();
         }
-        gtlcore$refreshAfterSubmit = plan instanceof AeGraphPlan && !submitResult.successful() &&
-                submitResult.errorCode() == CraftingSubmitErrorCode.MISSING_INGREDIENT;
+        gtlcore$refreshAfterSubmit = plan instanceof AeGraphPlan && !plan.simulation() &&
+                !submitResult.successful() && submitResult.errorCode() == CraftingSubmitErrorCode.MISSING_INGREDIENT &&
+                gtlcore$submitRefreshes < GTLCORE$MAX_SUBMIT_REFRESHES;
         if (submitResult.successful()) {
             this.gtlcore$releaseInventoryReservation();
         } else if (plan instanceof AeGraphPlan graph && ConfigHolder.INSTANCE.ae2GraphDiagnosticLogging) {
@@ -480,13 +520,31 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
     }
 
     @Inject(method = "startJob", at = @At("RETURN"), remap = false)
-    private void gtlcore$refreshAfterInventoryChanged(CallbackInfo ci) {
+    private void gtlcore$refreshForConfirmedSubmission(CallbackInfo ci) {
         if (isClientSide() || !gtlcore$refreshAfterSubmit) return;
         gtlcore$refreshAfterSubmit = false;
-        // Wait until native startJob has finished reading result and disabled
-        // auto-start. Publish a fresh preview, requiring another confirmation;
-        // never keep recalculating or submit a newly incomplete plan silently.
-        gtlcore$restartCalculationAfterReservationConflict();
+        gtlcore$submitRefreshes++;
+        // Keep the exact output the player confirmed, including CRAFT_LESS
+        // previews. A refresh may not silently shrink it or submit missing work.
+        var output = result.finalOutput();
+        if (gtlcore$planLongAmountJob(output.what(), output.amount(), CalculationStrategy.REPORT_MISSING_ITEMS, true)) {
+            gtlcore$submitting = true;
+        } else gtlcore$returnToPreviousMenu();
+    }
+
+    @Inject(method = "broadcastChanges", at = @At("RETURN"))
+    private void gtlcore$resumeConfirmedSubmission(CallbackInfo ci) {
+        if (isClientSide() || !gtlcore$submitting || job != null) return;
+        gtlcore$submitting = false;
+        // Native broadcastChanges has consumed the future and published its
+        // summary. An incomplete plan stays visible for explicit confirmation.
+        if (result == null || result.simulation()) return;
+        gtlcore$resumingSubmit = true;
+        try {
+            ((CraftConfirmMenu) (Object) this).startJob();
+        } finally {
+            gtlcore$resumingSubmit = false;
+        }
     }
 
     @Redirect(
@@ -532,6 +590,8 @@ public abstract class CraftConfirmMenuMixin extends AEBaseMenu implements IConfi
 
     @Inject(method = "removed", at = @At("HEAD"))
     private void gtlcore$releaseInventoryOnClose(net.minecraft.world.entity.player.Player player, CallbackInfo ci) {
+        gtlcore$submitting = false;
+        gtlcore$refreshAfterSubmit = false;
         this.gtlcore$releaseInventoryReservation();
     }
 

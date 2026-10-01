@@ -91,14 +91,16 @@ public final class GraphCpuController {
         preparedAdapter.services((CraftingService) grid.getCraftingService(), grid.getEnergyService());
         for (String recipe : plan.patternTimes().keySet()) {
             var selected = plan.recipes().get(recipe);
-            if (preparedAdapter.resolve(selected) == null) {
+            var captured = view.bindings().get(selected.binding());
+            if (preparedAdapter.resolve(selected, captured) == null) {
                 // Do not let Retry reproduce a catalog that execution has just rejected.
                 // No inventory has been extracted yet; the current plan remains rejected.
                 ((GraphRequestTracker) grid.getCraftingService()).gtlcore$invalidateGraphBinding(selected.binding());
                 if (ConfigHolder.INSTANCE.ae2GraphDiagnosticLogging) GTLCore.LOGGER.warn(
-                        "[Graph Crafting] submit rejected plan={} target={} amount={} recipe={} binding={} reason={} detail={} provider_revision={} catalog_invalidated=true",
+                        "[Graph Crafting] submit rejected plan={} target={} amount={} recipe={} binding={} reason={} detail={} provider_revision={} captured_current={} selected_slots={} selected_outputs={} catalog_invalidated=true",
                         view.id(), plan.target(), plan.amount(), recipe, selected.binding(), preparedAdapter.bindingFailure(), preparedAdapter.bindingDetail(),
-                        ((GraphRequestTracker) grid.getCraftingService()).gtlcore$graphProviderGeneration());
+                        ((GraphRequestTracker) grid.getCraftingService()).gtlcore$graphProviderGeneration(),
+                        captured == null ? "absent" : PatternFingerprint.of(captured), selected.slots(), selected.executionOutputs());
                 return CraftingSubmitResult.INCOMPLETE_PLAN;
             }
         }

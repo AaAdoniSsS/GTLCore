@@ -114,18 +114,31 @@ public final class CraftingEngineRouter {
                                               Level level, ICraftingSimulationRequester requester,
                                               AEKey target, long amount, CalculationStrategy strategy) {
         return begin(catalog, grid, service, level, requester.getActionSource(), target, amount, strategy, null,
-                ConfigHolder.INSTANCE.ae2GraphSeedPolicy == AEGraphSeedPolicy.PRESERVE);
+                ConfigHolder.INSTANCE.ae2GraphSeedPolicy == AEGraphSeedPolicy.PRESERVE, requester instanceof SubmissionRefresh);
+    }
+
+    /** A submitted preview lost stock; recheck extractable inventory instead of AE's delayed cache. */
+    public static ICraftingSimulationRequester submissionRefresh(IActionSource source) {
+        return new SubmissionRefresh(source);
+    }
+
+    private record SubmissionRefresh(IActionSource source) implements ICraftingSimulationRequester {
+
+        @Override
+        public IActionSource getActionSource() {
+            return source;
+        }
     }
 
     public static GraphPlanningRequest replan(GtlPatternCatalog catalog, GraphCpuHost host, CraftingService service,
                                               GraphJobRuntime.ReplanCheckpoint<AEKey> checkpoint, boolean preserve) {
         return begin(catalog, host.grid(), service, host.level(), host.source(), checkpoint.target(), checkpoint.remaining(),
-                CalculationStrategy.REPORT_MISSING_ITEMS, checkpoint, preserve);
+                CalculationStrategy.REPORT_MISSING_ITEMS, checkpoint, preserve, false);
     }
 
     private static GraphPlanningRequest begin(GtlPatternCatalog catalog, IGrid grid, CraftingService service,
                                               Level level, IActionSource source, AEKey target, long amount, CalculationStrategy strategy,
-                                              GraphJobRuntime.ReplanCheckpoint<AEKey> checkpoint, boolean preserve) {
+                                              GraphJobRuntime.ReplanCheckpoint<AEKey> checkpoint, boolean preserve, boolean refreshInventory) {
         if (amount <= 0) throw new IllegalArgumentException("Non-positive crafting request");
         PlanningBudget budget = new PlanningBudget(ConfigHolder.INSTANCE.ae2GraphPlannerTimeoutMs,
                 ConfigHolder.INSTANCE.ae2GraphPlannerMaxSteps, ConfigHolder.INSTANCE.ae2GraphPlannerMemoryMiB * (1L << 20),
@@ -157,7 +170,7 @@ public final class CraftingEngineRouter {
                     // Published by completion of the snapshot future; workers never inspect CPUs.
                     work.catalysts = new CatalystPolicy(parallelism, ConfigHolder.INSTANCE.ae2GraphMaxExtraCatalystCopies);
                     task = catalog.begin(grid, service, level, source, target,
-                            checkpoint == null ? Set.of() : checkpoint.recoverySeeds().keySet(), budget);
+                            checkpoint == null ? Set.of() : checkpoint.recoverySeeds().keySet(), budget, refreshInventory);
                 }
                 long preparationNanos = System.nanoTime() - captureStarted;
                 GraphSnapshots.enqueue(task, budget, snapshot, timing -> {

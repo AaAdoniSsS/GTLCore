@@ -63,10 +63,10 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
     private boolean dragging;
     private int dragButton;
     private int hoveredNode = -1, hoveredEntry = -1;
-    private PlanGraphLayout.Box lastViewport;
-    private List<Integer> visibleNodes = List.of(), visibleLinks = List.of(), visibleRings = List.of();
-    private List<Integer> visibleTreeNodes = List.of(), visibleTreeLinks = List.of();
     private final BitSet filteredNodes = new BitSet();
+    private final GraphViewportCache diagramCache = new GraphViewportCache();
+
+    private record DiagramContent(Object layout, Object filter, int page, boolean missingOnly, boolean amounts, int detail) {}
 
     private record Hit(int x, int y, int width, int height, List<Component> tooltip) {}
 
@@ -78,7 +78,8 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
                          List<GraphRingView.Row> resources, List<GraphRingView.Row> recipes,
                          Map<String, GraphRingView.Row> byRecipe, Map<AEKey, GraphRingView.Row> byResource,
                          PlanDependencyLayout<AEKey> dependencies, int root,
-                         Map<AEKey, BigInteger> crafted, Map<AEKey, BigInteger> used, Set<AEKey> initialInputs) {}
+                         Map<AEKey, BigInteger> crafted, Map<AEKey, BigInteger> used, Set<AEKey> initialInputs,
+                         int[][] incidentLinks) {}
 
     private static final class ToolButton extends IconButton {
 
@@ -138,7 +139,13 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
         style.getGeneratedBackground().setWidth(imageWidth);
         style.getGeneratedBackground().setHeight(imageHeight);
         super.init();
-        lastViewport = null;
+        diagramCache.close();
+    }
+
+    @Override
+    public void removed() {
+        diagramCache.close();
+        super.removed();
     }
 
     private int viewWidth() {
@@ -181,7 +188,6 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
     private void turn(int direction) {
         page = Math.max(0, Math.min(page + direction, pageCount() - 1));
         nodePage = 0;
-        lastViewport = null;
         resetView();
     }
 
@@ -265,6 +271,7 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
     private void clearPlan() {
         // All page offsets, layouts and node indices belong to one plan UUID.
         // In-flight responses and old layout completions must never enter its replacement.
+        diagramCache.close();
         rows.clear();
         target = null;
         total = graphRows = requested = -1;
@@ -283,9 +290,6 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
         focus = null;
         dragging = false;
         hoveredNode = hoveredEntry = -1;
-        lastViewport = null;
-        visibleNodes = visibleLinks = visibleRings = List.of();
-        visibleTreeNodes = visibleTreeLinks = List.of();
         filteredNodes.clear();
     }
 
@@ -356,9 +360,22 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
             if (row != null && row.seed() == 0 && row.count().signum() > 0) initialInputs.add(key);
         }
         int root = topology.nodes().stream().filter(node -> target.equals(node.resource())).mapToInt(PlanTopology.Node::id).findFirst().orElse(-1);
+        int[] degree = new int[topology.nodes().size()];
+        for (var edge : topology.edges()) {
+            degree[edge.from()]++;
+            degree[edge.to()]++;
+        }
+        int[][] incident = new int[degree.length][];
+        for (int i = 0; i < degree.length; i++) incident[i] = new int[degree[i]];
+        Arrays.fill(degree, 0);
+        for (int i = 0; i < topology.edges().size(); i++) {
+            var edge = topology.edges().get(i);
+            incident[edge.from()][degree[edge.from()]++] = i;
+            incident[edge.to()][degree[edge.to()]++] = i;
+        }
         return new Model(topology, topology.groups().stream().filter(PlanTopology.Group::cyclic).toList(),
                 List.copyOf(resources), List.copyOf(recipes), Map.copyOf(byRecipe), Map.copyOf(byResource), new PlanDependencyLayout<>(topology), root,
-                Map.copyOf(crafted), Map.copyOf(used), Set.copyOf(initialInputs));
+                Map.copyOf(crafted), Map.copyOf(used), Set.copyOf(initialInputs), incident);
     }
 
     @Override
@@ -508,12 +525,10 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
         tree = null;
         treeLoading = CompletableFuture.supplyAsync(() -> source.dependencies().complete(selected.node(),
                 filtered ? key -> source.byResource().containsKey(key) && source.byResource().get(key).missing().signum() > 0 : null, compact));
-        lastViewport = null;
     }
 
     private void resetView() {
         if (model == null || mode != 1) return;
-        lastViewport = null;
         if (page == 0) {
             if (tree == null || tree.entries().isEmpty()) return;
             zoom = 1;
@@ -550,21 +565,28 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
             return;
         }
         var viewport = new PlanGraphLayout.Box(-panX / zoom, -panY / zoom, viewWidth() / zoom, viewHeight() / zoom);
-        double mx = (mouseX - getGuiLeft() - VIEW_X - panX) / zoom, my = (mouseY - getGuiTop() - VIEW_Y - panY) / zoom;
+        double renderZoom = zoom;
+        int detail = (zoom >= 0.4 ? 1 : 0) | (zoom >= 0.5 ? 2 : 0);
+        var content = new DiagramContent(page == 0 ? tree : fullLayout, tree, page, missingOnly, GraphViewSettings.get().showAmounts, detail);
+        var drawingBounds = page == 0 ? tree.bounds() : page == 1 ? fullLayout.bounds() : fullLayout.rings().get(page - 2).bounds();
+        diagramCache.prepare(graphics, content, viewport, drawingBounds, zoom, (area, pixelsPerUnit) -> new DiagramPainter(area, renderZoom, pixelsPerUnit));
         graphics.flush();
         graphics.enableScissor(getGuiLeft() + VIEW_X, getGuiTop() + VIEW_Y, getGuiLeft() + VIEW_X + viewWidth(), getGuiTop() + VIEW_Y + viewHeight());
         graphics.pose().pushPose();
         graphics.pose().translate(VIEW_X + panX, VIEW_Y + panY, 0);
         graphics.pose().scale((float) zoom, (float) zoom, 1);
         try {
-            if (page == 0) drawTree(graphics, viewport, mx, my, inGraph(mouseX, mouseY));
-            else drawFull(graphics, viewport, mx, my, inGraph(mouseX, mouseY));
+            diagramCache.draw(graphics);
+            drawGraphOverlay(graphics, viewport, mouseX, mouseY);
         } finally {
             // GuiGraphics only implicitly flushes scissor changes in managed mode.
             // Our batched quads must be submitted while this clip is still active.
             graphics.flush();
             graphics.pose().popPose();
             graphics.disableScissor();
+        }
+        if (diagramCache.progress() < 100) {
+            graphics.drawString(font, text("drawing", diagramCache.progress()), VIEW_X + 4, VIEW_Y + 4, MUTED, false);
         }
         if (hoveredNode >= 0) {
             var node = model.topology().nodes().get(hoveredNode);
@@ -578,46 +600,119 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
         }
     }
 
-    private void drawTree(GuiGraphics graphics, PlanGraphLayout.Box viewport, double mx, double my, boolean inside) {
-        if (tree == null) return;
-        if (!viewport.equals(lastViewport)) {
-            visibleTreeNodes = tree.visibleEntries(viewport);
-            visibleTreeLinks = tree.visibleConnections(viewport);
-            lastViewport = viewport;
+    /** Incremental construction of the static image; no item renderer runs on a cache hit. */
+    private final class DiagramPainter implements GraphViewportCache.Painter {
+
+        private final PlanGraphLayout.Box area;
+        private final double scale, halfStroke;
+        private final List<Integer> nodes, links, rings;
+        private final int group;
+        private final boolean dependency, amounts;
+        private int ringCursor, linkCursor, nodeCursor;
+
+        DiagramPainter(PlanGraphLayout.Box area, double scale, double pixelsPerUnit) {
+            this.area = area;
+            this.scale = scale;
+            halfStroke = Math.max(0.35, 0.5 / pixelsPerUnit);
+            dependency = page == 0;
+            amounts = GraphViewSettings.get().showAmounts;
+            group = page < 2 ? -1 : fullLayout.rings().get(page - 2).group();
+            nodes = dependency ? tree.visibleEntries(area) : fullLayout.visibleNodes(area);
+            links = dependency ? tree.visibleConnections(area) : fullLayout.visibleLinks(area);
+            rings = dependency ? List.of() : fullLayout.visibleRings(area);
         }
-        for (int id : visibleTreeLinks) {
-            var entry = tree.entries().get(id);
-            if (entry.parent() < 0) continue;
-            var from = tree.entries().get(entry.parent()).point();
-            var to = entry.point();
-            double middle = (from.y() + to.y()) / 2;
-            int color = entry.kind() == PlanDependencyLayout.Kind.CYCLE ? ACCENT : 0xFF74747C;
-            stroke(graphics, from.x(), from.y() + 11, from.x(), middle, color, viewport);
-            stroke(graphics, from.x(), middle, to.x(), middle, color, viewport);
-            stroke(graphics, to.x(), middle, to.x(), to.y() - 11, color, viewport);
+
+        @Override
+        public boolean advance(GuiGraphics graphics, long deadline) {
+            int work = 0;
+            do {
+                if (ringCursor < rings.size()) {
+                    var ring = fullLayout.rings().get(rings.get(ringCursor++));
+                    if (group < 0 || ring.group() == group) {
+                        var box = ring.bounds();
+                        graphics.fill((int) box.x(), (int) box.y(), (int) (box.x() + box.width()), (int) (box.y() + box.height()), 0xFFDCD6E4);
+                    }
+                } else if (linkCursor < links.size()) {
+                    int id = links.get(linkCursor++);
+                    if (dependency) {
+                        var entry = tree.entries().get(id);
+                        if (entry.parent() >= 0) {
+                            var from = tree.entries().get(entry.parent()).point();
+                            var to = entry.point();
+                            double middle = (from.y() + to.y()) / 2;
+                            int color = entry.kind() == PlanDependencyLayout.Kind.CYCLE ? ACCENT : 0xFF74747C;
+                            stroke(graphics, from.x(), from.y() + 11, from.x(), middle, color, area, halfStroke);
+                            stroke(graphics, from.x(), middle, to.x(), middle, color, area, halfStroke);
+                            stroke(graphics, to.x(), middle, to.x(), to.y() - 11, color, area, halfStroke);
+                        }
+                    } else if (includeLink(id, group)) drawLink(graphics, id, area, false, scale, halfStroke);
+                } else if (nodeCursor < nodes.size()) {
+                    int id = nodes.get(nodeCursor++);
+                    if (dependency) {
+                        var entry = tree.entries().get(id);
+                        drawNode(graphics, entry.node(), entry.point(), false, scale);
+                        drawTreeDecoration(graphics, entry, scale, amounts);
+                    } else if (includeNode(id, group)) drawNode(graphics, id, fullLayout.points().get(id), false, scale);
+                } else return true;
+            } while (++work < 128 && System.nanoTime() < deadline);
+            return ringCursor == rings.size() && linkCursor == links.size() && nodeCursor == nodes.size();
         }
-        graphics.flush();
-        for (int i : visibleTreeNodes) {
-            var entry = tree.entries().get(i);
-            var p = entry.point();
-            if (drawNode(graphics, entry.node(), p, mx, my, inside)) hoveredEntry = i;
-            if (i == selectedEntry) graphics.renderOutline((int) p.x() - 13, (int) p.y() - 13, 26, 26, 0xFF468C98);
-            String marker = switch (entry.kind()) {
-                case NORMAL -> "";
-                case CYCLE -> "↩";
-                case SHARED -> "↗";
-                case COLLAPSED -> "+";
-                case MORE -> "…";
-            };
-            if (!marker.isEmpty()) graphics.drawString(font, marker, (int) p.x() + 7, (int) p.y() - 15, ACCENT, false);
-            if (GraphViewSettings.get().showAmounts && zoom >= 0.4) {
-                graphics.pose().pushPose();
-                graphics.pose().translate(p.x(), p.y() + 9, 180);
-                graphics.pose().scale(0.5f, 0.5f, 0.5f);
-                String amount = compact(nodeAmount(entry.node()));
-                graphics.drawString(font, amount, -font.width(amount) / 2, 0, INK, false);
-                graphics.pose().popPose();
+
+        @Override
+        public int progress() {
+            int total = rings.size() + links.size() + nodes.size();
+            return total == 0 ? 100 : (int) (100L * (ringCursor + linkCursor + nodeCursor) / total);
+        }
+    }
+
+    private boolean includeNode(int id, int group) {
+        return (!missingOnly || filteredNodes.get(id)) && (group < 0 || model.topology().groupOf(id) == group);
+    }
+
+    private boolean includeLink(int id, int group) {
+        var edge = fullLayout.links().get(id).edge();
+        return includeNode(edge.from(), group) && includeNode(edge.to(), group);
+    }
+
+    private void drawGraphOverlay(GuiGraphics graphics, PlanGraphLayout.Box viewport, int mouseX, int mouseY) {
+        var selection = pick(mouseX, mouseY);
+        if (selection != null) {
+            hoveredNode = selection.node();
+            hoveredEntry = selection.entry();
+            if (page > 0 && zoom >= 0.25) {
+                int group = page < 2 ? -1 : fullLayout.rings().get(page - 2).group();
+                double half = Math.max(0.35, 0.5 / (zoom * minecraft.getWindow().getGuiScale()));
+                for (int id : model.incidentLinks()[hoveredNode]) if (includeLink(id, group) && fullLayout.links().get(id).bounds().intersects(viewport))
+                    drawLink(graphics, id, viewport, true, zoom, half);
+                graphics.flush();
             }
+            drawNode(graphics, selection.node(), selection.point(), true, zoom);
+            if (page == 0) drawTreeDecoration(graphics, tree.entries().get(selection.entry()), zoom, GraphViewSettings.get().showAmounts);
+        }
+        if (page == 0 && selectedEntry < tree.entries().size()) {
+            var p = tree.entries().get(selectedEntry).point();
+            if (new PlanGraphLayout.Box(p.x() - 13, p.y() - 13, 26, 26).intersects(viewport))
+                graphics.renderOutline((int) p.x() - 13, (int) p.y() - 13, 26, 26, 0xFF468C98);
+        }
+    }
+
+    private void drawTreeDecoration(GuiGraphics graphics, PlanDependencyLayout.Entry entry, double scale, boolean amounts) {
+        var p = entry.point();
+        String marker = switch (entry.kind()) {
+            case NORMAL -> "";
+            case CYCLE -> "↩";
+            case SHARED -> "↗";
+            case COLLAPSED -> "+";
+            case MORE -> "…";
+        };
+        if (!marker.isEmpty()) graphics.drawString(font, marker, (int) p.x() + 7, (int) p.y() - 15, ACCENT, false);
+        if (amounts && scale >= 0.4) {
+            graphics.pose().pushPose();
+            graphics.pose().translate(p.x(), p.y() + 9, 180);
+            graphics.pose().scale(0.5f, 0.5f, 0.5f);
+            String amount = compact(nodeAmount(entry.node()));
+            graphics.drawString(font, amount, -font.width(amount) / 2, 0, INK, false);
+            graphics.pose().popPose();
         }
     }
 
@@ -628,7 +723,6 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
             zoom = Math.max(0.01, Math.min(1, Math.min((viewWidth() - 20) / box.width(), (viewHeight() - 20) / box.height())));
             panX = viewWidth() / 2.0 - (box.x() + box.width() / 2) * zoom;
             panY = viewHeight() / 2.0 - (box.y() + box.height() / 2) * zoom;
-            lastViewport = null;
         } else resetView();
     }
 
@@ -639,61 +733,30 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
         return model.used().getOrDefault(node.resource(), model.crafted().getOrDefault(node.resource(), BigInteger.ZERO));
     }
 
-    private void drawFull(GuiGraphics graphics, PlanGraphLayout.Box viewport, double mx, double my, boolean inside) {
-        if (!viewport.equals(lastViewport)) {
-            visibleNodes = fullLayout.visibleNodes(viewport);
-            visibleLinks = fullLayout.visibleLinks(viewport);
-            visibleRings = fullLayout.visibleRings(viewport);
-            lastViewport = viewport;
-        }
-        int group = page < 2 ? -1 : fullLayout.rings().get(page - 2).group();
-        for (int id : visibleRings) {
-            var ring = fullLayout.rings().get(id);
-            if (group >= 0 && ring.group() != group) continue;
-            var box = ring.bounds();
-            graphics.fill((int) box.x(), (int) box.y(), (int) (box.x() + box.width()), (int) (box.y() + box.height()), 0xFFDCD6E4);
-        }
-        // Determine hover before drawing edges; only that node's quantities need labels.
-        for (int id : visibleNodes) {
-            if (group >= 0 && model.topology().groupOf(id) != group) continue;
-            if (missingOnly && !filteredNodes.get(id)) continue;
-            var point = fullLayout.points().get(id);
-            if (inside && Math.abs(mx - point.x()) < 11 && Math.abs(my - point.y()) < 11) hoveredNode = id;
-        }
-        for (int id : visibleLinks) {
-            var link = fullLayout.links().get(id);
-            if (missingOnly && (!filteredNodes.get(link.edge().from()) || !filteredNodes.get(link.edge().to()))) continue;
-            if (group >= 0 && (model.topology().groupOf(link.edge().from()) != group || model.topology().groupOf(link.edge().to()) != group)) continue;
-            boolean selected = hoveredNode == link.edge().from() || hoveredNode == link.edge().to();
-            int color = selected ? 0xFF237E92 : link.cyclic() ? ACCENT : 0xFF909096;
-            var points = link.path();
-            for (int i = 1; i < points.size(); i++) stroke(graphics, points.get(i - 1).x(), points.get(i - 1).y(), points.get(i).x(), points.get(i).y(), color, viewport);
-            if (zoom >= 0.5 || selected) {
-                var end = points.get(points.size() - 1);
-                var before = points.get(points.size() - 2);
-                double dx = end.x() - before.x(), dy = end.y() - before.y(), length = Math.hypot(dx, dy);
-                if (length > 0.001) {
-                    double ux = dx / length * 4, uy = dy / length * 4;
-                    stroke(graphics, end.x(), end.y(), end.x() - ux - uy * 0.7, end.y() - uy + ux * 0.7, color, viewport);
-                    stroke(graphics, end.x(), end.y(), end.x() - ux + uy * 0.7, end.y() - uy - ux * 0.7, color, viewport);
-                }
-            }
-            if (selected && zoom >= 0.5) {
-                var p = points.get(points.size() / 2);
-                graphics.drawString(font, compact(link.edge().perRun()), (int) p.x() + 2, (int) p.y() - 9, INK, false);
+    private void drawLink(GuiGraphics graphics, int id, PlanGraphLayout.Box viewport, boolean selected, double scale, double half) {
+        var link = fullLayout.links().get(id);
+        int color = selected ? 0xFF237E92 : link.cyclic() ? ACCENT : 0xFF909096;
+        var points = link.path();
+        for (int i = 1; i < points.size(); i++) stroke(graphics, points.get(i - 1).x(), points.get(i - 1).y(), points.get(i).x(), points.get(i).y(), color, viewport, half);
+        if (scale >= 0.5 || selected) {
+            var end = points.get(points.size() - 1);
+            var before = points.get(points.size() - 2);
+            double dx = end.x() - before.x(), dy = end.y() - before.y(), length = Math.hypot(dx, dy);
+            if (length > 0.001) {
+                double ux = dx / length * 4, uy = dy / length * 4;
+                stroke(graphics, end.x(), end.y(), end.x() - ux - uy * 0.7, end.y() - uy + ux * 0.7, color, viewport, half);
+                stroke(graphics, end.x(), end.y(), end.x() - ux + uy * 0.7, end.y() - uy - ux * 0.7, color, viewport, half);
             }
         }
-        graphics.flush();
-        for (int id : visibleNodes) {
-            if ((!missingOnly || filteredNodes.get(id)) && (group < 0 || model.topology().groupOf(id) == group))
-                drawNode(graphics, id, fullLayout.points().get(id), mx, my, inside);
+        if (selected && scale >= 0.5) {
+            var p = points.get(points.size() / 2);
+            graphics.drawString(font, compact(link.edge().perRun()), (int) p.x() + 2, (int) p.y() - 9, INK, false);
         }
     }
 
-    private boolean drawNode(GuiGraphics graphics, int id, PlanGraphLayout.Point p, double mx, double my, boolean inside) {
+    private void drawNode(GuiGraphics graphics, int id, PlanGraphLayout.Point p, boolean hovered, double scale) {
         var node = model.topology().nodes().get(id);
         int x = (int) p.x() - 8, y = (int) p.y() - 8;
-        boolean hovered = inside && Math.abs(mx - p.x()) < 11 && Math.abs(my - p.y()) < 11;
         var resource = node.resource() == null ? null : model.byResource().get(node.resource());
         boolean seed = resource != null && resource.seed() > 0;
         boolean initial = node.resource() != null && model.initialInputs().contains(node.resource());
@@ -704,15 +767,12 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
         else Icon.CRAFT_HAMMER.getBlitter().dest(x, y).blit(graphics);
         if (seed || initial) {
             graphics.fill(x - 4, y - 5, x + 8, y + 4, seed ? SEED : INITIAL);
-            if (zoom >= 0.5) graphics.drawString(font, text(seed ? "seed_badge" : "initial_badge"), x - 3, y - 5, 0xFFFFFFFF, false);
+            if (scale >= 0.5) graphics.drawString(font, text(seed ? "seed_badge" : "initial_badge"), x - 3, y - 5, 0xFFFFFFFF, false);
         }
-        if (hovered) hoveredNode = id;
-        return hovered;
     }
 
     /** Float quads with overlapping joins; minimum screen width survives arbitrary zoom. */
-    private void stroke(GuiGraphics graphics, double ax, double ay, double bx, double by, int color, PlanGraphLayout.Box viewport) {
-        double half = Math.max(0.35, 0.5 / (zoom * minecraft.getWindow().getGuiScale()));
+    private void stroke(GuiGraphics graphics, double ax, double ay, double bx, double by, int color, PlanGraphLayout.Box viewport, double half) {
         if (Math.max(ax, bx) + half < viewport.x() || Math.min(ax, bx) - half > viewport.x() + viewport.width() ||
                 Math.max(ay, by) + half < viewport.y() || Math.min(ay, by) - half > viewport.y() + viewport.height())
             return;
@@ -864,7 +924,7 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
     public boolean mouseReleased(double x, double y, int button) {
         if (dragging && button == dragButton) {
             dragging = false;
-            var selection = pick(x, y);
+            var selection = dragDistance < 3 ? pick(x, y) : null;
             if (dragDistance < 3 && selection != null) {
                 selectedEntry = Math.max(0, selection.entry());
                 open(selection.node(), button == 1, hasControlDown());
@@ -877,7 +937,7 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
     private record Selection(int node, int entry, PlanGraphLayout.Point point) {}
 
     private Selection pick(double x, double y) {
-        if (!inGraph(x, y)) return null;
+        if ((dragging && dragDistance >= 3) || !inGraph(x, y)) return null;
         double mx = (x - getGuiLeft() - VIEW_X - panX) / zoom, my = (y - getGuiTop() - VIEW_Y - panY) / zoom;
         var area = new PlanGraphLayout.Box(mx - 11, my - 11, 22, 22);
         if (page == 0 && tree != null) {
