@@ -1,5 +1,7 @@
 package org.gtlcore.gtlcore.integration.jei;
 
+import org.gtlcore.gtlcore.client.preview.PreviewMaterialHighlights;
+
 import com.lowdragmc.lowdraglib.gui.ingredient.IRecipeIngredientSlot;
 import com.lowdragmc.lowdraglib.utils.Position;
 
@@ -38,6 +40,7 @@ public class SlotRecipeWidget implements ISlottedRecipeWidget {
         this.slot = slot;
         this.jeiSlot = jeiSlot;
         this.position = new Position(slot.self().getPositionX(), slot.self().getPositionY());
+        PreviewMaterialHighlights.bind(slot, jeiSlot);
     }
 
     @Override
