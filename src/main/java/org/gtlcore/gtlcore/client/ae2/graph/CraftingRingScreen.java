@@ -34,6 +34,7 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
 
     private static final int INK = 0xFF40404C, MUTED = 0xFF707078, ACCENT = 0xFF786296, SEED = 0xFF168F99, INITIAL = 0xFFAD6518;
     private static final int VIEW_X = 10, VIEW_Y = 48;
+    private static final int MAX_LIVE_NODES = 256, RESUME_LIVE_NODES = 192;
     private static Cache cached;
     private UUID planId;
     private GraphPlan.SeedOptimality seedProof;
@@ -65,8 +66,18 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
     private int hoveredNode = -1, hoveredEntry = -1;
     private final BitSet filteredNodes = new BitSet();
     private final GraphViewportCache diagramCache = new GraphViewportCache();
+    private NodeView nodeView;
+    private List<Integer> liveNodeIds = List.of();
+    private boolean liveNodes;
 
     private record DiagramContent(Object layout, Object filter, int page, boolean missingOnly, boolean amounts, int detail) {}
+
+    private record NodeView(Object layout, Object filter, int page, boolean missingOnly, PlanGraphLayout.Box area) {
+
+        boolean sameDiagram(NodeView other) {
+            return other != null && layout == other.layout && filter == other.filter && page == other.page && missingOnly == other.missingOnly;
+        }
+    }
 
     private record Hit(int x, int y, int width, int height, List<Component> tooltip) {}
 
@@ -566,10 +577,11 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
         }
         var viewport = new PlanGraphLayout.Box(-panX / zoom, -panY / zoom, viewWidth() / zoom, viewHeight() / zoom);
         double renderZoom = zoom;
+        boolean liveNodes = prepareNodeView(viewport);
         int detail = (zoom >= 0.4 ? 1 : 0) | (zoom >= 0.5 ? 2 : 0);
         var content = new DiagramContent(page == 0 ? tree : fullLayout, tree, page, missingOnly, GraphViewSettings.get().showAmounts, detail);
         var drawingBounds = page == 0 ? tree.bounds() : page == 1 ? fullLayout.bounds() : fullLayout.rings().get(page - 2).bounds();
-        diagramCache.prepare(graphics, content, viewport, drawingBounds, zoom, (area, pixelsPerUnit) -> new DiagramPainter(area, renderZoom, pixelsPerUnit));
+        diagramCache.prepare(graphics, content, viewport, drawingBounds, zoom, liveNodes, (area, pixelsPerUnit) -> new DiagramPainter(area, renderZoom, pixelsPerUnit, liveNodes));
         graphics.flush();
         graphics.enableScissor(getGuiLeft() + VIEW_X, getGuiTop() + VIEW_Y, getGuiLeft() + VIEW_X + viewWidth(), getGuiTop() + VIEW_Y + viewHeight());
         graphics.pose().pushPose();
@@ -577,7 +589,7 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
         graphics.pose().scale((float) zoom, (float) zoom, 1);
         try {
             diagramCache.draw(graphics);
-            drawGraphOverlay(graphics, viewport, mouseX, mouseY);
+            drawGraphOverlay(graphics, viewport, mouseX, mouseY, liveNodes);
         } finally {
             // GuiGraphics only implicitly flushes scissor changes in managed mode.
             // Our batched quads must be submitted while this clip is still active.
@@ -600,7 +612,7 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
         }
     }
 
-    /** Incremental construction of the static image; no item renderer runs on a cache hit. */
+    /** Cache dense views in full; sparse views keep only backgrounds and connections in tiles. */
     private final class DiagramPainter implements GraphViewportCache.Painter {
 
         private final PlanGraphLayout.Box area;
@@ -610,14 +622,15 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
         private final boolean dependency, amounts;
         private int ringCursor, linkCursor, nodeCursor;
 
-        DiagramPainter(PlanGraphLayout.Box area, double scale, double pixelsPerUnit) {
+        DiagramPainter(PlanGraphLayout.Box area, double scale, double pixelsPerUnit, boolean liveNodes) {
             this.area = area;
             this.scale = scale;
             halfStroke = Math.max(0.35, 0.5 / pixelsPerUnit);
             dependency = page == 0;
             amounts = GraphViewSettings.get().showAmounts;
             group = page < 2 ? -1 : fullLayout.rings().get(page - 2).group();
-            nodes = dependency ? tree.visibleEntries(area) : fullLayout.visibleNodes(area);
+            // Animated models must not be frozen or split across tiles captured on different frames.
+            nodes = liveNodes ? List.of() : dependency ? tree.visibleEntries(area) : fullLayout.visibleNodes(area);
             links = dependency ? tree.visibleConnections(area) : fullLayout.visibleLinks(area);
             rings = dependency ? List.of() : fullLayout.visibleRings(area);
         }
@@ -674,7 +687,7 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
         return includeNode(edge.from(), group) && includeNode(edge.to(), group);
     }
 
-    private void drawGraphOverlay(GuiGraphics graphics, PlanGraphLayout.Box viewport, int mouseX, int mouseY) {
+    private void drawGraphOverlay(GuiGraphics graphics, PlanGraphLayout.Box viewport, int mouseX, int mouseY, boolean liveNodes) {
         var selection = pick(mouseX, mouseY);
         if (selection != null) {
             hoveredNode = selection.node();
@@ -686,6 +699,10 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
                     drawLink(graphics, id, viewport, true, zoom, half);
                 graphics.flush();
             }
+        }
+        if (liveNodes) {
+            drawLiveNodes(graphics);
+        } else if (selection != null) {
             drawNode(graphics, selection.node(), selection.point(), true, zoom);
             if (page == 0) drawTreeDecoration(graphics, tree.entries().get(selection.entry()), zoom, GraphViewSettings.get().showAmounts);
         }
@@ -693,6 +710,41 @@ public final class CraftingRingScreen extends AESubScreen<CraftConfirmMenu, Craf
             var p = tree.entries().get(selectedEntry).point();
             if (new PlanGraphLayout.Box(p.x() - 13, p.y() - 13, 26, 26).intersects(viewport))
                 graphics.renderOutline((int) p.x() - 13, (int) p.y() - 13, 26, 26, 0xFF468C98);
+        }
+    }
+
+    private boolean prepareNodeView(PlanGraphLayout.Box viewport) {
+        // Cull against the viewport with room for models that extend outside the normal item slot.
+        var area = new PlanGraphLayout.Box(viewport.x() - 32, viewport.y() - 32, viewport.width() + 64, viewport.height() + 64);
+        var next = new NodeView(page == 0 ? tree : fullLayout, tree, page, missingOnly, area);
+        if (!next.equals(nodeView)) {
+            int group = page < 2 ? -1 : fullLayout.rings().get(page - 2).group();
+            // Stop as soon as the live budget is exceeded, even if the whole graph is visible.
+            var visible = page == 0 ? tree.visibleEntries(area, MAX_LIVE_NODES + 1) :
+                    fullLayout.visibleNodes(area, MAX_LIVE_NODES + 1, id -> includeNode(id, group));
+            // Different thresholds prevent panning near the limit from repeatedly rebuilding tiles.
+            int limit = next.sameDiagram(nodeView) && !liveNodes ? RESUME_LIVE_NODES : MAX_LIVE_NODES;
+            liveNodes = visible.size() <= limit;
+            liveNodeIds = liveNodes ? visible : List.of();
+            nodeView = next;
+        }
+        return liveNodes;
+    }
+
+    private void drawLiveNodes(GuiGraphics graphics) {
+        // The only clip is the graph viewport, never an individual tile or node rectangle.
+        // Reuse the visibility query; a stationary view never scans the graph again.
+        if (page == 0) {
+            boolean amounts = GraphViewSettings.get().showAmounts;
+            for (int id : liveNodeIds) {
+                var entry = tree.entries().get(id);
+                drawNode(graphics, entry.node(), entry.point(), id == hoveredEntry, zoom);
+                drawTreeDecoration(graphics, entry, zoom, amounts);
+            }
+        } else {
+            for (int id : liveNodeIds) {
+                drawNode(graphics, id, fullLayout.points().get(id), id == hoveredNode, zoom);
+            }
         }
     }
 

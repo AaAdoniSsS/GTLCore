@@ -51,6 +51,10 @@ public final class PlanDependencyLayout<K> {
             return nodes.query(viewport);
         }
 
+        public List<Integer> visibleEntries(PlanGraphLayout.Box viewport, int limit) {
+            return nodes.query(viewport, limit, id -> true);
+        }
+
         public List<Integer> visibleConnections(PlanGraphLayout.Box viewport) {
             return links.query(viewport);
         }

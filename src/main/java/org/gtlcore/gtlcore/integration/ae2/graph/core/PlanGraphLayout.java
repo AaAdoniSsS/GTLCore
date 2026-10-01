@@ -1,6 +1,7 @@
 package org.gtlcore.gtlcore.integration.ae2.graph.core;
 
 import java.util.*;
+import java.util.function.IntPredicate;
 
 /** Immutable display geometry. Lay out the condensation DAG, then expand each SCC into a ring. */
 public final class PlanGraphLayout<K> {
@@ -152,6 +153,10 @@ public final class PlanGraphLayout<K> {
         return nodeIndex.query(viewport);
     }
 
+    public List<Integer> visibleNodes(Box viewport, int limit, IntPredicate included) {
+        return nodeIndex.query(viewport, limit, included);
+    }
+
     public List<Integer> visibleLinks(Box viewport) {
         return linkIndex.query(viewport);
     }
@@ -190,8 +195,12 @@ public final class PlanGraphLayout<K> {
         }
 
         List<Integer> query(Box view) {
+            return query(view, Integer.MAX_VALUE, id -> true);
+        }
+
+        List<Integer> query(Box view, int limit, IntPredicate included) {
             List<Integer> result = new ArrayList<>();
-            if (root == null) return result;
+            if (root == null || limit <= 0) return result;
             Deque<Branch> pending = new ArrayDeque<>();
             pending.push(root);
             while (!pending.isEmpty()) {
@@ -200,7 +209,10 @@ public final class PlanGraphLayout<K> {
                 if (branch.left != null) {
                     pending.push(branch.left);
                     pending.push(branch.right);
-                } else for (int id : branch.items) if (boxes.get(id).intersects(view)) result.add(id);
+                } else for (int id : branch.items) if (boxes.get(id).intersects(view) && included.test(id)) {
+                    result.add(id);
+                    if (result.size() >= limit) return result;
+                }
             }
             return result;
         }
