@@ -2,6 +2,7 @@ package org.gtlcore.gtlcore.mixin.ae2.gui;
 
 import org.gtlcore.gtlcore.client.ae2.FastCellDisplayText;
 import org.gtlcore.gtlcore.client.ae2.PreciseRepoAmounts;
+import org.gtlcore.gtlcore.integration.ae2.wireless.FastCellDisplayPackets;
 
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
@@ -35,6 +36,8 @@ public abstract class FastCellMEStorageScreenMixin<C extends MEStorageMenu> exte
     private final Map<AEKey, FastCellDisplayText> gtlcore$amounts = new HashMap<>();
     @Unique
     private Map<AEKey, BigInteger> gtlcore$lastSnapshot;
+    @Unique
+    private boolean gtlcore$displayReady;
     @Shadow(remap = false)
     @Final
     protected Repo repo;
@@ -45,6 +48,10 @@ public abstract class FastCellMEStorageScreenMixin<C extends MEStorageMenu> exte
 
     @Inject(method = "updateBeforeRender", at = @At("HEAD"), remap = false)
     private void gtlcore$refreshDisplay(CallbackInfo ci) {
+        if (!gtlcore$displayReady) {
+            FastCellDisplayPackets.ready(menu);
+            gtlcore$displayReady = true;
+        }
         Map<AEKey, BigInteger> snapshot = ((org.gtlcore.gtlcore.integration.ae2.storage.PreciseDisplayMenu) menu).gtlcore$displayAmounts();
         if (snapshot == gtlcore$lastSnapshot) return;
         gtlcore$lastSnapshot = snapshot;
@@ -70,7 +77,7 @@ public abstract class FastCellMEStorageScreenMixin<C extends MEStorageMenu> exte
                             target = "Lappeng/api/stacks/AEKey;formatAmount(JLappeng/api/stacks/AmountFormat;)Ljava/lang/String;",
                             remap = false))
     private String gtlcore$renderFastAmount(AEKey key, long amount, AmountFormat format, Operation<String> original) {
-        FastCellDisplayText text = gtlcore$getDisplay(key);
+        FastCellDisplayText text = amount == Long.MAX_VALUE ? gtlcore$getDisplay(key) : null;
         return text == null ? original.call(key, amount, format) :
                 format == AmountFormat.SLOT_LARGE_FONT ? text.large() : text.small();
     }
@@ -80,7 +87,7 @@ public abstract class FastCellMEStorageScreenMixin<C extends MEStorageMenu> exte
                             target = "Lappeng/core/localization/Tooltips;getAmountTooltip(Lappeng/core/localization/ButtonToolTips;Lappeng/api/stacks/AEKey;J)Lnet/minecraft/network/chat/Component;"),
                    remap = false)
     private Component gtlcore$renderFastTooltip(ButtonToolTips label, AEKey key, long amount, Operation<Component> original) {
-        FastCellDisplayText text = gtlcore$getDisplay(key);
+        FastCellDisplayText text = amount == Long.MAX_VALUE ? gtlcore$getDisplay(key) : null;
         return text == null ? original.call(label, key, amount) : label.text(text.full()).withStyle(appeng.core.localization.Tooltips.MUTED_COLOR);
     }
 }

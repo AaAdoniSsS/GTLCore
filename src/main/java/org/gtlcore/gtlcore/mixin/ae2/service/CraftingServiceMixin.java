@@ -57,7 +57,8 @@ import java.util.concurrent.Future;
 
 @Mixin(CraftingService.class)
 public abstract class CraftingServiceMixin implements IMaxFastCraftingProviderVersion,
-                                           GraphRequestTracker {
+                                           GraphRequestTracker,
+                                           org.gtlcore.gtlcore.integration.ae2.storage.TerminalCraftables {
 
     @Override
     public void gtlcore$expectGraphOutput(AEKey key) {
@@ -93,6 +94,11 @@ public abstract class CraftingServiceMixin implements IMaxFastCraftingProviderVe
         cir.setReturnValue(CraftingEngineRouter.begin(
                 this.gtlcore$graphCatalog, this.grid, (CraftingService) (Object) this,
                 level, requester, what, amount, strategy));
+    }
+
+    @Override
+    public Set<AEKey> gtlcore$terminalCraftables() {
+        return ((org.gtlcore.gtlcore.integration.ae2.storage.TerminalCraftables) craftingProviders).gtlcore$terminalCraftables();
     }
 
     @Unique
