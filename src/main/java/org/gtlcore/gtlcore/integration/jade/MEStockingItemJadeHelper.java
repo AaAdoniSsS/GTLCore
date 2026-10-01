@@ -2,6 +2,7 @@ package org.gtlcore.gtlcore.integration.jade;
 
 import org.gtlcore.gtlcore.api.machine.trait.MEStock.IOptimizedMEList;
 import org.gtlcore.gtlcore.common.machine.multiblock.part.MEDualHatchStockPartMachine;
+import org.gtlcore.gtlcore.common.machine.multiblock.part.ae.MEStockingPatternBufferPartMachine;
 import org.gtlcore.gtlcore.mixin.gtm.ae.machine.MEInputBusPartMachineAccessor;
 import org.gtlcore.gtlcore.utils.NumberUtils;
 
@@ -35,6 +36,14 @@ public final class MEStockingItemJadeHelper {
     private MEStockingItemJadeHelper() {}
 
     public static @Nullable List<ViewGroup<ItemStack>> createGroups(MetaMachine machine) {
+        if (machine instanceof MEStockingPatternBufferPartMachine stockingPatternBuffer) {
+            List<ItemStack> views = createItemViews(stockingPatternBuffer.getStockingItemMap());
+            if (views.isEmpty()) {
+                return Collections.emptyList();
+            }
+            return List.of(new ViewGroup<>(views));
+        }
+
         ExportOnlyAEItemList itemHandler = getStockingItemHandler(machine);
         if (itemHandler == null) {
             return null;

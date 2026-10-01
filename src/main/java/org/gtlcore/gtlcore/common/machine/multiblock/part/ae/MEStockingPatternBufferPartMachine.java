@@ -327,6 +327,12 @@ public class MEStockingPatternBufferPartMachine extends MEPatternBufferPartMachi
         }
     }
 
+    public @NotNull Object2LongMap<ItemStack> getStockingItemMap() {
+        var map = new Object2LongOpenHashMap<ItemStack>();
+        addStockItemMap(map);
+        return map;
+    }
+
     protected void addStockFluidMap(Object2LongOpenHashMap<FluidStack> map) {
         for (var entry : Object2LongMaps.fastIterable(stockFluidHandler.stockMap)) {
             long amount = entry.getLongValue();

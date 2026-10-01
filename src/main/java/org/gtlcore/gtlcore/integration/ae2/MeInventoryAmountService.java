@@ -33,8 +33,12 @@ public final class MeInventoryAmountService {
                     .extract(key, Long.MAX_VALUE, Actionable.SIMULATE, source);
             BigInteger exact = BigInteger.valueOf(amount);
             if (amount == Long.MAX_VALUE) {
-                exact = PreciseInventoryDisplayService.query(grid.getStorageService().getInventory(), List.of(key), source)
-                        .getOrDefault(key, exact);
+                try {
+                    exact = PreciseInventoryDisplayService.query(grid.getStorageService().getInventory(), List.of(key), source)
+                            .getOrDefault(key, exact);
+                } catch (RuntimeException ignored) {
+                    // A bounded display query must not invalidate the successful native lookup.
+                }
             }
             return new Result(true, exact);
         } catch (RuntimeException ignored) {

@@ -10,7 +10,11 @@ import java.util.*;
  */
 final class ContinuousCoverability<K> implements AutoCloseable {
 
-    enum Result { POSSIBLE, BLOCKED, UNKNOWN }
+    enum Result {
+        POSSIBLE,
+        BLOCKED,
+        UNKNOWN
+    }
 
     private record Transition(Map<Integer, BigInteger> inputs, Map<Integer, BigInteger> outputs) {}
 
@@ -149,7 +153,9 @@ final class ContinuousCoverability<K> implements AutoCloseable {
         return fired;
     }
 
-    Result result() { return result; }
+    Result result() {
+        return result;
+    }
 
     private boolean finish(Result status) {
         result = status;
