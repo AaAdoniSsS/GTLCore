@@ -81,7 +81,8 @@ final class RegionOrder<K> {
             budget.check();
             if (internal.contains(input.getKey()) && !external.contains(input.getKey()) &&
                     available.getOrDefault(input.getKey(), BigInteger.valueOf(stock.getOrDefault(input.getKey(), 0L)))
-                            .compareTo(BigInteger.valueOf(input.getValue())) < 0) return false;
+                            .compareTo(BigInteger.valueOf(input.getValue())) < 0)
+                return false;
         }
         return true;
     }
