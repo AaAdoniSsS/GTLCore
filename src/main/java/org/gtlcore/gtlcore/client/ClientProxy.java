@@ -2,6 +2,7 @@ package org.gtlcore.gtlcore.client;
 
 import org.gtlcore.gtlcore.api.event.SourceTooltipRegistrationEvent;
 import org.gtlcore.gtlcore.client.ae2.wireless.WirelessAeClient;
+import org.gtlcore.gtlcore.client.renderer.machine.HarmonyAnimationRenderer;
 import org.gtlcore.gtlcore.common.CommonProxy;
 
 import net.minecraftforge.api.distmarker.Dist;
@@ -20,6 +21,7 @@ public class ClientProxy extends CommonProxy {
     public static void init() {
         CraftingUnitModelProvider.initCraftingUnitModels();
         WirelessAeClient.register(FMLJavaModLoadingContext.get().getModEventBus());
+        HarmonyAnimationRenderer.register(FMLJavaModLoadingContext.get().getModEventBus());
     }
 
     @Override
