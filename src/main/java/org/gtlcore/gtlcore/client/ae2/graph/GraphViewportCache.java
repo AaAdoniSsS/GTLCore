@@ -47,7 +47,7 @@ public final class GraphViewportCache implements AutoCloseable {
     private final Map<Key, Tile> tiles = new LinkedHashMap<>(16, 0.75f, true);
     private List<Key> visible = List.of();
 
-    private record Key(int level, int x, int y) {}
+    private record Key(int level, int x, int y, boolean backgroundOnly) {}
 
     private static double scale(int level, double guiScale) {
         return guiScale * Math.pow(2, level / 2.0);
@@ -96,7 +96,7 @@ public final class GraphViewportCache implements AutoCloseable {
         event.registerReloadListener((ResourceManagerReloadListener) resources -> resourceVersion++);
     }
 
-    void prepare(GuiGraphics parent, Object nextContent, Box viewport, Box drawingBounds, double zoom, Factory factory) {
+    void prepare(GuiGraphics parent, Object nextContent, Box viewport, Box drawingBounds, double zoom, boolean backgroundOnly, Factory factory) {
         double nextScale = Minecraft.getInstance().getWindow().getGuiScale();
         if (version != resourceVersion || guiScale != nextScale || !Objects.equals(content, nextContent)) {
             close();
@@ -125,7 +125,8 @@ public final class GraphViewportCache implements AutoCloseable {
             level--;
         } while (true);
         List<Key> requested = new ArrayList<>();
-        for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) requested.add(new Key(level, x, y));
+        // Keep both node modes in the same bounded LRU so density changes do not discard ready tiles.
+        for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) requested.add(new Key(level, x, y, backgroundOnly));
         visible = requested;
         Key missing = null;
         boolean work = false;
@@ -212,6 +213,7 @@ public final class GraphViewportCache implements AutoCloseable {
         RenderSystem.setShader(GameRenderer::getPositionTexShader);
         RenderSystem.setShaderColor(1, 1, 1, 1);
         int level = visible.get(0).level();
+        boolean backgroundOnly = visible.get(0).backgroundOnly();
         if (progress() < 100) {
             for (Key key : visible) {
                 Tile tile = tiles.get(key);
@@ -219,7 +221,8 @@ public final class GraphViewportCache implements AutoCloseable {
             }
             for (var entry : tiles.entrySet()) {
                 Tile tile = entry.getValue();
-                if (entry.getKey().level() != level && tile.complete && tile.bounds.intersects(viewport)) draw(graphics, tile);
+                if (entry.getKey().backgroundOnly() == backgroundOnly && entry.getKey().level() != level && tile.complete && tile.bounds.intersects(viewport))
+                    draw(graphics, tile);
             }
         }
         for (Key key : visible) {
