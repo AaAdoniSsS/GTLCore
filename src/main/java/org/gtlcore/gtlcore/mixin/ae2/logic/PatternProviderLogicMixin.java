@@ -236,16 +236,6 @@ public abstract class PatternProviderLogicMixin implements IAutoExpandSettings, 
         boolean allFits = gtlcore$canTargetAccept(target, targetBE,
                 side.getOpposite(), gtlcore$toInputCounter(inputHolder), 1);
         if (!allFits) {
-            if (gtlcore$scanLoggingEnabled()) {
-                StringBuilder sb = new StringBuilder();
-                for (KeyCounter counter : inputHolder) {
-                    for (var input : counter) {
-                        sb.append(input.getKey()).append('x').append(input.getLongValue()).append(' ');
-                    }
-                }
-                GTLCore.LOGGER.info("[GTLCore] push partial at {} (target {}): batch [{}] - remainder drips via send list",
-                        targetBE.getBlockPos().toShortString(), targetBE.getClass().getSimpleName(), sb);
-            }
             // The cached capacity estimate was stale - drop it so the next evaluation rescans.
             gtlcore$capCacheTick = Long.MIN_VALUE;
             gtlcore$snapshots.clear();
