@@ -1,6 +1,11 @@
 package org.gtlcore.gtlcore.mixin.ae2.gui;
 
+import org.gtlcore.gtlcore.client.ae2.graph.CraftingRingButton;
+import org.gtlcore.gtlcore.client.ae2.graph.CraftingRingScreen;
+import org.gtlcore.gtlcore.client.ae2.graph.GraphPlanningErrorScreen;
 import org.gtlcore.gtlcore.integration.ae2.common.IConfirmStartMenu;
+import org.gtlcore.gtlcore.integration.ae2.graph.GraphPlanMenu;
+import org.gtlcore.gtlcore.integration.ae2.graph.GraphPlanSummaryView;
 import org.gtlcore.gtlcore.integration.jei.JeiMissingIngredientBookmarks;
 
 import com.lowdragmc.lowdraglib.LDLib;
@@ -42,6 +47,8 @@ public abstract class CraftConfirmScreenMixin extends AEBaseScreen<CraftConfirmM
 
     @Unique
     private Button gtlcore$favoriteMissing;
+    @Unique
+    private Button gtlcore$craftingRing;
 
     protected CraftConfirmScreenMixin(CraftConfirmMenu menu, Inventory playerInventory,
                                       Component title, ScreenStyle style) {
@@ -51,6 +58,8 @@ public abstract class CraftConfirmScreenMixin extends AEBaseScreen<CraftConfirmM
     @Inject(method = "<init>", at = @At("TAIL"), remap = false)
     private void gtlcore$addFavoriteMissingButton(CraftConfirmMenu menu, Inventory playerInventory,
                                                   Component title, ScreenStyle style, CallbackInfo ci) {
+        gtlcore$craftingRing = addToLeftToolbar(new CraftingRingButton(() -> switchToScreen(new CraftingRingScreen((CraftConfirmScreen) (Object) this))));
+        gtlcore$craftingRing.visible = gtlcore$craftingRing.active = false;
         if (LDLib.isJeiLoaded()) {
             this.gtlcore$favoriteMissing = this.widgets.addButton(
                     GTLCORE$FAVORITE_MISSING_WIDGET_ID,
@@ -63,6 +72,10 @@ public abstract class CraftConfirmScreenMixin extends AEBaseScreen<CraftConfirmM
     @Inject(method = "updateBeforeRender", at = @At("TAIL"), remap = false)
     private void gtlcore$updateFavoriteMissingButton(CallbackInfo ci) {
         var plan = this.menu.getPlan();
+        gtlcore$craftingRing.visible = gtlcore$craftingRing.active = plan instanceof GraphPlanSummaryView view && view.gtlcore$graphPlanId() != null;
+        if (plan instanceof GraphPlanSummaryView view && view.gtlcore$fallback())
+            setTextContent("cpu_status", Component.translatable(plan.isSimulation() ?
+                    "gtlcore.ae.graph.fallback_preview" : "gtlcore.ae.graph.fallback_plan"));
         boolean missingCraft = plan != null && plan.isSimulation() &&
                 ((IConfirmStartMenu) this.menu).gtlcore$isMissingCraftAvailable();
         if (plan != null && plan.isSimulation() && !this.menu.hasNoCPU()) {
@@ -74,11 +87,27 @@ public abstract class CraftConfirmScreenMixin extends AEBaseScreen<CraftConfirmM
             this.start.active = true;
         }
 
+        if (((IConfirmStartMenu) menu).gtlcore$isSubmitting()) {
+            this.start.active = false;
+            this.selectCPU.active = false;
+            this.gtlcore$craftingRing.active = false;
+            this.start.setMessage(Component.translatable("gtlcore.ae.graph.submitting"));
+            setTextContent("cpu_status", Component.translatable("gtlcore.ae.graph.refreshing_submission"));
+        }
+
         if (this.gtlcore$favoriteMissing == null) {
             return;
         }
         this.gtlcore$favoriteMissing.active = JeiMissingIngredientBookmarks.isAvailable() &&
                 !gtlcore$collectMissingKeys().isEmpty();
+    }
+
+    @Inject(method = "updateBeforeRender", at = @At("HEAD"), cancellable = true, remap = false)
+    private void gtlcore$showPlanningFailure(CallbackInfo ci) {
+        String key = ((GraphPlanMenu) menu).gtlcore$planningFailure();
+        if (key.isEmpty()) return;
+        switchToScreen(new GraphPlanningErrorScreen((CraftConfirmScreen) (Object) this, key));
+        ci.cancel();
     }
 
     @Unique

@@ -11,6 +11,7 @@ import mezz.jei.api.constants.VanillaTypes;
 import mezz.jei.api.forge.ForgeTypes;
 import mezz.jei.api.ingredients.IIngredientType;
 import mezz.jei.api.ingredients.ITypedIngredient;
+import mezz.jei.api.recipe.RecipeIngredientRole;
 import mezz.jei.api.runtime.IClickableIngredient;
 import mezz.jei.api.runtime.IIngredientManager;
 import mezz.jei.api.runtime.IJeiRuntime;
@@ -50,6 +51,18 @@ public final class JeiMissingIngredientBookmarks {
 
     public static boolean isAvailable() {
         return runtime != null && bookmarkAccess != null;
+    }
+
+    public static boolean showRecipes(AEKey key, boolean uses) {
+        IJeiRuntime jei = runtime;
+        if (jei == null) return false;
+        var role = uses ? RecipeIngredientRole.INPUT : RecipeIngredientRole.OUTPUT;
+        if (key instanceof AEItemKey item) {
+            jei.getRecipesGui().show(jei.getJeiHelpers().getFocusFactory().createFocus(role, VanillaTypes.ITEM_STACK, item.toStack()));
+        } else if (key instanceof AEFluidKey fluid) {
+            jei.getRecipesGui().show(jei.getJeiHelpers().getFocusFactory().createFocus(role, ForgeTypes.FLUID_STACK, fluid.toStack(1000)));
+        } else return false;
+        return true;
     }
 
     public static AddResult add(Collection<AEKey> keys) {

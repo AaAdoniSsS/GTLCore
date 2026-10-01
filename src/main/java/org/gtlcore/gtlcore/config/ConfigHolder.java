@@ -1,6 +1,7 @@
 package org.gtlcore.gtlcore.config;
 
 import org.gtlcore.gtlcore.GTLCore;
+import org.gtlcore.gtlcore.integration.ae2.graph.core.CraftingCostModel;
 
 import dev.toma.configuration.Configuration;
 import dev.toma.configuration.config.Config;
@@ -92,6 +93,52 @@ public class ConfigHolder {
     @Configurable
     @Configurable.Comment("config.gtlcore.option.ae2CalculationMode.comment")
     public AE2CalculationMode ae2CalculationMode = AE2CalculationMode.MAX_FAST;
+    @Configurable
+    @Configurable.Comment("config.gtlcore.option.ae2CraftingEngine.comment")
+    public AECraftingEngine ae2CraftingEngine = AECraftingEngine.LEGACY;
+    @Configurable
+    @Configurable.Comment("config.gtlcore.option.ae2GraphSeedPolicy.comment")
+    public AEGraphSeedPolicy ae2GraphSeedPolicy = AEGraphSeedPolicy.PRESERVE;
+    @Configurable
+    @Configurable.Comment("config.gtlcore.option.ae2GraphByteCostMode.comment")
+    public CraftingCostModel.Mode ae2GraphByteCostMode = CraftingCostModel.Mode.LEGACY;
+    @Configurable
+    @Configurable.Comment("config.gtlcore.option.ae2GraphDiscoverByproducts.comment")
+    public boolean ae2GraphDiscoverByproducts = false;
+    @Configurable
+    @Configurable.Range(min = 0, max = 4096)
+    @Configurable.Comment("config.gtlcore.option.ae2GraphMaxExtraCatalystCopies.comment")
+    public int ae2GraphMaxExtraCatalystCopies = 64;
+    @Configurable
+    @Configurable.Range(min = 1, max = 600000)
+    @Configurable.Comment("config.gtlcore.option.ae2GraphPlannerNoticeAfterMs.comment")
+    public int ae2GraphPlannerNoticeAfterMs = 2000;
+    @Configurable
+    @Configurable.Range(min = 0, max = 86400000)
+    @Configurable.Comment("config.gtlcore.option.ae2GraphPlannerTimeoutMs.comment")
+    public int ae2GraphPlannerTimeoutMs = 0;
+    @Configurable
+    @Configurable.Range(min = 1, max = 16)
+    @Configurable.Comment("config.gtlcore.option.ae2GraphPlannerThreads.comment")
+    public int ae2GraphPlannerThreads = Math.max(1, Math.min(4, Runtime.getRuntime().availableProcessors() - 2));
+    @Configurable
+    @Configurable.Range(min = 1, max = 128)
+    @Configurable.Comment("config.gtlcore.option.ae2GraphPlannerMaxRequests.comment")
+    public int ae2GraphPlannerMaxRequests = 16;
+    @Configurable
+    @Configurable.Range(min = 10000, max = Integer.MAX_VALUE)
+    @Configurable.Comment("config.gtlcore.option.ae2GraphPlannerMaxSteps.comment")
+    public int ae2GraphPlannerMaxSteps = 20000000;
+    @Configurable
+    @Configurable.Comment("config.gtlcore.option.ae2GraphFallback.comment")
+    public boolean ae2GraphFallback = true;
+    @Configurable
+    @Configurable.Range(min = 16, max = 1024)
+    @Configurable.Comment("config.gtlcore.option.ae2GraphPlannerMemoryMiB.comment")
+    public int ae2GraphPlannerMemoryMiB = 128;
+    @Configurable
+    @Configurable.Comment("config.gtlcore.option.ae2GraphDiagnosticLogging.comment")
+    public boolean ae2GraphDiagnosticLogging = false;
     @Configurable
     @Configurable.Comment("config.gtlcore.option.enableMachineStartupTickBudget.comment")
     public boolean enableMachineStartupTickBudget = true;
