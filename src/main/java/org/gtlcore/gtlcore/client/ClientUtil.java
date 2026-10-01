@@ -1,5 +1,7 @@
 package org.gtlcore.gtlcore.client;
 
+import org.gtlcore.gtlcore.client.renderer.machine.HarmonyAnimationRenderer;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.block.BlockRenderDispatcher;
 import net.minecraft.client.renderer.block.ModelBlockRenderer;
@@ -24,6 +26,6 @@ public class ClientUtil {
     }
 
     public static ModelBlockRenderer modelRenderer() {
-        return blockRenderer().getModelRenderer();
+        return HarmonyAnimationRenderer.modelRenderer(blockRenderer().getModelRenderer());
     }
 }
