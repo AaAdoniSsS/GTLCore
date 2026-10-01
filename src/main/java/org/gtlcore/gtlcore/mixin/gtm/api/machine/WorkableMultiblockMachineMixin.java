@@ -1,6 +1,7 @@
 package org.gtlcore.gtlcore.mixin.gtm.api.machine;
 
 import org.gtlcore.gtlcore.api.machine.trait.*;
+import org.gtlcore.gtlcore.api.machine.computation.ComputationNetwork;
 import org.gtlcore.gtlcore.api.machine.trait.MEPart.IMEFilterIOPartMachine;
 import org.gtlcore.gtlcore.api.machine.trait.MEPart.IMEPatternPartMachine;
 import org.gtlcore.gtlcore.api.recipe.RecipeResult;
@@ -115,9 +116,8 @@ public abstract class WorkableMultiblockMachineMixin extends MultiblockControlle
     public void onWaiting() {}
 
     /**
-     * Keep polling only for computation-starved machines. Optical networks do not notify the controller when a
-     * remote provider becomes available again, so unsubscribing here makes the failure permanent until unrelated
-     * inventory state changes.
+     * The computation coordinator wakes registered consumers when supply returns. Keep the old retry for
+     * third-party recipe paths that have not registered a computation demand.
      *
      * @author GTLCore
      * @reason Retry recipes after remote optical computation becomes available again.
@@ -125,7 +125,7 @@ public abstract class WorkableMultiblockMachineMixin extends MultiblockControlle
     @Overwrite(remap = false)
     public boolean keepSubscribing() {
         return recipeLogic instanceof IRecipeStatus status &&
-                RecipeResult.FAIL_NO_ENOUGH_CWU_IN.equals(status.getRecipeStatus());
+                RecipeResult.FAIL_NO_ENOUGH_CWU_IN.equals(status.getRecipeStatus()) && !ComputationNetwork.isWaiting(this);
     }
 
     /**
