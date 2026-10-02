@@ -184,23 +184,28 @@ public class ConfigHolder {
     public DebugLoggingOptions debugLogging = new DebugLoggingOptions();
 
     @Configurable
+    @Configurable.Comment("config.gtlcore.option.multiblockPreview.comment")
     public PreviewOptions multiblockPreview = new PreviewOptions();
 
     public static class PreviewOptions {
 
         @Configurable
+        @Configurable.Comment("config.gtlcore.option.enabled.comment")
         public boolean enabled = true;
         @Configurable
+        @Configurable.Comment("config.gtlcore.option.minPositions.comment")
         @Configurable.Range(min = 1, max = 1048576)
         public int minPositions = 512;
         @Configurable
-        @Configurable.Comment("Worker limit; restart the client after changing this value.")
+        @Configurable.Comment("config.gtlcore.option.workers.comment")
         @Configurable.Range(min = 1, max = 4)
         public int workers = Math.min(2, Math.max(1, Runtime.getRuntime().availableProcessors() / 4));
         @Configurable
+        @Configurable.Comment("config.gtlcore.option.frameBudgetMs.comment")
         @Configurable.Range(min = 1, max = 12)
         public int frameBudgetMs = 3;
         @Configurable
+        @Configurable.Comment("config.gtlcore.option.cacheMb.comment")
         @Configurable.Range(min = 0, max = 1024)
         public int cacheMb = 192;
     }
