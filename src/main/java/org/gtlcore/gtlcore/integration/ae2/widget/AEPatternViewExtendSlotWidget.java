@@ -8,12 +8,9 @@ import com.lowdragmc.lowdraglib.side.item.IItemTransfer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.inventory.Slot;
-import net.minecraft.world.item.ItemStack;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import org.jetbrains.annotations.Nullable;
-
-import javax.annotation.Nonnull;
 
 public class AEPatternViewExtendSlotWidget extends AEPatternViewSlotWidget {
 
@@ -91,8 +88,10 @@ public class AEPatternViewExtendSlotWidget extends AEPatternViewSlotWidget {
         }
 
         @Override
-        public void set(@Nonnull ItemStack stack) {
-            super.set(stack);
+        public void setChanged() {
+            super.setChanged();
+            // Taking a stack or editing its contents can notify the slot without
+            // calling set(). Refresh the advertised pattern for those edits too.
             if (onPatternSlotChanged != null) {
                 onPatternSlotChanged.run();
             }

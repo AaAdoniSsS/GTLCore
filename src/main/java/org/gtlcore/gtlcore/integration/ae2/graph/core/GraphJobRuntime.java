@@ -45,9 +45,8 @@ public final class GraphJobRuntime<K> {
 
     private GraphPlan<K> plan;
     private final ResourceLedger<K> owned;
-    private PlanCursor cursor;
     private DagScheduler<K> dag;
-    private PipelineScheduler<K> pipeline;
+    private DependencyScheduler<K> pipeline;
     private final Map<K, Long> expected = new LinkedHashMap<>();
     private final Map<K, BigInteger> deferredExternal = new LinkedHashMap<>();
     private final OutputObligations<K> obligations;
@@ -90,9 +89,8 @@ public final class GraphJobRuntime<K> {
         PlanVerifier.verify(plan);
         this.plan = plan;
         this.owned = new ResourceLedger<>(initial);
-        this.cursor = new PlanCursor(plan.steps());
         this.dag = DagScheduler.create(plan, Map.of());
-        this.pipeline = dag == null ? new PipelineScheduler<>(cursor, plan.recipes(), List.of()) : null;
+        this.pipeline = dag == null ? new DependencyScheduler<>(plan, plan.steps()) : null;
         this.expected.putAll(GraphRecipe.amounts(emitted));
         this.obligations = new OutputObligations<>(emitted);
         deferredExternal.putAll(ExactAmounts.copy(deferred));
@@ -115,7 +113,6 @@ public final class GraphJobRuntime<K> {
         this.plan = saved.plan();
         PlanVerifier.verify(plan);
         this.owned = new ResourceLedger<>(saved.owned());
-        this.cursor = new PlanCursor(plan.steps(), saved.cursor());
         expected.putAll(GraphRecipe.amounts(saved.expected()));
         obligations = new OutputObligations<>(saved.obligations());
         deferredExternal.putAll(ExactAmounts.copy(saved.deferredExternal()));
@@ -139,15 +136,18 @@ public final class GraphJobRuntime<K> {
         acceptedRuns.forEach((id, count) -> remainingCounts.compute(id, (key, amount) -> amount.subtract(count)));
         remainingCounts.values().removeIf(value -> value.signum() == 0);
         this.dag = DagScheduler.create(plan, acceptedRuns);
-        this.pipeline = dag == null ? new PipelineScheduler<>(cursor, plan.recipes(), saved.pipeline()) : null;
-        if (dag == null && !remainingCounts.equals(pipeline.remainingCounts())) throw new IllegalArgumentException("Cursor and accepted batch counts disagree");
-        if (dag != null && (!saved.cursor().isEmpty() || !saved.pipeline().isEmpty())) {
-            // Older versions used the serial pipeline for repeated acyclic
-            // programs. Check its exact remainder before migrating to the DAG;
-            // accepted outputs and their ownership remain untouched.
-            var previous = new PipelineScheduler<>(cursor, plan.recipes(), saved.pipeline());
-            if (!remainingCounts.equals(previous.remainingCounts())) throw new IllegalArgumentException("Cursor and accepted batch counts disagree");
+        PlanStep pending = saved.pendingSteps();
+        if (pending != null && (!saved.cursor().isEmpty() || !saved.pipeline().isEmpty()))
+            throw new IllegalArgumentException("Conflicting execution cursors");
+        if (pending == null && (dag == null || !saved.cursor().isEmpty() || !saved.pipeline().isEmpty())) {
+            // Preserve the exact unaccepted suffix of old single-window saves,
+            // including prefetched work. Machine returns retain their owners.
+            var previous = new PipelineScheduler<>(new PlanCursor(plan.steps(), saved.cursor()), plan.recipes(), saved.pipeline());
+            pending = previous.remainingSteps();
         }
+        if (pending != null && !remainingCounts.equals(PlanCountComputation.of(pending)))
+            throw new IllegalArgumentException("Cursor and accepted batch counts disagree");
+        this.pipeline = dag == null ? new DependencyScheduler<>(plan, pending) : null;
         remainingDelivery = CheckedAmounts.nonNegative(saved.remainingDelivery());
         if (remainingDelivery > plan.amount()) throw new IllegalArgumentException("Invalid delivery remainder");
         state = saved.state();
@@ -640,9 +640,8 @@ public final class GraphJobRuntime<K> {
                 replacement.recipes(), projected, replacement.seeds(), Map.of(), GraphPlan.Result.FEASIBLE, 0, 0));
         Map<String, BigInteger> history = new LinkedHashMap<>(committedHistory);
         acceptedRuns.forEach((id, count) -> history.merge(id, count, BigInteger::add));
-        var newCursor = new PlanCursor(replacement.steps());
         var newDag = DagScheduler.create(replacement, Map.of());
-        var newPipeline = newDag == null ? new PipelineScheduler<>(newCursor, replacement.recipes(), List.of()) : null;
+        var newPipeline = newDag == null ? new DependencyScheduler<>(replacement, replacement.steps()) : null;
         owned.restore(extraHeld);
         obligations.addExternal(extraExternal);
         // These were unreceived requests for the old suffix, not held items or
@@ -658,7 +657,6 @@ public final class GraphJobRuntime<K> {
         pendingInputs.clear();
         streamingOutputs.clear();
         plan = replacement;
-        cursor = newCursor;
         dag = newDag;
         pipeline = newPipeline;
         initializePending();
@@ -820,8 +818,9 @@ public final class GraphJobRuntime<K> {
     public Snapshot<K> snapshot() {
         if (settlementEscrow != null) {
             return new Snapshot<>(plan, owned.snapshot(), GraphRecipe.amounts(expected), settlementEscrow,
-                    Map.copyOf(acceptedRuns), dag == null ? cursor.snapshot() : List.of(), pipeline == null ? List.of() : pipeline.snapshot(), remainingDelivery,
-                    State.NEEDS_ATTENTION, suspended, "SETTLEMENT_IN_DOUBT_SAVED_DURING_HANDOFF", obligations.snapshot(), recovery(), Map.copyOf(committedHistory), ExactAmounts.copy(deferredExternal));
+                    Map.copyOf(acceptedRuns), List.of(), List.of(), remainingDelivery,
+                    State.NEEDS_ATTENTION, suspended, "SETTLEMENT_IN_DOUBT_SAVED_DURING_HANDOFF", obligations.snapshot(), recovery(), Map.copyOf(committedHistory), ExactAmounts.copy(deferredExternal),
+                    pipeline == null ? null : pipeline.snapshot());
         }
         if (preparedOutputs != null) {
             Map<K, Long> held = new LinkedHashMap<>(owned.snapshot());
@@ -833,19 +832,29 @@ public final class GraphJobRuntime<K> {
             // returned, so persist an ambiguous ticket rather than a retryable
             // pre-dispatch state or a duplicate copy of escrow as held material.
             return new Snapshot<>(plan, GraphRecipe.amounts(held), preparedExpected(), preparedInputs,
-                    Map.copyOf(acceptedRuns), dag == null ? cursor.snapshot() : List.of(), pipeline == null ? List.of() : pipeline.snapshot(), remainingDelivery,
-                    State.NEEDS_ATTENTION, suspended, "DISPATCH_IN_DOUBT_SAVED_DURING_HANDOFF", preparing.snapshot(), recovery(), Map.copyOf(committedHistory), ExactAmounts.copy(deferredExternal));
+                    Map.copyOf(acceptedRuns), List.of(), List.of(), remainingDelivery,
+                    State.NEEDS_ATTENTION, suspended, "DISPATCH_IN_DOUBT_SAVED_DURING_HANDOFF", preparing.snapshot(), recovery(), Map.copyOf(committedHistory), ExactAmounts.copy(deferredExternal),
+                    pipeline == null ? null : pipeline.snapshot());
         }
         return new Snapshot<>(plan, owned.snapshot(), GraphRecipe.amounts(expected), uncertainInputs,
-                Map.copyOf(acceptedRuns), dag == null ? cursor.snapshot() : List.of(), pipeline == null ? List.of() : pipeline.snapshot(), remainingDelivery, state, suspended, reason,
-                obligations.snapshot(), recovery(), Map.copyOf(committedHistory), ExactAmounts.copy(deferredExternal));
+                Map.copyOf(acceptedRuns), List.of(), List.of(), remainingDelivery, state, suspended, reason,
+                obligations.snapshot(), recovery(), Map.copyOf(committedHistory), ExactAmounts.copy(deferredExternal), pipeline == null ? null : pipeline.snapshot());
     }
 
     public record Snapshot<K>(GraphPlan<K> plan, Map<K, Long> owned, Map<K, Long> expected,
                               Map<K, Long> uncertainInputs, Map<String, BigInteger> acceptedRuns,
                               List<PlanCursor.Position> cursor, List<PlanStep.Batch> pipeline, long remainingDelivery, State state,
                               boolean suspended, String reason, OutputObligations.Snapshot<K> obligations,
-                              RecoveryObligation<K> recovery, Map<String, BigInteger> committedHistory, Map<K, BigInteger> deferredExternal) {
+                              RecoveryObligation<K> recovery, Map<String, BigInteger> committedHistory, Map<K, BigInteger> deferredExternal, PlanStep pendingSteps) {
+
+        public Snapshot(GraphPlan<K> plan, Map<K, Long> owned, Map<K, Long> expected,
+                        Map<K, Long> uncertainInputs, Map<String, BigInteger> acceptedRuns,
+                        List<PlanCursor.Position> cursor, List<PlanStep.Batch> pipeline, long remainingDelivery, State state,
+                        boolean suspended, String reason, OutputObligations.Snapshot<K> obligations,
+                        RecoveryObligation<K> recovery, Map<String, BigInteger> committedHistory, Map<K, BigInteger> deferredExternal) {
+            this(plan, owned, expected, uncertainInputs, acceptedRuns, cursor, pipeline, remainingDelivery, state,
+                    suspended, reason, obligations, recovery, committedHistory, deferredExternal, null);
+        }
 
         public Snapshot(GraphPlan<K> plan, Map<K, Long> owned, Map<K, Long> expected,
                         Map<K, Long> uncertainInputs, Map<String, BigInteger> acceptedRuns,

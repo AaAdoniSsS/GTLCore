@@ -19,6 +19,13 @@ public final class GraphPlan<K> {
     private java.util.List<GraphPlan<K>> alternatives = java.util.List.of();
     private volatile Map<K, Long> initialView, missingView;
     private volatile Map<String, BigInteger> exactTimes;
+    private volatile ExecutionDependencies<K> executionDependencies;
+
+    ExecutionDependencies<K> executionDependencies() {
+        ExecutionDependencies<K> dependencies = executionDependencies;
+        if (dependencies == null) executionDependencies = dependencies = new ExecutionDependencies<>(this);
+        return dependencies;
+    }
 
     public K target() {
         return target;

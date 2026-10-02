@@ -23,7 +23,7 @@ import java.util.Set;
 public final class GraphJobCodec {
 
     public static final String NBT_KEY = "gtlcoreGraphJob";
-    private static final int SCHEMA = 9;
+    private static final int SCHEMA = 10;
     private static final int MAX_ENTRIES = 100_000;
 
     private GraphJobCodec() {}
@@ -97,6 +97,7 @@ public final class GraphJobCodec {
             pipeline.add(row);
         });
         tag.put("pipeline", pipeline);
+        if (state.pendingSteps() != null) tag.put("pendingSteps", step(state.pendingSteps()));
         tag.putLong("remainingDelivery", state.remainingDelivery());
         tag.putString("state", state.state().name());
         tag.putString("reason", state.reason());
@@ -194,7 +195,8 @@ public final class GraphJobCodec {
         return new GraphJobRuntime.Snapshot<>(plan, amounts(tag, "owned"), amounts(tag, "expected"),
                 amounts(tag, "uncertainInputs"), accepted, cursor, pipeline, amount(tag, "remainingDelivery"),
                 GraphJobRuntime.State.valueOf(tag.getString("state")), tag.getBoolean("suspended"), tag.getString("reason"), obligations, recovery, committed,
-                schema >= 7 ? exactAmounts(tag, "deferredExternal") : Map.of());
+                schema >= 7 ? exactAmounts(tag, "deferredExternal") : Map.of(),
+                schema >= 10 && tag.contains("pendingSteps", Tag.TAG_COMPOUND) ? step(tag.getCompound("pendingSteps"), 0) : null);
     }
 
     private static ListTag exactAmounts(Map<AEKey, BigInteger> amounts) {

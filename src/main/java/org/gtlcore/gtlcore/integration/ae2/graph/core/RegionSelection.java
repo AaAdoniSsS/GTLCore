@@ -51,6 +51,8 @@ public final class RegionSelection<K> {
     private long countWork;
     private RegionSelection<K> single;
     private boolean triedSingles;
+    private boolean triedPartialCounts;
+    private long partialCountsStarted;
     private RegionBootstrap<K> bootstrap;
     private boolean triedBootstrap;
 
@@ -89,7 +91,7 @@ public final class RegionSelection<K> {
         // Keep a concrete candidate even when this local search is cut short.
         // Its deficits do not prove that stock is missing: the caller must still
         // try other allocations or independently prove that no plan can start.
-        if (phase != 8 && phase != 10 && phase != 11 && phase != 12 && region.cyclic() && budget.nodes() - searchStarted - countWork > 32_768L + 128L * recipes.size()) {
+        if (phase != 8 && phase != 10 && phase != 11 && phase != 12 && phase != 13 && region.cyclic() && budget.nodes() - searchStarted - countWork > 32_768L + 128L * recipes.size()) {
             if (ordering != null) {
                 ordering.close();
                 ordering = null;
@@ -309,6 +311,22 @@ public final class RegionSelection<K> {
                 bootstrap = null;
                 phase = 8;
             }
+            case 13 -> {
+                if (!counts.step()) return false;
+                Choice<K> choice = counts.result();
+                counts.close();
+                counts = null;
+                countWork += budget.nodes() - partialCountsStarted;
+                // Inputs outside this SCC are propagated to their producers
+                // afterwards. Prefer closing its internal deficits to asking
+                // the player for a craftable intermediate merely because its
+                // upstream raw materials are not in stock yet.
+                if (choice != null && (best == null || regionFunded(choice))) {
+                    best = choice;
+                    preference = null;
+                }
+                phase = 8;
+            }
             default -> {
                 return true;
             }
@@ -323,6 +341,20 @@ public final class RegionSelection<K> {
             phase = 11;
             index = 0;
         }
+        // A small SCC may need only a multi-recipe path through the cycle,
+        // or ratios outside the bounded ordering trials. Trying every recipe
+        // together and then single recipes misses both cases. Resolve exact
+        // counts locally before escalating the entire catalog's source search.
+        // Do not replace deliberate extra catalyst copies with a smaller seed
+        // contract: their existing bootstrap path must still manufacture them.
+        if (phase == 8 && !triedPartialCounts && region.cyclic() && region.recipes().size() > 1 && region.recipes().size() <= 6 &&
+                (best == null || !regionFunded(best) && best.seeds().entrySet().stream()
+                        .allMatch(e -> external.contains(e.getKey()) || e.getValue() <= stock.getOrDefault(e.getKey(), 0L)))) {
+            triedPartialCounts = true;
+            partialCountsStarted = budget.nodes();
+            counts = new RegionCounts<>(region.recipes(), demand, stock, external, target, amount, forceTarget, preserve, budget);
+            phase = 13;
+        }
         // Parallel working copies are a separate, deliberate recovery contract.
         // Only the minimum-startup strategy may shrink its seed set here.
         if (phase == 8 && !triedBootstrap && preserve && catalystPolicy.parallelism() == 1 && best != null && best.runs().signum() > 0 &&
@@ -332,6 +364,20 @@ public final class RegionSelection<K> {
             phase = 12;
         }
         return phase == 8;
+    }
+
+    private boolean regionFunded(Choice<K> choice) {
+        BigInteger runs = choice.runs(), preceding = runs.subtract(BigInteger.ONE).max(BigInteger.ZERO);
+        for (K key : produced) {
+            budget.check();
+            if (external.contains(key)) continue;
+            BigInteger delta = choice.summary().delta(key);
+            BigInteger prefix = runs.signum() == 0 ? BigInteger.ZERO : choice.summary().required(key)
+                    .add(delta.negate().max(BigInteger.ZERO).multiply(preceding));
+            BigInteger goal = demand.getOrDefault(key, BigInteger.ZERO).add(BigInteger.valueOf(choice.seeds().getOrDefault(key, 0L)));
+            if (prefix.max(goal.subtract(delta.multiply(runs))).compareTo(BigInteger.valueOf(stock.getOrDefault(key, 0L))) > 0) return false;
+        }
+        return true;
     }
 
     private void consider(Choice<K> choice) {

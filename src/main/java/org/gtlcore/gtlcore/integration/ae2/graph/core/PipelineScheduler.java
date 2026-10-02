@@ -169,6 +169,13 @@ final class PipelineScheduler<K> {
         return window.stream().map(entry -> new PlanStep.Batch(entry.recipe, entry.remaining)).toList();
     }
 
+    PlanStep remainingSteps() {
+        List<PlanStep> remaining = new ArrayList<>(snapshot());
+        PlanStep suffix = cursor.remainingSteps();
+        if (!(suffix instanceof PlanStep.Sequence sequence) || !sequence.children().isEmpty()) remaining.add(suffix);
+        return remaining.size() == 1 ? remaining.get(0) : new PlanStep.Sequence(remaining);
+    }
+
     Map<String, BigInteger> remainingCounts() {
         Map<String, BigInteger> result = new LinkedHashMap<>(cursor.remainingCountsExact());
         for (Entry entry : window) result.merge(entry.recipe, BigInteger.valueOf(entry.remaining), BigInteger::add);

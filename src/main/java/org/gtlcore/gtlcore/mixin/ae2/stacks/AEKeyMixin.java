@@ -13,7 +13,7 @@ import org.spongepowered.asm.mixin.Unique;
 public abstract class AEKeyMixin {
 
     @Unique
-    private CompoundTag gTLCore$tagGenericCache;
+    private volatile CompoundTag gTLCore$tagGenericCache;
 
     @Shadow(remap = false)
     public abstract CompoundTag toTag();
@@ -27,7 +27,12 @@ public abstract class AEKeyMixin {
      */
     @Overwrite(remap = false)
     public final CompoundTag toTagGeneric() {
-        return gTLCore$tagGenericCache != null ? gTLCore$tagGenericCache : gTLCore$saveAndReturnTagGeneric();
+        CompoundTag cached = gTLCore$tagGenericCache;
+        if (cached == null) cached = gTLCore$saveAndReturnTagGeneric();
+        // Callers append stack counts and persistence fields to this tag.
+        // Returning the cached instance mutates later key serializations and
+        // pattern fingerprints even though the resource itself is unchanged.
+        return cached.copy();
     }
 
     @Unique
