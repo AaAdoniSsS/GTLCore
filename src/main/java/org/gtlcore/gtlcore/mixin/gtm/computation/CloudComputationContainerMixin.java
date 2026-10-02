@@ -2,9 +2,9 @@ package org.gtlcore.gtlcore.mixin.gtm.computation;
 
 import org.gtlcore.gtlcore.api.machine.computation.CloudComputationBridge;
 import org.gtlcore.gtlcore.api.machine.computation.ComputationConnections;
+import org.gtlcore.gtlcore.api.machine.computation.ComputationMath;
 import org.gtlcore.gtlcore.api.machine.computation.ComputationNetwork;
 import org.gtlcore.gtlcore.api.machine.computation.ComputationNode;
-import org.gtlcore.gtlcore.api.machine.computation.ComputationMath;
 
 import com.gregtechceu.gtceu.api.capability.IOpticalComputationProvider;
 import com.gregtechceu.gtceu.api.capability.recipe.IO;
@@ -50,13 +50,13 @@ public abstract class CloudComputationContainerMixin implements ComputationNode 
 
     @Inject(method = "requestCWUt", at = @At("HEAD"), cancellable = true)
     private void gtlcore$request(int amount, boolean simulate, Collection<IOpticalComputationProvider> seen,
-                                CallbackInfoReturnable<Integer> cir) {
+                                 CallbackInfoReturnable<Integer> cir) {
         cir.setReturnValue(ComputationNetwork.request((IOpticalComputationProvider) this, amount, simulate));
     }
 
     @Inject(method = "handleRecipeInner", at = @At("HEAD"), cancellable = true)
     private void gtlcore$legacyInput(IO io, GTRecipe recipe, List<?> left, String slot, boolean simulate,
-                                    CallbackInfoReturnable<List<?>> cir) {
+                                     CallbackInfoReturnable<List<?>> cir) {
         cir.setReturnValue(ComputationConnections.legacyInput((IOpticalComputationProvider) this, io, recipe, left, simulate));
     }
 }

@@ -32,7 +32,7 @@ public abstract class ComputationSwitchHandlerMixin implements ComputationNode {
 
     @Inject(method = "requestCWUt", at = @At("HEAD"), cancellable = true)
     private void gtlcore$request(int amount, boolean simulate, Collection<IOpticalComputationProvider> seen,
-                                CallbackInfoReturnable<Integer> cir) {
+                                 CallbackInfoReturnable<Integer> cir) {
         cir.setReturnValue(ComputationNetwork.request(gtlcore$owner(), amount, simulate));
     }
 

@@ -1,7 +1,7 @@
 package org.gtlcore.gtlcore.mixin.gtm.api.machine;
 
-import org.gtlcore.gtlcore.api.machine.trait.*;
 import org.gtlcore.gtlcore.api.machine.computation.ComputationNetwork;
+import org.gtlcore.gtlcore.api.machine.trait.*;
 import org.gtlcore.gtlcore.api.machine.trait.MEPart.IMEFilterIOPartMachine;
 import org.gtlcore.gtlcore.api.machine.trait.MEPart.IMEPatternPartMachine;
 import org.gtlcore.gtlcore.api.recipe.RecipeResult;

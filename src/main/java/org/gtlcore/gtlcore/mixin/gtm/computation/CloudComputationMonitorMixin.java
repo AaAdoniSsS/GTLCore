@@ -1,7 +1,7 @@
 package org.gtlcore.gtlcore.mixin.gtm.computation;
 
-import org.gtlcore.gtlcore.api.machine.computation.ComputationNetwork;
 import org.gtlcore.gtlcore.api.machine.computation.CloudComputationBridge;
+import org.gtlcore.gtlcore.api.machine.computation.ComputationNetwork;
 
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;

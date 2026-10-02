@@ -30,8 +30,11 @@ import java.util.List;
 @Mixin(CWURecipeCapability.class)
 public abstract class CWURecipeCapabilityMixin {
 
-    @ModifyArg(method = "<init>", at = @At(value = "INVOKE",
-            target = "Lcom/gregtechceu/gtceu/api/capability/recipe/RecipeCapability;<init>(Ljava/lang/String;IZILcom/gregtechceu/gtceu/api/recipe/content/IContentSerializer;)V"), index = 4, remap = false)
+    @ModifyArg(method = "<init>",
+               at = @At(value = "INVOKE",
+                        target = "Lcom/gregtechceu/gtceu/api/capability/recipe/RecipeCapability;<init>(Ljava/lang/String;IZILcom/gregtechceu/gtceu/api/recipe/content/IContentSerializer;)V"),
+               index = 4,
+               remap = false)
     private static IContentSerializer<?> gtlcore$longSerializer(IContentSerializer<?> serializer) {
         return ComputationContentSerializer.INSTANCE;
     }
@@ -43,13 +46,17 @@ public abstract class CWURecipeCapabilityMixin {
     }
 
     @Inject(method = "copyWithModifier(Ljava/lang/Object;Lcom/gregtechceu/gtceu/api/recipe/content/ContentModifier;)Ljava/lang/Object;",
-            at = @At("HEAD"), cancellable = true, remap = false)
+            at = @At("HEAD"),
+            cancellable = true,
+            remap = false)
     private void gtlcore$modifyLong(Object content, ContentModifier modifier, CallbackInfoReturnable<Object> cir) {
         cir.setReturnValue(ComputationAmounts.box(ComputationAmounts.modify(ComputationAmounts.read(content), modifier)));
     }
 
     @Inject(method = "copyWithModifier(Ljava/lang/Integer;Lcom/gregtechceu/gtceu/api/recipe/content/ContentModifier;)Ljava/lang/Integer;",
-            at = @At("HEAD"), cancellable = true, remap = false)
+            at = @At("HEAD"),
+            cancellable = true,
+            remap = false)
     private void gtlcore$modifyLegacy(Integer content, ContentModifier modifier, CallbackInfoReturnable<Integer> cir) {
         cir.setReturnValue(Math.toIntExact(ComputationAmounts.modify(ComputationAmounts.read(content), modifier)));
     }
@@ -64,7 +71,7 @@ public abstract class CWURecipeCapabilityMixin {
 
     @Inject(method = "addXEIInfo", at = @At("HEAD"), cancellable = true, remap = false)
     private void gtlcore$longRecipeLabels(WidgetGroup group, int xOffset, GTRecipe recipe, List<Content> contents,
-                                         boolean perTick, boolean isInput, MutableInt yOffset, CallbackInfo ci) {
+                                          boolean perTick, boolean isInput, MutableInt yOffset, CallbackInfo ci) {
         if (perTick) group.addWidget(new LabelWidget(3 - xOffset, yOffset.addAndGet(10),
                 LocalizationUtils.format("gtceu.recipe.computation_per_tick", ComputationRecipes.required(contents))));
         if (recipe.data.getBoolean("duration_is_total_cwu")) group.addWidget(new LabelWidget(3 - xOffset, yOffset.addAndGet(10),

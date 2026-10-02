@@ -1,12 +1,12 @@
 package org.gtlcore.gtlcore.mixin.gtm.computation;
 
+import org.gtlcore.gtlcore.api.machine.computation.ComputationConnections;
+import org.gtlcore.gtlcore.api.machine.computation.ComputationGrid;
 import org.gtlcore.gtlcore.api.machine.computation.ComputationLedger;
 import org.gtlcore.gtlcore.api.machine.computation.ComputationMath;
 import org.gtlcore.gtlcore.api.machine.computation.ComputationNetwork;
 import org.gtlcore.gtlcore.api.machine.computation.ComputationSource;
 import org.gtlcore.gtlcore.api.machine.computation.ComputationUsage;
-import org.gtlcore.gtlcore.api.machine.computation.ComputationConnections;
-import org.gtlcore.gtlcore.api.machine.computation.ComputationGrid;
 
 import com.gregtechceu.gtceu.api.capability.IEnergyContainer;
 import com.gregtechceu.gtceu.api.machine.feature.multiblock.IMaintenanceMachine;
@@ -167,14 +167,14 @@ public abstract class HpcaComputationMixin implements ComputationSource, Computa
 
     @Inject(method = "requestCWUt", at = @At("HEAD"), cancellable = true, remap = false)
     private void gtlcore$request(int amount, boolean simulate,
-                                java.util.Collection<com.gregtechceu.gtceu.api.capability.IOpticalComputationProvider> seen,
-                                CallbackInfoReturnable<Integer> cir) {
+                                 java.util.Collection<com.gregtechceu.gtceu.api.capability.IOpticalComputationProvider> seen,
+                                 CallbackInfoReturnable<Integer> cir) {
         cir.setReturnValue(ComputationNetwork.request(gtlcore$self(), amount, simulate));
     }
 
     @Inject(method = "getMaxCWUt", at = @At("HEAD"), cancellable = true, remap = false)
     private void gtlcore$capacity(java.util.Collection<com.gregtechceu.gtceu.api.capability.IOpticalComputationProvider> seen,
-                                 CallbackInfoReturnable<Integer> cir) {
+                                  CallbackInfoReturnable<Integer> cir) {
         cir.setReturnValue(ComputationMath.toInt(gtlcore$computationCapacity()));
     }
 

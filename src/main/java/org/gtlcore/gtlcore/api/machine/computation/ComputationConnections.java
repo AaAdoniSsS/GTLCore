@@ -6,9 +6,9 @@ import com.gregtechceu.gtceu.api.capability.recipe.IO;
 import com.gregtechceu.gtceu.api.machine.MetaMachine;
 import com.gregtechceu.gtceu.api.machine.feature.multiblock.IMultiPart;
 import com.gregtechceu.gtceu.api.machine.multiblock.PartAbility;
+import com.gregtechceu.gtceu.api.recipe.GTRecipe;
 import com.gregtechceu.gtceu.common.blockentity.OpticalPipeBlockEntity;
 import com.gregtechceu.gtceu.common.machine.multiblock.electric.research.NetworkSwitchMachine;
-import com.gregtechceu.gtceu.api.recipe.GTRecipe;
 
 import net.minecraft.core.Direction;
 
@@ -68,7 +68,8 @@ public final class ComputationConnections {
         var target = receiver.getTransmitterPos();
         if (level == null || target == null || !level.hasChunkAt(target)) return List.of();
         if (!(MetaMachine.getMachine(level, target) instanceof WirelessOpticalComputationHatchMachine transmitter) ||
-                !transmitter.isTransmitter()) return List.of();
+                !transmitter.isTransmitter())
+            return List.of();
         return List.of(transmitter.getComputationContainer());
     }
 
@@ -86,7 +87,7 @@ public final class ComputationConnections {
 
     /** Compatibility for callers invoking an individual handler outside GTRecipe. No controller is mutated here. */
     public static List<?> legacyInput(IOpticalComputationProvider provider, IO io, GTRecipe recipe,
-                                     List<?> left, boolean simulate) {
+                                      List<?> left, boolean simulate) {
         if (io != IO.IN) return left;
         long required = 0;
         try {

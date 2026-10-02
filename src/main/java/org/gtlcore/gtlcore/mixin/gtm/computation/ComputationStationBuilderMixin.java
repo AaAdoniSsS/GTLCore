@@ -18,10 +18,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(StationRecipeBuilder.class)
 public abstract class ComputationStationBuilderMixin implements LongStationRecipeBuilder {
 
-    @Shadow(remap = false) private int cwut;
-    @Shadow(remap = false) private int totalCWU;
-    @Unique private long gtlcore$rate;
-    @Unique private long gtlcore$total;
+    @Shadow(remap = false)
+    private int cwut;
+    @Shadow(remap = false)
+    private int totalCWU;
+    @Unique
+    private long gtlcore$rate;
+    @Unique
+    private long gtlcore$total;
 
     @Override
     public StationRecipeBuilder CWUt(long rate) {
@@ -49,13 +53,17 @@ public abstract class ComputationStationBuilderMixin implements LongStationRecip
     }
 
     @Inject(method = "CWUt(I)Lcom/gregtechceu/gtceu/api/recipe/ResearchRecipeBuilder$StationRecipeBuilder;",
-            at = @At("HEAD"), cancellable = true, remap = false)
+            at = @At("HEAD"),
+            cancellable = true,
+            remap = false)
     private void gtlcore$defaultTotal(int rate, CallbackInfoReturnable<StationRecipeBuilder> cir) {
         cir.setReturnValue(CWUt((long) rate));
     }
 
     @Inject(method = "CWUt(II)Lcom/gregtechceu/gtceu/api/recipe/ResearchRecipeBuilder$StationRecipeBuilder;",
-            at = @At("HEAD"), cancellable = true, remap = false)
+            at = @At("HEAD"),
+            cancellable = true,
+            remap = false)
     private void gtlcore$explicitTotal(int rate, int total, CallbackInfoReturnable<StationRecipeBuilder> cir) {
         cir.setReturnValue(CWUt((long) rate, total));
     }

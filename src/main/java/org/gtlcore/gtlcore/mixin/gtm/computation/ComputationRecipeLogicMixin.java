@@ -12,8 +12,8 @@ import com.gregtechceu.gtceu.api.recipe.GTRecipe;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
-import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Final;
+import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -59,8 +59,10 @@ public abstract class ComputationRecipeLogicMixin {
         }
     }
 
-    @WrapOperation(method = "handleTickRecipe", at = @At(value = "INVOKE",
-            target = "Lcom/gregtechceu/gtceu/api/machine/trait/RecipeLogic;handleTickRecipeIO(Lcom/gregtechceu/gtceu/api/recipe/GTRecipe;Lcom/gregtechceu/gtceu/api/capability/recipe/IO;)Z"), remap = false)
+    @WrapOperation(method = "handleTickRecipe",
+                   at = @At(value = "INVOKE",
+                            target = "Lcom/gregtechceu/gtceu/api/machine/trait/RecipeLogic;handleTickRecipeIO(Lcom/gregtechceu/gtceu/api/recipe/GTRecipe;Lcom/gregtechceu/gtceu/api/capability/recipe/IO;)Z"),
+                   remap = false)
     private boolean gtlcore$checkComputationCommit(RecipeLogic logic, GTRecipe recipe, IO io, Operation<Boolean> original) {
         if (ComputationRecipes.commitFailed()) return false;
         boolean success = original.call(logic, recipe, io);

@@ -31,15 +31,27 @@ import java.util.List;
 @Mixin(targets = "com.gtladd.gtladditions.common.machine.CloudOpticalComputationMonitorMachine$RowWidgets", remap = false)
 public abstract class CloudComputationRowMixin extends WidgetGroup {
 
-    @Shadow @Final private boolean provider;
-    @Shadow @Final private MetaMachine machine;
-    @Shadow @Final private ComponentPanelWidget label;
-    @Shadow private long current;
-    @Shadow private long max;
-    @Shadow private int cwu;
-    @Unique private long gtlcore$usage;
-    @Unique private long gtlcore$sentUsage;
-    @Unique private static final int GTLCORE_USAGE_UPDATE = 0x435755;
+    @Shadow
+    @Final
+    private boolean provider;
+    @Shadow
+    @Final
+    private MetaMachine machine;
+    @Shadow
+    @Final
+    private ComponentPanelWidget label;
+    @Shadow
+    private long current;
+    @Shadow
+    private long max;
+    @Shadow
+    private int cwu;
+    @Unique
+    private long gtlcore$usage;
+    @Unique
+    private long gtlcore$sentUsage;
+    @Unique
+    private static final int GTLCORE_USAGE_UPDATE = 0x435755;
 
     private CloudComputationRowMixin() {}
 

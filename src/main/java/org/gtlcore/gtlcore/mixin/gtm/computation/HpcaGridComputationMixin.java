@@ -1,9 +1,9 @@
 package org.gtlcore.gtlcore.mixin.gtm.computation;
 
+import org.gtlcore.gtlcore.api.machine.computation.ComputationGrid;
 import org.gtlcore.gtlcore.api.machine.computation.ComputationMath;
 import org.gtlcore.gtlcore.api.machine.computation.ComputationNetwork;
 import org.gtlcore.gtlcore.api.machine.computation.ComputationUsage;
-import org.gtlcore.gtlcore.api.machine.computation.ComputationGrid;
 
 import com.gregtechceu.gtceu.api.capability.IHPCAComputationProvider;
 import com.gregtechceu.gtceu.common.machine.multiblock.electric.research.HPCAMachine;
@@ -27,9 +27,13 @@ public abstract class HpcaGridComputationMixin implements ComputationGrid {
     @Final
     private HPCAMachine controller;
 
-    @Shadow(remap = false) @Final private Set<IHPCAComputationProvider> computationProviders;
-    @Shadow(remap = false) private int allocatedCWUt;
-    @Unique private long gtlcore$thermalUsage;
+    @Shadow(remap = false)
+    @Final
+    private Set<IHPCAComputationProvider> computationProviders;
+    @Shadow(remap = false)
+    private int allocatedCWUt;
+    @Unique
+    private long gtlcore$thermalUsage;
 
     @Override
     public long gtlcore$maximumComputation() {

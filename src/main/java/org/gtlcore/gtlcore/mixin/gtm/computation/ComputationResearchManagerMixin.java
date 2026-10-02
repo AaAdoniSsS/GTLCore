@@ -23,10 +23,12 @@ import java.util.function.Consumer;
 public abstract class ComputationResearchManagerMixin {
 
     @Inject(method = "createDefaultResearchRecipe(Lcom/gregtechceu/gtceu/api/recipe/GTRecipeType;Ljava/lang/String;Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/item/ItemStack;IIILjava/util/function/Consumer;)V",
-            at = @At("HEAD"), cancellable = true, remap = false)
+            at = @At("HEAD"),
+            cancellable = true,
+            remap = false)
     private static void gtlcore$longResearch(GTRecipeType type, String researchId, ItemStack researchItem,
-                                            ItemStack dataItem, int duration, int eu, int cwu,
-                                            Consumer<FinishedRecipe> provider, CallbackInfo ci) {
+                                             ItemStack dataItem, int duration, int eu, int cwu,
+                                             Consumer<FinishedRecipe> provider, CallbackInfo ci) {
         var amounts = ComputationResearchEntries.get(dataItem);
         if (amounts == null) return;
         ci.cancel();
