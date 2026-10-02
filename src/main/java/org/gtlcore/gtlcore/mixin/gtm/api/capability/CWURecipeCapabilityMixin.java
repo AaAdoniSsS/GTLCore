@@ -1,40 +1,81 @@
 package org.gtlcore.gtlcore.mixin.gtm.api.capability;
 
-import com.gregtechceu.gtceu.api.capability.recipe.*;
-import com.gregtechceu.gtceu.api.machine.trait.NotifiableComputationContainer;
+import org.gtlcore.gtlcore.api.machine.computation.ComputationAmounts;
+import org.gtlcore.gtlcore.api.machine.computation.ComputationContentSerializer;
+import org.gtlcore.gtlcore.api.machine.computation.ComputationMath;
+import org.gtlcore.gtlcore.api.machine.computation.ComputationNetwork;
+import org.gtlcore.gtlcore.api.machine.computation.ComputationRecipes;
+
+import com.gregtechceu.gtceu.api.capability.recipe.CWURecipeCapability;
+import com.gregtechceu.gtceu.api.capability.recipe.IRecipeCapabilityHolder;
 import com.gregtechceu.gtceu.api.recipe.GTRecipe;
+import com.gregtechceu.gtceu.api.recipe.content.Content;
+import com.gregtechceu.gtceu.api.recipe.content.ContentModifier;
 import com.gregtechceu.gtceu.api.recipe.content.IContentSerializer;
 
-import com.google.common.primitives.Ints;
-import org.spongepowered.asm.mixin.Mixin;
+import com.lowdragmc.lowdraglib.gui.widget.LabelWidget;
+import com.lowdragmc.lowdraglib.gui.widget.WidgetGroup;
+import com.lowdragmc.lowdraglib.utils.LocalizationUtils;
 
-import java.util.Collections;
+import org.apache.commons.lang3.mutable.MutableInt;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyArg;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+
 import java.util.List;
-import java.util.Objects;
 
 @Mixin(CWURecipeCapability.class)
-public abstract class CWURecipeCapabilityMixin extends RecipeCapability<Integer> {
+public abstract class CWURecipeCapabilityMixin {
 
-    protected CWURecipeCapabilityMixin(String name, int color, boolean doRenderSlot, int sortIndex, IContentSerializer<Integer> serializer) {
-        super(name, color, doRenderSlot, sortIndex, serializer);
+    @ModifyArg(method = "<init>",
+               at = @At(value = "INVOKE",
+                        target = "Lcom/gregtechceu/gtceu/api/capability/recipe/RecipeCapability;<init>(Ljava/lang/String;IZILcom/gregtechceu/gtceu/api/recipe/content/IContentSerializer;)V"),
+               index = 4,
+               remap = false)
+    private static IContentSerializer<?> gtlcore$longSerializer(IContentSerializer<?> serializer) {
+        return ComputationContentSerializer.INSTANCE;
     }
 
-    @Override
+    // These erased bridges are used by Content.copy and RecipeRunner. Retain the old Integer signatures.
+    @Inject(method = "copyInner(Ljava/lang/Object;)Ljava/lang/Object;", at = @At("HEAD"), cancellable = true, remap = false)
+    private void gtlcore$copyLong(Object content, CallbackInfoReturnable<Object> cir) {
+        cir.setReturnValue(ComputationAmounts.box(ComputationAmounts.read(content)));
+    }
+
+    @Inject(method = "copyWithModifier(Ljava/lang/Object;Lcom/gregtechceu/gtceu/api/recipe/content/ContentModifier;)Ljava/lang/Object;",
+            at = @At("HEAD"),
+            cancellable = true,
+            remap = false)
+    private void gtlcore$modifyLong(Object content, ContentModifier modifier, CallbackInfoReturnable<Object> cir) {
+        cir.setReturnValue(ComputationAmounts.box(ComputationAmounts.modify(ComputationAmounts.read(content), modifier)));
+    }
+
+    @Inject(method = "copyWithModifier(Ljava/lang/Integer;Lcom/gregtechceu/gtceu/api/recipe/content/ContentModifier;)Ljava/lang/Integer;",
+            at = @At("HEAD"),
+            cancellable = true,
+            remap = false)
+    private void gtlcore$modifyLegacy(Integer content, ContentModifier modifier, CallbackInfoReturnable<Integer> cir) {
+        cir.setReturnValue(Math.toIntExact(ComputationAmounts.modify(ComputationAmounts.read(content), modifier)));
+    }
+
     public int getMaxParallelRatio(IRecipeCapabilityHolder holder, GTRecipe recipe, int maxParallel) {
-        int recipeCWU = CWURecipeCapability.CAP.of(recipe.tickInputs.get(CWURecipeCapability.CAP).get(0).getContent());
-        if (recipeCWU == 0) {
-            return Integer.MAX_VALUE;
-        }
-        long maxCWU = 0;
-        List<IRecipeHandler<?>> recipeHandlerList = Objects
-                .requireNonNullElseGet(holder.getCapabilitiesProxy().get(IO.IN, CWURecipeCapability.CAP), Collections::<IRecipeHandler<?>>emptyList)
-                .stream()
-                .filter(handler -> !handler.isProxy()).toList();
-        for (IRecipeHandler<?> container : recipeHandlerList) {
-            if (container instanceof NotifiableComputationContainer nc) {
-                maxCWU += nc.requestCWUt(Integer.MAX_VALUE, true);
-            }
-        }
-        return Math.min(maxParallel, Math.abs(Ints.saturatedCast(maxCWU / recipeCWU)));
+        long required = ComputationRecipes.required(recipe.tickInputs.getOrDefault(CWURecipeCapability.CAP, List.of()));
+        if (required < 0 || maxParallel <= 0) return 0;
+        if (required == 0) return maxParallel;
+        long available = ComputationNetwork.available(holder, ComputationRecipes.roots(holder));
+        return Math.min(maxParallel, ComputationMath.toInt(available / required));
+    }
+
+    @Inject(method = "addXEIInfo", at = @At("HEAD"), cancellable = true, remap = false)
+    private void gtlcore$longRecipeLabels(WidgetGroup group, int xOffset, GTRecipe recipe, List<Content> contents,
+                                          boolean perTick, boolean isInput, MutableInt yOffset, CallbackInfo ci) {
+        if (perTick) group.addWidget(new LabelWidget(3 - xOffset, yOffset.addAndGet(10),
+                LocalizationUtils.format("gtceu.recipe.computation_per_tick", ComputationRecipes.required(contents))));
+        if (recipe.data.getBoolean("duration_is_total_cwu")) group.addWidget(new LabelWidget(3 - xOffset, yOffset.addAndGet(10),
+                LocalizationUtils.format("gtceu.recipe.total_computation", ComputationAmounts.total(recipe))));
+        ci.cancel();
     }
 }
