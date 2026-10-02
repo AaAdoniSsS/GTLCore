@@ -38,18 +38,7 @@ final class DagScheduler<K> {
         // can require more than long executions of an intermediate recipe.
         Map<String, BigInteger> counts = plan.patternTimesExact();
         List<String> steps = new ArrayList<>(counts.keySet());
-        Set<K> conserved = new HashSet<>(), changed = new HashSet<>();
-        for (String id : steps) {
-            GraphRecipe<K> recipe = plan.recipes().get(id);
-            recipe.inputs().forEach((key, input) -> {
-                if (!recipe.configurationInputs().containsKey(key) && recipe.executionOutputs().getOrDefault(key, 0L).equals(input)) conserved.add(key);
-                else changed.add(key);
-            });
-            recipe.executionOutputs().forEach((key, output) -> {
-                if (!recipe.inputs().getOrDefault(key, 0L).equals(output)) changed.add(key);
-            });
-        }
-        conserved.removeAll(changed);
+        Set<K> conserved = conserved(steps.stream().map(plan.recipes()::get).toList());
         if (!conserved.containsAll(plan.seeds().keySet())) return null;
         Map<K, Integer> lastProducer = new HashMap<>();
         for (int i = 0; i < steps.size(); i++) {
@@ -68,6 +57,21 @@ final class DagScheduler<K> {
             }
         }
         return new DagScheduler<>(counts, plan.recipes(), accepted);
+    }
+
+    static <K> Set<K> conserved(Collection<GraphRecipe<K>> recipes) {
+        Set<K> conserved = new HashSet<>(), changed = new HashSet<>();
+        for (GraphRecipe<K> recipe : recipes) {
+            recipe.inputs().forEach((key, input) -> {
+                if (!recipe.configurationInputs().containsKey(key) && recipe.executionOutputs().getOrDefault(key, 0L).equals(input)) conserved.add(key);
+                else changed.add(key);
+            });
+            recipe.executionOutputs().forEach((key, output) -> {
+                if (!recipe.inputs().getOrDefault(key, 0L).equals(output)) changed.add(key);
+            });
+        }
+        conserved.removeAll(changed);
+        return conserved;
     }
 
     PlanStep.Batch poll(long tick) {

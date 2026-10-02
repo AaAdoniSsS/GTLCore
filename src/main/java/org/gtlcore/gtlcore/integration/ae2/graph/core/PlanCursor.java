@@ -226,10 +226,16 @@ public final class PlanCursor {
     }
 
     public Map<String, BigInteger> remainingCountsExact() {
+        return PlanCountComputation.of(remainingSteps());
+    }
+
+    /** The live inner suffix precedes its ancestors' unvisited siblings. */
+    PlanStep remainingSteps() {
         // Count all live suffixes in a single shared traversal. Counting each
         // ancestor's suffix independently is quadratic for nested shared calls.
         var remaining = new ArrayList<PlanStep>();
-        for (Frame frame : stack) {
+        for (int i = stack.size() - 1; i >= 0; i--) {
+            Frame frame = stack.get(i);
             if (frame.remaining == 0) continue;
             if (frame.step instanceof PlanStep.Batch batch) {
                 remaining.add(new PlanStep.Batch(batch.recipe(), frame.remaining));
@@ -240,7 +246,7 @@ public final class PlanCursor {
                 remaining.addAll(children.subList(children.size() - Math.toIntExact(frame.remaining), children.size()));
             }
         }
-        return PlanCountComputation.of(new PlanStep.Sequence(remaining));
+        return remaining.size() == 1 ? remaining.get(0) : new PlanStep.Sequence(remaining);
     }
 
     public record Position(int node, long remaining) {}
