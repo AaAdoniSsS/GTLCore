@@ -1,8 +1,8 @@
 package org.gtlcore.gtlcore.mixin.gtm.computation;
 
+import org.gtlcore.gtlcore.api.machine.computation.ComputationAmounts;
 import org.gtlcore.gtlcore.api.machine.computation.ComputationNetwork;
 import org.gtlcore.gtlcore.api.machine.computation.ComputationRecipes;
-import org.gtlcore.gtlcore.api.machine.computation.ComputationAmounts;
 
 import com.gregtechceu.gtceu.api.capability.recipe.CWURecipeCapability;
 import com.gregtechceu.gtceu.api.capability.recipe.IO;
@@ -28,7 +28,8 @@ import java.util.Map;
 public abstract class ComputationRecipeMixin {
 
     @Inject(method = "copy(Lcom/gregtechceu/gtceu/api/recipe/content/ContentModifier;Z)Lcom/gregtechceu/gtceu/api/recipe/GTRecipe;",
-            at = @At("RETURN"), remap = false)
+            at = @At("RETURN"),
+            remap = false)
     private void gtlcore$copyResearchTotal(ContentModifier modifier, boolean modifyDuration, CallbackInfoReturnable<GTRecipe> cir) {
         var self = (GTRecipe) (Object) this;
         if (!modifyDuration || !self.data.getBoolean("duration_is_total_cwu")) return;
@@ -41,8 +42,8 @@ public abstract class ComputationRecipeMixin {
 
     @WrapMethod(method = "matchRecipeContents", remap = false)
     private GTRecipe.ActionResult gtlcore$matchComputation(IO io, IRecipeCapabilityHolder holder,
-                                                          Map<RecipeCapability<?>, List<Content>> contents,
-                                                          boolean isTick, Operation<GTRecipe.ActionResult> original) {
+                                                           Map<RecipeCapability<?>, List<Content>> contents,
+                                                           boolean isTick, Operation<GTRecipe.ActionResult> original) {
         if (io != IO.IN || !isTick || !ComputationRecipes.aggregate(contents.get(CWURecipeCapability.CAP)))
             return original.call(io, holder, contents, isTick);
         var rest = new HashMap<>(contents);

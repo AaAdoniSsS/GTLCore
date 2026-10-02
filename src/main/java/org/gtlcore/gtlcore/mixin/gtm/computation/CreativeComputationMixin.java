@@ -1,10 +1,10 @@
 package org.gtlcore.gtlcore.mixin.gtm.computation;
 
+import org.gtlcore.gtlcore.api.machine.computation.ComputationConnections;
 import org.gtlcore.gtlcore.api.machine.computation.ComputationLedger;
 import org.gtlcore.gtlcore.api.machine.computation.ComputationMath;
 import org.gtlcore.gtlcore.api.machine.computation.ComputationNetwork;
 import org.gtlcore.gtlcore.api.machine.computation.ComputationSource;
-import org.gtlcore.gtlcore.api.machine.computation.ComputationConnections;
 
 import com.gregtechceu.gtceu.api.capability.IOpticalComputationProvider;
 import com.gregtechceu.gtceu.common.machine.storage.CreativeComputationProviderMachine;
@@ -69,7 +69,7 @@ public abstract class CreativeComputationMixin implements ComputationSource {
 
     @Inject(method = "requestCWUt", at = @At("HEAD"), cancellable = true, remap = false)
     private void gtlcore$request(int amount, boolean simulate, Collection<IOpticalComputationProvider> seen,
-                                CallbackInfoReturnable<Integer> cir) {
+                                 CallbackInfoReturnable<Integer> cir) {
         cir.setReturnValue(ComputationNetwork.request(gtlcore$self(), amount, simulate));
     }
 

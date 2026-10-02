@@ -1,7 +1,7 @@
 package org.gtlcore.gtlcore.mixin.gtm.computation;
 
-import org.gtlcore.gtlcore.api.machine.computation.ComputationNetwork;
 import org.gtlcore.gtlcore.api.machine.computation.ComputationConnections;
+import org.gtlcore.gtlcore.api.machine.computation.ComputationNetwork;
 
 import com.gregtechceu.gtceu.api.machine.multiblock.MultiblockControllerMachine;
 

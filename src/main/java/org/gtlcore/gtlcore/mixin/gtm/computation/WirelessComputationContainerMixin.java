@@ -31,7 +31,7 @@ public abstract class WirelessComputationContainerMixin implements ComputationNo
 
     @Inject(method = "requestCWUt", at = @At("HEAD"), cancellable = true, remap = false)
     private void gtlcore$request(int amount, boolean simulate, Collection<IOpticalComputationProvider> seen,
-                                CallbackInfoReturnable<Integer> cir) {
+                                 CallbackInfoReturnable<Integer> cir) {
         cir.setReturnValue(ComputationNetwork.request((IOpticalComputationProvider) this, amount, simulate));
     }
 
@@ -47,7 +47,7 @@ public abstract class WirelessComputationContainerMixin implements ComputationNo
 
     @Inject(method = "handleRecipeInner", at = @At("HEAD"), cancellable = true, remap = false)
     private void gtlcore$legacyInput(IO io, GTRecipe recipe, List<?> left, String slot, boolean simulate,
-                                    CallbackInfoReturnable<List<?>> cir) {
+                                     CallbackInfoReturnable<List<?>> cir) {
         cir.setReturnValue(ComputationConnections.legacyInput((IOpticalComputationProvider) this, io, recipe, left, simulate));
     }
 }

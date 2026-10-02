@@ -18,7 +18,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(ContentJS.class)
 public abstract class ComputationKubeJSContentMixin {
 
-    @Shadow(remap = false) @Final @Mutable private RecipeComponent<?> baseComponent;
+    @Shadow(remap = false)
+    @Final
+    @Mutable
+    private RecipeComponent<?> baseComponent;
 
     @Inject(method = "<init>", at = @At("RETURN"), remap = false)
     private void gtlcore$longSchema(RecipeComponent<?> component, RecipeCapability<?> capability, boolean output, CallbackInfo ci) {

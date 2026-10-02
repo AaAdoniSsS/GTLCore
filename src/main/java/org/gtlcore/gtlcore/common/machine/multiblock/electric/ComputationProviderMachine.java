@@ -1,10 +1,10 @@
 package org.gtlcore.gtlcore.common.machine.multiblock.electric;
 
+import org.gtlcore.gtlcore.api.machine.computation.ComputationConnections;
 import org.gtlcore.gtlcore.api.machine.computation.ComputationLedger;
 import org.gtlcore.gtlcore.api.machine.computation.ComputationMath;
 import org.gtlcore.gtlcore.api.machine.computation.ComputationNetwork;
 import org.gtlcore.gtlcore.api.machine.computation.ComputationSource;
-import org.gtlcore.gtlcore.api.machine.computation.ComputationConnections;
 import org.gtlcore.gtlcore.utils.MachineIO;
 import org.gtlcore.gtlcore.utils.TextUtil;
 

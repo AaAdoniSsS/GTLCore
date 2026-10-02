@@ -4,6 +4,7 @@
   "package": "org.gtlcore.gtlcore.mixin",
   "compatibilityLevel": "JAVA_17",
   "client": [
+    "mc.client.AnimationBufferSourceAccessor",
     "ae2.gui.CraftingVisualizationToolbarMixin",
     "ae2ct.CraftingTreeWidgetMixin",
     "gtm.client.PreviewShapesMixin",

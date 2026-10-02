@@ -24,7 +24,7 @@ public abstract class ComputationRecipeWidgetMixin {
 
     @Inject(method = "getRecipeParaText", at = @At("HEAD"), cancellable = true, remap = false)
     private static void gtlcore$researchEnergy(GTRecipe recipe, int duration, long inputEUt, long outputEUt,
-                                              CallbackInfoReturnable<List<Component>> cir) {
+                                               CallbackInfoReturnable<List<Component>> cir) {
         if (!recipe.data.getBoolean("duration_is_total_cwu") || !recipe.tickInputs.containsKey(CWURecipeCapability.CAP)) return;
         List<Component> texts = new ArrayList<>();
         if (!recipe.data.getBoolean("hide_duration"))

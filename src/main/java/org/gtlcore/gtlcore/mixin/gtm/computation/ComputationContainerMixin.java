@@ -1,11 +1,11 @@
 package org.gtlcore.gtlcore.mixin.gtm.computation;
 
+import org.gtlcore.gtlcore.api.machine.computation.ComputationAmounts;
+import org.gtlcore.gtlcore.api.machine.computation.ComputationBuffer;
 import org.gtlcore.gtlcore.api.machine.computation.ComputationConnections;
 import org.gtlcore.gtlcore.api.machine.computation.ComputationMath;
 import org.gtlcore.gtlcore.api.machine.computation.ComputationNetwork;
 import org.gtlcore.gtlcore.api.machine.computation.ComputationNode;
-import org.gtlcore.gtlcore.api.machine.computation.ComputationAmounts;
-import org.gtlcore.gtlcore.api.machine.computation.ComputationBuffer;
 import org.gtlcore.gtlcore.api.machine.computation.ComputationSource;
 
 import com.gregtechceu.gtceu.api.capability.IOpticalComputationProvider;
@@ -54,7 +54,7 @@ public abstract class ComputationContainerMixin implements ComputationNode {
 
     @Inject(method = "requestCWUt", at = @At("HEAD"), cancellable = true, remap = false)
     private void gtlcore$request(int amount, boolean simulate, Collection<IOpticalComputationProvider> seen,
-                                CallbackInfoReturnable<Integer> cir) {
+                                 CallbackInfoReturnable<Integer> cir) {
         cir.setReturnValue(ComputationNetwork.request((IOpticalComputationProvider) this, amount, simulate));
     }
 
@@ -70,7 +70,7 @@ public abstract class ComputationContainerMixin implements ComputationNode {
 
     @Inject(method = "handleRecipeInner", at = @At("HEAD"), cancellable = true, remap = false)
     private void gtlcore$legacyInput(IO io, GTRecipe recipe, List<?> left, String slot, boolean simulate,
-                                    CallbackInfoReturnable<List<?>> cir) {
+                                     CallbackInfoReturnable<List<?>> cir) {
         if (io == IO.OUT && ((NotifiableComputationContainer) (Object) this).getHandlerIO().support(IO.OUT)) {
             try {
                 long amount = 0;
